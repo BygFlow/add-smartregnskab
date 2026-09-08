@@ -212,6 +212,7 @@ export default function RegnskabLogin() {
           </form>
 
           <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm">
+            <Link href="/tilmeld" data-testid="link-regnskab-signup" className="font-medium text-primary hover:underline">Opret virksomhed</Link>
             <Link href="/glemt" data-testid="link-regnskab-forgot" className="font-medium text-primary hover:underline">Glemt adgangskode?</Link>
             <a href={apiUrl("/api/legal/privatliv")} target="_blank" rel="noreferrer" data-testid="link-regnskab-privacy" className="font-medium text-primary hover:underline">Privatlivspolitik</a>
           </div>
