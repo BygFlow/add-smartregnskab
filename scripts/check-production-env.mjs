@@ -9,8 +9,8 @@ const REQUIRED = [
   { key: "DATABASE_PATH", label: "Database sti", critical: true, default: "data.db" },
   { key: "FILE_STORAGE_DIR", label: "Filstorage sti", critical: true, default: "./uploads" },
   { key: "ENCRYPTION_KEY", label: "Krypteringsnøgle", critical: true, hint: "Generer med: openssl rand -hex 32" },
-  { key: "APP_BASE_URL", label: "App URL", critical: true, hint: "https://add-smartregnskab.onrender.com" },
-  { key: "ALLOWED_ORIGINS", label: "Tilladte origins", critical: true, hint: "https://add-smartregnskab.onrender.com" },
+  { key: "APP_BASE_URL", label: "App URL", critical: true, hint: "https://app.addsmartregnskab.dk" },
+  { key: "ALLOWED_ORIGINS", label: "Tilladte origins", critical: true, hint: "https://app.addsmartregnskab.dk" },
   { key: "PLATFORM_ADMIN_EMAIL", label: "Bootstrap-administrator", critical: true },
   { key: "PLATFORM_ADMIN_PASSWORD", label: "Bootstrap-password", critical: true, hint: "mindst 12 tegn" },
 ];

@@ -2,7 +2,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 
 const configuredApiBase = String(import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-const API_BASE = configuredApiBase || (Capacitor.isNativePlatform() ? "https://add-smartregnskab.onrender.com" : "");
+const API_BASE = configuredApiBase || (Capacitor.isNativePlatform() ? "https://app.addsmartregnskab.dk" : "");
 
 export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
