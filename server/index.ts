@@ -12,8 +12,9 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { usingFallbackKey } from "./crypto";
 import { assertDatabaseReady } from "./storage";
+import { emailConfigured } from "./messaging";
 
-const APP_VERSION = "3.2.0";
+const APP_VERSION = "3.2.1";
 
 const app = express();
 const httpServer = createServer(app);
@@ -213,7 +214,7 @@ app.get("/readyz", async (_req, res) => {
       log(`Database: ${process.env.DATABASE_PATH ?? "data.db"}`);
       log(`File storage: ${process.env.FILE_STORAGE_DIR ?? "default"}`);
       log(`Stripe: ${process.env.STRIPE_SECRET_KEY ? "configured" : "not configured"}`);
-      log(`Email: ${process.env.RESEND_API_KEY ? "configured" : "not configured"}`);
+      log(`Email: ${emailConfigured() ? "configured" : "not configured"}`);
       log(`Encryption: ${usingFallbackKey() ? "development fallback" : "configured"}`);
       startScheduler(); // automatiske job: gentagne opgaver, rykkere, fornyelse, GDPR
     },
