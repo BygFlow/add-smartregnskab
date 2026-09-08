@@ -9,7 +9,7 @@ API-grænse og indgår ikke i den brugerrettede SmartRegnskab-applikation.
 
 ## Lokal start
 
-Krav: Node.js 20 og npm.
+Krav: Node.js 22.12 eller nyere og npm.
 
 ```bash
 npm ci
