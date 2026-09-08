@@ -1226,8 +1226,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/invoices/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const existing = await storage.getInvoice(Number(req.params.id), tenantId(req));
     if (!existing) return res.status(404).json({ error: "Fakturaen blev ikke fundet." });
-    if (existing.status !== "kladde" && req.body.items) {
-      return res.status(409).json({ error: "En afsendt faktura kan ikke ændres. Opret en kreditnota i stedet." });
+    if (existing.status !== "kladde") {
+      return res.status(409).json({ error: "En afsendt eller bogført faktura er låst. Opret en kreditnota eller særskilt statuspostering i stedet." });
+    }
+    if (req.body?.status !== undefined && req.body.status !== existing.status) {
+      return res.status(409).json({ error: "Fakturastatus må kun ændres gennem den relevante send-, betalings- eller kreditnota-handling." });
     }
     const data = validate(insertInvoiceSchema.partial(), req.body);
     delete (data as any).companyId;
@@ -1459,6 +1462,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const existing = await storage.get("creditNotes", Number(req.params.id), cid);
     if (!existing) return res.status(404).json({ error: "Kreditnotaen blev ikke fundet." });
+    if (existing.status === "bogfort" || existing.status === "sendt") {
+      return res.status(409).json({ error: "En bogført eller sendt kreditnota er låst. Opret en ny modpostering i stedet." });
+    }
     const data: any = {};
     if (req.body?.amount != null) data.amount = round2(Math.abs(Number(req.body.amount)) || 0);
     if (req.body?.reason != null) data.reason = req.body.reason ? String(req.body.reason).slice(0, 1000) : null;
@@ -1470,6 +1476,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const existing = await storage.get("creditNotes", Number(req.params.id), cid);
     if (!existing) return res.status(404).json({ error: "Kreditnotaen blev ikke fundet." });
+    if (existing.status === "bogfort" || existing.status === "sendt") {
+      return res.status(409).json({ error: "En bogført eller sendt kreditnota må ikke slettes." });
+    }
     await storage.delete("creditNotes", existing.id, cid);
     await audit(req, "slet", "credit_note", existing.id, existing.creditNumber);
     res.status(204).send();

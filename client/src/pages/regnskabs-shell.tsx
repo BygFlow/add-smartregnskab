@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Switch, Route, Link, Redirect, useLocation, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useAuth } from "@/lib/auth";
@@ -248,11 +248,13 @@ export function RegnskabsPlatformShell({
           {/* Route content */}
           <div className="p-4 md:p-6">
             <Router hook={useHashLocation}>
-              <Switch>
-                <Route path="/smartregnskab/app" component={Regnskabssystem} />
-                <Route path="/smartregnskab/app/:tab" component={Regnskabssystem} />
-                <Route><Redirect to="/smartregnskab/app" /></Route>
-              </Switch>
+              <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Indlæser modul…</div>}>
+                <Switch>
+                  <Route path="/smartregnskab/app" component={Regnskabssystem} />
+                  <Route path="/smartregnskab/app/:tab" component={Regnskabssystem} />
+                  <Route><Redirect to="/smartregnskab/app" /></Route>
+                </Switch>
+              </Suspense>
             </Router>
           </div>
         </main>

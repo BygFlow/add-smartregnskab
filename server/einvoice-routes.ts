@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { and, desc, eq } from "drizzle-orm";
-import { einvoiceQueue } from "@shared/schema";
+import { creditNotes, einvoiceQueue } from "@shared/schema";
 import { requireRole } from "./auth";
 import { db, storage } from "./storage";
-import { generateEInvoice, providerSend, providerStatus, providerValidate, validateEInvoice, verifyInboundSignature, type EInvoiceFormat } from "./einvoice";
+import { generateECreditNote, generateEInvoice, generateEInvoiceResponse, providerSend, providerStatus, providerValidate, validateEInvoice, verifyInboundSignature, type EInvoiceFormat } from "./einvoice";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res)).catch(next);
 const cid = (req: Request) => Number((req as any).auth?.companyId);
@@ -63,6 +63,20 @@ export function registerEInvoiceRoutes(app: Express) {
     await audit(companyId, actor(req), "einvoice_oprettet", `einvoice#${created.id}`, `${format}; ${errors.length ? "afvist" : "klar"}`);
     res.status(201).json({ ...created, payloadXml: undefined, hasDocument: true, errors });
   }));
+  app.post("/api/einvoice-queue/from-credit-note", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+    const companyId = cid(req);
+    const creditNote = db.select().from(creditNotes).where(and(eq(creditNotes.id, Number(req.body?.creditNoteId)), eq(creditNotes.companyId, companyId))).get();
+    if (!creditNote?.invoiceId || !creditNote.customerId) return void res.status(404).json({ error: "Kreditnotaen eller dens oprindelige faktura findes ikke." });
+    const [company, customer, originalInvoice] = await Promise.all([storage.getCompany(companyId), storage.getCustomer(creditNote.customerId, companyId), storage.getInvoice(creditNote.invoiceId, companyId)]);
+    if (!company || !customer || !originalInvoice) return void res.status(400).json({ error: "Stamdata til kreditnotaen mangler." });
+    const format = formatOf(req.body?.format);
+    const generated = generateECreditNote({ company, customer, creditNote, originalInvoice, format });
+    const errors = await providerValidate(generated.xml, format);
+    const state = validationState(errors);
+    const created = db.insert(einvoiceQueue).values({ companyId, direction: "udgående", invoiceNumber: creditNote.creditNumber, invoiceId: originalInvoice.id, counterpartyName: customer.name, amount: creditNote.amount, format, validationStatus: state, validationErrors: errors.length ? JSON.stringify(errors) : null, routingStatus: "afventer", status: errors.length ? "afvist" : "klar", documentType: "credit_note", recipientEndpointId: generated.recipientEndpointId, endpointScheme: generated.endpointScheme, payloadXml: generated.xml, processedAt: now(), createdAt: now() }).returning().get();
+    await audit(companyId, actor(req), "ekreditnota_oprettet", `einvoice#${created.id}`, `${format}; ${state}`);
+    res.status(201).json({ ...created, payloadXml: undefined, hasDocument: true, errors });
+  }));
   app.post("/api/einvoice-queue/import", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     const payload = String(req.body?.xml || "");
     const format = formatOf(req.body?.format);
@@ -86,7 +100,11 @@ export function registerEInvoiceRoutes(app: Express) {
     try {
       const result = await providerSend(row.payloadXml, formatOf(row.format), String(row.recipientEndpointId || ""));
       const updated = db.update(einvoiceQueue).set({ routingStatus: "sendt", status: "sendt", providerMessageId: result.messageId || null, sentAt: now(), processedAt: now(), attempts: (row.attempts || 0) + 1, lastError: null }).where(eq(einvoiceQueue.id, row.id)).returning().get();
-      if (row.invoiceId) await storage.updateInvoice(row.invoiceId, { status: "sendt", sentAt: now() });
+      if (row.invoiceId && row.documentType === "invoice") await storage.updateInvoice(row.invoiceId, { status: "sendt", sentAt: now() });
+      if (row.documentType === "credit_note") {
+        const note = db.select().from(creditNotes).where(and(eq(creditNotes.companyId, cid(req)), eq(creditNotes.creditNumber, row.invoiceNumber || ""))).get();
+        if (note) db.update(creditNotes).set({ status: "sendt" }).where(eq(creditNotes.id, note.id)).run();
+      }
       await audit(cid(req), actor(req), "einvoice_sendt", `einvoice#${row.id}`, `Leverandør-ID: ${result.messageId || "ikke oplyst"}`);
       res.json({ ...updated, payloadXml: undefined });
     } catch (error: any) {
@@ -95,6 +113,18 @@ export function registerEInvoiceRoutes(app: Express) {
       await audit(cid(req), actor(req), "einvoice_sendefejl", `einvoice#${row.id}`, message);
       res.status(503).json({ error: message });
     }
+  }));
+  app.post("/api/einvoice-queue/:id/respond", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+    const companyId = cid(req);
+    const original = db.select().from(einvoiceQueue).where(and(eq(einvoiceQueue.id, Number(req.params.id)), eq(einvoiceQueue.companyId, companyId))).get();
+    const company = await storage.getCompany(companyId);
+    if (!original || !company) return void res.status(404).json({ error: "Det modtagne dokument findes ikke." });
+    if (original.direction !== "indgående") return void res.status(409).json({ error: "Der kan kun oprettes svar til indgående dokumenter." });
+    const response = generateEInvoiceResponse(original, company, String(req.body?.responseType || "invoice_response"), req.body?.accepted !== false, String(req.body?.reason || "").slice(0, 500));
+    const errors = validateEInvoice(response.xml);
+    const created = db.insert(einvoiceQueue).values({ companyId, direction: "udgående", invoiceNumber: response.id, counterpartyName: original.counterpartyName, amount: 0, format: formatOf(original.format), validationStatus: validationState(errors), validationErrors: errors.length ? JSON.stringify(errors) : null, routingStatus: "afventer", status: errors.length ? "afvist" : "klar", documentType: "response", recipientEndpointId: response.recipientEndpointId, endpointScheme: response.endpointScheme, payloadXml: response.xml, responseType: response.responseType, processedAt: now(), createdAt: now() }).returning().get();
+    await audit(companyId, actor(req), "einvoice_svar_oprettet", `einvoice#${created.id}`, `${response.responseType}; ${req.body?.accepted !== false ? "accepteret" : "afvist"}; original #${original.id}`);
+    res.status(201).json({ ...created, payloadXml: undefined, hasDocument: true, errors });
   }));
   app.get("/api/einvoice-queue/:id/download", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     const row = db.select().from(einvoiceQueue).where(and(eq(einvoiceQueue.id, Number(req.params.id)), eq(einvoiceQueue.companyId, cid(req)))).get();

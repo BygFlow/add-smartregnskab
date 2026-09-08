@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import Database from "better-sqlite3";
+import { createHmac } from "node:crypto";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,6 +30,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       PLATFORM_ADMIN_PASSWORD: "A-strong-bootstrap-password-2026",
       APP_BASE_URL: base,
       ALLOWED_ORIGINS: base,
+      EINVOICE_WEBHOOK_SECRET: "test-einvoice-webhook-secret",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -154,7 +156,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(companyUpdate.status, 200);
     const customerResponse = await fetch(`${base}/api/customers`, {
       method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "NemHandel Kunde", cvr: "87654321", ean: "5790001234567", address: "Testgade 2, 2100 København Ø" }),
+      body: JSON.stringify({ name: "NemHandel Kunde", email: "customer@example.test", cvr: "87654321", ean: "5790001234567", address: "Testgade 2, 2100 København Ø" }),
     });
     assert.equal(customerResponse.status, 201);
     const customer = await customerResponse.json();
@@ -176,10 +178,50 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(electronic.validationStatus, "lokal_godkendt");
     const xmlDownload = await fetch(`${base}/api/einvoice-queue/${electronic.id}/download`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(xmlDownload.status, 200);
-    assert.match(await xmlDownload.text(), /peppol\.eu:2017:poacc:billing:3\.0/);
+    const invoiceXml = await xmlDownload.text();
+    assert.match(invoiceXml, /peppol\.eu:2017:poacc:billing:3\.0/);
     const blockedSend = await fetch(`${base}/api/einvoice-queue/${electronic.id}/send`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(blockedSend.status, 409);
     assert.match((await blockedSend.json()).error, /bestå validering/);
+
+    const markInvoiceSent = await fetch(`${base}/api/invoices/${invoice.id}`, {
+      method: "PATCH", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "sendt" }),
+    });
+    assert.equal(markInvoiceSent.status, 409);
+    const sendInvoice = await fetch(`${base}/api/invoices/${invoice.id}/send`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(sendInvoice.status, 200);
+    const creditResponse = await fetch(`${base}/api/credit-notes`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ invoiceId: invoice.id, amount: 125, reason: "Smoke-test kreditering" }),
+    });
+    assert.equal(creditResponse.status, 201);
+    const creditNote = await creditResponse.json();
+    assert.equal((await fetch(`${base}/api/credit-notes/${creditNote.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${leaderToken}` } })).status, 409);
+    const electronicCreditResponse = await fetch(`${base}/api/einvoice-queue/from-credit-note`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ creditNoteId: creditNote.id, format: "PEPPOL_BIS_3" }),
+    });
+    assert.equal(electronicCreditResponse.status, 201);
+    const electronicCredit = await electronicCreditResponse.json();
+    const creditXmlResponse = await fetch(`${base}/api/einvoice-queue/${electronicCredit.id}/download`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.match(await creditXmlResponse.text(), /<CreditNote\b/);
+
+    const inboundBody = JSON.stringify({ companyId: companyResult.company.id, format: "PEPPOL_BIS_3", messageId: "smoke-inbound-1", documentBase64: Buffer.from(invoiceXml).toString("base64") });
+    const inboundSignature = createHmac("sha256", "test-einvoice-webhook-secret").update(inboundBody).digest("hex");
+    const inboundResponse = await fetch(`${base}/api/einvoice/inbound`, { method: "POST", headers: { "Content-Type": "application/json", "X-Einvoice-Signature": inboundSignature }, body: inboundBody });
+    assert.equal(inboundResponse.status, 201);
+    const inbound = await inboundResponse.json();
+    const duplicateInbound = await fetch(`${base}/api/einvoice/inbound`, { method: "POST", headers: { "Content-Type": "application/json", "X-Einvoice-Signature": inboundSignature }, body: inboundBody });
+    assert.equal(duplicateInbound.status, 200);
+    assert.equal((await duplicateInbound.json()).duplicate, true);
+    const rejectedWebhook = await fetch(`${base}/api/einvoice/inbound`, { method: "POST", headers: { "Content-Type": "application/json", "X-Einvoice-Signature": "invalid" }, body: inboundBody });
+    assert.equal(rejectedWebhook.status, 401);
+    const responseDocument = await fetch(`${base}/api/einvoice-queue/${inbound.id}/respond`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ responseType: "invoice_response", accepted: true }) });
+    assert.equal(responseDocument.status, 201);
+    const responseRow = await responseDocument.json();
+    const responseXml = await fetch(`${base}/api/einvoice-queue/${responseRow.id}/download`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.match(await responseXml.text(), /<ApplicationResponse\b/);
     const createdAccounts = [];
     for (const account of [
       { accountNumber: "1010", standardAccountNumber: "1010", name: "Salg", type: "indtaegt" },
@@ -260,6 +302,13 @@ test("production migration script backs up and applies checked-in migrations", a
       migrated.close();
     }
     assert.equal((await readdir(backupDir)).filter((name) => name.endsWith(".db")).length, 1);
+    const restoreOutput = execFileSync(process.execPath, ["scripts/restore-drill.mjs"], {
+      cwd: process.cwd(), env: { ...process.env, DATABASE_PATH: databasePath }, encoding: "utf8",
+    });
+    const restoreResult = JSON.parse(restoreOutput);
+    assert.equal(restoreResult.ok, true);
+    assert.equal(restoreResult.integrity, "ok");
+    assert.ok(restoreResult.tableCount > 10);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

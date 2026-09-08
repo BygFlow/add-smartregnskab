@@ -7,11 +7,13 @@ const requiredFiles = [
   "docs/REGISTRERING-ERHVERVSSTYRELSEN.md", "docs/DRIFT-OG-BACKUP.md",
   "docs/NEMHANDEL-DRIFT.md", "docs/GDPR-OG-DATABEHANDLING.md",
   "docs/SIKKERHED-OG-HÆNDELSESBEREDSKAB.md", "docs/UNDERDATABEHANDLERE.md",
+  "docs/AI-GOVERNANCE.md", "docs/ABONNEMENTSVILKAAR-UDKAST.md",
+  "docs/SLA-OG-SUPPORT.md", "docs/SLETNING-OG-EXIT.md", "docs/MYNDIGHEDSBILAG.md",
   "server/saft.ts", "server/backup-service.ts", "server/einvoice.ts", "server/einvoice-routes.ts",
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
-const grep = spawnSync("git", ["grep", "-In", "SmartDrift", "--", ".", ":(exclude)migrations/meta/*"], { encoding: "utf8" });
+const grep = spawnSync("git", ["grep", "-In", "SmartDrift", "--", ".", ":(exclude)migrations/meta/*", ":(exclude)scripts/release-readiness.mjs"], { encoding: "utf8" });
 const trackedText = grep.status === 1 ? "" : String(grep.stdout || grep.stderr || "");
 add("brand-separation", trackedText.trim() === "", "code", trackedText.trim() || "Ingen SmartDrift-referencer i produktkoden.");
 

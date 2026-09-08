@@ -24,6 +24,18 @@ import { createExternalBackup, externalBackupConfigured } from "./backup-service
 const nowIso = () => new Date().toISOString();
 const today = () => new Date().toISOString().slice(0, 10);
 
+async function recordBackupHealth(status: "ok" | "warning" | "error", message: string, metrics: Record<string, unknown> = {}) {
+  const active = (await storage.all("systemHealthEvents", undefined, 500))
+    .find((event: any) => event.component === "external_backup" && !event.resolvedAt);
+  if (status === "ok") {
+    if (active) await storage.update("systemHealthEvents", active.id, { status: "ok", severity: "info", message, metrics: JSON.stringify(metrics), resolvedAt: nowIso() });
+    return;
+  }
+  const data = { status, severity: status === "error" ? "critical" : "warning", message, metrics: JSON.stringify(metrics) };
+  if (active) await storage.update("systemHealthEvents", active.id, data);
+  else await storage.insert("systemHealthEvents", { component: "external_backup", ...data, resolvedAt: null, createdAt: nowIso() });
+}
+
 export interface JobResult {
   job: string;
   affected: number;
@@ -302,10 +314,21 @@ const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Pro
     label: "Opret og verificér krypteret ekstern backup",
     everyMinutes: 60 * 24,
     run: async () => {
-      if (!externalBackupConfigured()) return { job: "ekstern_backup", affected: 0, detail: "S3-backup er endnu ikke konfigureret." };
-      const result = await createExternalBackup();
-      await storage.insert("backupJobs", { companyId: null, scope: "platform", status: "fuldfort", size: String(result.size), destination: "s3", autoSync: 1, summary: JSON.stringify({ key: result.key, checksum: result.checksum, verified: result.verified }), createdBy: "scheduler", createdAt: nowIso() });
-      return { job: "ekstern_backup", affected: 1, detail: `Backup ${result.key} er uploadet og verificeret (${result.size} byte).` };
+      if (!externalBackupConfigured()) {
+        const detail = "S3-backup er ikke konfigureret; ekstern disaster recovery er derfor ikke aktiv.";
+        await recordBackupHealth("warning", detail, { configured: false });
+        return { job: "ekstern_backup", affected: 0, detail };
+      }
+      try {
+        const result = await createExternalBackup();
+        await storage.insert("backupJobs", { companyId: null, scope: "platform", status: "fuldfort", size: String(result.size), destination: "s3", autoSync: 1, summary: JSON.stringify({ key: result.key, checksum: result.checksum, verified: result.verified }), createdBy: "scheduler", createdAt: nowIso() });
+        await recordBackupHealth("ok", "Seneste eksterne backup er uploadet og integritetskontrolleret.", { key: result.key, size: result.size, checksum: result.checksum, verified: result.verified });
+        return { job: "ekstern_backup", affected: 1, detail: `Backup ${result.key} er uploadet og verificeret (${result.size} byte).` };
+      } catch (error: any) {
+        const detail = `Ekstern backup fejlede: ${String(error?.message || error).slice(0, 300)}`;
+        await recordBackupHealth("error", detail, { configured: true });
+        throw new Error(detail);
+      }
     },
   },
 };

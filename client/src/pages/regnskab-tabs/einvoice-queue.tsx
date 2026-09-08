@@ -22,6 +22,7 @@ type EInvoice = {
   status?: string | null;
   lastError?: string | null;
   hasDocument?: boolean;
+  documentType?: string | null;
 };
 
 type ProviderStatus = { configured: boolean; validatorConfigured: boolean; inboundConfigured: boolean; supportedFormats: string[] };
@@ -76,6 +77,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
   const { toast } = useToast();
   const [invoiceId, setInvoiceId] = useState("");
   const [format, setFormat] = useState("OIOUBL_2_1");
+  const [documentKind, setDocumentKind] = useState("invoice");
 
   const queryKey = ["/api/einvoice-queue", companyId];
 
@@ -95,7 +97,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
   });
 
   const createMut = useMutation({
-    mutationFn: async () => (await apiRequest("POST", "/api/einvoice-queue/from-invoice", { invoiceId: Number(invoiceId), format })).json(),
+    mutationFn: async () => (await apiRequest("POST", documentKind === "credit_note" ? "/api/einvoice-queue/from-credit-note" : "/api/einvoice-queue/from-invoice", documentKind === "credit_note" ? { creditNoteId: Number(invoiceId), format } : { invoiceId: Number(invoiceId), format })).json(),
     onSuccess: () => { setInvoiceId(""); qc.invalidateQueries({ queryKey }); toast({ title: "E-faktura oprettet", description: "XML er genereret og valideret. Ingen afsendelse sker uden et separat klik." }); },
     onError: (err: unknown) => toast({ title: "Kunne ikke oprette", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
   });
@@ -132,6 +134,12 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
     },
   });
 
+  const respondMut = useMutation({
+    mutationFn: async ({ id, accepted, invoiceFormat }: { id: number; accepted: boolean; invoiceFormat?: string | null }) => (await apiRequest("POST", `/api/einvoice-queue/${id}/respond`, { responseType: invoiceFormat === "PEPPOL_BIS_3" ? "invoice_response" : "application_response", accepted })).json(),
+    onSuccess: () => { qc.invalidateQueries({ queryKey }); toast({ title: "Svar oprettet", description: "Svarmeddelelsen er lagt i kø og skal valideres før afsendelse." }); },
+    onError: (err: unknown) => toast({ title: "Kunne ikke oprette svar", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
+  });
+
   const downloadXml = async (invoice: EInvoice) => {
     try {
       const response = await apiRequest("GET", `/api/einvoice-queue/${invoice.id}/download`);
@@ -162,7 +170,8 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
       </div>
 
       <div className="flex flex-wrap items-end gap-2 rounded-md border p-3">
-        <label className="grid gap-1 text-sm"><span>Internt faktura-ID</span><input className="h-9 rounded-md border bg-background px-3" inputMode="numeric" value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)} placeholder="fx 42" /></label>
+        <label className="grid gap-1 text-sm"><span>Dokument</span><select className="h-9 rounded-md border bg-background px-3" value={documentKind} onChange={(event) => setDocumentKind(event.target.value)}><option value="invoice">Faktura</option><option value="credit_note">Kreditnota</option></select></label>
+        <label className="grid gap-1 text-sm"><span>Internt ID</span><input className="h-9 rounded-md border bg-background px-3" inputMode="numeric" value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)} placeholder="fx 42" /></label>
         <label className="grid gap-1 text-sm"><span>Format</span><select className="h-9 rounded-md border bg-background px-3" value={format} onChange={(event) => setFormat(event.target.value)}><option value="OIOUBL_2_1">OIOUBL 2.1</option><option value="PEPPOL_BIS_3">Peppol BIS Billing 3</option></select></label>
         <Button onClick={() => createMut.mutate()} disabled={!invoiceId || createMut.isPending}><Plus className="h-4 w-4" /> Opret e-faktura</Button>
       </div>
@@ -231,6 +240,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
                         <FileCheck className="h-3.5 w-3.5" /> Valider
                       </Button>
                       {inv.hasDocument && <Button size="sm" variant="ghost" onClick={() => downloadXml(inv)}><Download className="h-3.5 w-3.5" /> XML</Button>}
+                      {inv.direction === "indgående" && <><Button size="sm" variant="outline" onClick={() => respondMut.mutate({ id: inv.id, accepted: true, invoiceFormat: inv.format })}>Accepter</Button><Button size="sm" variant="outline" onClick={() => respondMut.mutate({ id: inv.id, accepted: false, invoiceFormat: inv.format })}>Afvis</Button></>}
                       <Button
                         size="sm"
                         variant="secondary"

@@ -5,6 +5,8 @@ Status: integrationsklar, men ikke tilsluttet et produktionsadgangspunkt.
 ## Implementeret
 
 - Generering af OIOUBL 2.1 og Peppol BIS Billing 3 fra en eksisterende faktura.
+- Generering af elektroniske kreditnotaer med reference til oprindelig faktura.
+- Oprettelse af Application Response, Message Level Response og Invoice Response til indgående dokumenter.
 - Modtageridentifikation via GLN/EAN (`0088`) eller dansk CVR (`0184`).
 - Lokal XML- og minimumskontrol samt mulighed for ekstern validator.
 - Afsendelse med idempotensnøgle til en access-point-leverandør.
@@ -34,8 +36,8 @@ og sendes i `X-Einvoice-Signature`. Hemmeligheden er
    Nemhandelsregisteret.
 4. Validér repræsentative dokumenter i NemHandels officielle validator.
 5. Kør ende-til-ende-test til et separat CVR/GLN og gem kvitteringerne.
-6. Test afvisning, dublet, timeout, kreditnota, Application Response, Message
-   Level Response og Invoice Response.
+6. Gennemfør leverandørspecifik ende-til-ende-test af afvisning, timeout,
+   kreditnota og alle svarmeddelelser. Dublet- og signaturkontrol dækkes også
+   automatisk af den lokale produktions-smoke-test.
 
 En lokal grøn strukturkontrol er ikke det samme som NemHandel-godkendelse.
-

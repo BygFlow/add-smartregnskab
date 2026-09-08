@@ -9,7 +9,9 @@ aftalt EU/EØS-region, være privat, have versionering og helst Object Lock.
 Applikationen opretter dagligt en fuld snapshot af en konsistent SQLite-kopi og
 alle filer/bilag i `FILE_STORAGE_DIR`. Hvert objekt får en SHA-256-kontrolsum,
 uploades med server-side AES-256-kryptering og samles i et krypteret manifest.
-Database og manifest kontrolleres straks efter upload. Fejl fremgår af jobloggen.
+Database og manifest kontrolleres straks efter upload. Manglende konfiguration
+og fejl opretter en aktiv hændelse i systemets sundhedslog; en efterfølgende
+vellykket backup lukker hændelsen automatisk.
 
 ## Gendannelseskontrol
 
@@ -22,6 +24,10 @@ derefter testfilen.
 En fuld restore skal foretages i et isoleret miljø. Stop applikationen, tag en
 ekstra kopi af den nuværende database, gendan den verificerede fil, kør
 migrationerne og gennemfør smoke-test før trafik åbnes igen.
+
+Den lokale, ikke-destruktive øvelse køres med `npm run restore:drill`. Den tager
+en konsistent midlertidig kopi, kører SQLite `integrity_check`, kontrollerer de
+centrale tabeller og sletter testkopien igen. Gem JSON-resultatet i driftsloggen.
 
 Mål før kundedrift:
 

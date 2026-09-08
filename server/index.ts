@@ -14,7 +14,7 @@ import { usingFallbackKey } from "./crypto";
 import { assertDatabaseReady } from "./storage";
 import { emailConfigured } from "./messaging";
 
-const APP_VERSION = "3.4.0";
+const APP_VERSION = "3.5.0";
 
 const app = express();
 const httpServer = createServer(app);
