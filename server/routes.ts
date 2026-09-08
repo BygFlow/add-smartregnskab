@@ -12,6 +12,7 @@ import { registerExtendedRoutes7 } from "./extended-routes-7";
 import { registerExtendedRoutes8 } from "./extended-routes-8";
 import { registerExtendedRoutes9 } from "./extended-routes-9";
 import { registerComplianceRoutes } from "./compliance-routes";
+import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice-routes";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
@@ -491,6 +492,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/legal/databehandleraftale", h(async (_req, res) => {
     res.type("text/plain; charset=utf-8").send(dpaText());
   }));
+
+  registerPublicEInvoiceRoutes(app);
 
   app.use("/api", requireAuth);
   const regnskabApiPrefixes = [
@@ -5757,6 +5760,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerExtendedRoutes8(app);
   registerExtendedRoutes9(app);
   registerComplianceRoutes(app);
+  registerEInvoiceRoutes(app);
 
   return httpServer;
 }

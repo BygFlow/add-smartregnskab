@@ -6,12 +6,14 @@ Status: teknisk forberedelse. Dokumentet er ikke en myndighedsgodkendelse.
 
 - Produkt: ADD SmartRegnskab
 - Produktionsadresse: https://app.addsmartregnskab.dk
-- Udbyder: ADD Multiservice ApS
+- Udbyder: ADD MultiService ApS
+- CVR: 44822539
+- Adresse: Lynæs Søpark 49, 3390 Hundested
 - Kontakt: regnskab@addsmartregnskab.dk
 - Versionsstyring: Git, automatiseret CI og versionsstyrede databasemigrationer
 
-Udbyderens korrekte CVR-nummer, fysiske adresse, telefon, ansvarlige personer og
-supportvilkår skal indsættes i anmeldelsen og de juridiske tekster.
+Telefon, ansvarlige personer og endelige supportvilkår skal indsættes i
+anmeldelsen og de juridiske tekster.
 
 ## Teknisk kravkort
 
@@ -25,7 +27,7 @@ supportvilkår skal indsættes i anmeldelsen og de juridiske tekster.
 | Backup | Konsistent SQLite-backup, `quick_check`, SHA-256, krypteret S3-upload og downloadbaseret gendannelseskontrol. | Dagligt job samt dokumenteret restore-øvelse. |
 | Adgangskontrol | Tenant-filtrering, rollebaseret adgang, stærke adgangskoder, loginlås og TOTP. | Produktionstest og ekstern penetrationstest. |
 | Hændelseslog | Væsentlige handlinger logges med bruger, tidspunkt og virksomhed. | Revisionspakke og stikprøvetest. |
-| E-fakturering | Ikke færdig. Produktionsaftale/adgangspunkt til NemHandel, OIOUBL/Peppol BIS og svarmeddelelser mangler. | Skal være færdig før anmeldelse. |
+| E-fakturering | OIOUBL 2.1/Peppol BIS 3-generering, kø, fail-closed afsendelse, signeret indgående webhook og revisionsspor er implementeret. | Access-point-aftale, officiel validering, kreditnota/svarmeddelelser og ende-til-ende-test mangler. |
 | Bankafstemning | Filimport og afstemningsstatus findes. Direkte bankfeed kræver leverandøraftale. | Test af synlige differencer og afstemningsspor. |
 
 ## Før anmeldelse

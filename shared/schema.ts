@@ -2512,8 +2512,18 @@ export const einvoiceQueue = sqliteTable("einvoice_queue", {
   routingStatus: text("routing_status").default("afventer"),
   status: text("status").notNull().default("modtaget"),
   processedAt: text("processed_at"),
+  documentType: text("document_type").notNull().default("invoice"),
+  recipientEndpointId: text("recipient_endpoint_id"),
+  endpointScheme: text("endpoint_scheme"),
+  payloadXml: text("payload_xml"),
+  providerMessageId: text("provider_message_id"),
+  responseType: text("response_type"),
+  receivedAt: text("received_at"),
+  sentAt: text("sent_at"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
   createdAt: text("created_at").notNull(),
-});
+}, (table) => ({ companyProviderMessageUnique: uniqueIndex("einvoice_company_provider_message_unique").on(table.companyId, table.providerMessageId) }));
 export const insertEinvoiceQueueSchema = createInsertSchema(einvoiceQueue).omit({ id: true, createdAt: true });
 export type InsertEinvoiceQueue = z.infer<typeof insertEinvoiceQueueSchema>;
 export type EinvoiceQueue = typeof einvoiceQueue.$inferSelect;

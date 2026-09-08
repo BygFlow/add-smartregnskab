@@ -45,6 +45,10 @@ posteringer eller manglende stamdata.
 Ekstern backup kræver S3-kompatibel objektlagring. En konsistent databasekopi
 kontrolleres, uploades krypteret og verificeres med størrelse og SHA-256.
 
+E-fakturering genererer OIOUBL 2.1 og Peppol BIS Billing 3. Afsendelse er
+bevidst låst, indtil et rigtigt NemHandel/Peppol-adgangspunkt er konfigureret;
+se [`docs/NEMHANDEL-DRIFT.md`](docs/NEMHANDEL-DRIFT.md).
+
 Startkommando:
 
 ```bash

@@ -21,7 +21,7 @@ import {
   insertIntegrationConfigSchema, insertComplianceCheckSchema, insertConsolidationEntrySchema,
   insertAdvancedVatSchema, insertBankPaymentSchema, insertPayrollEngineSchema,
   insertAuditPackageSchema, insertBudgetVersionSchema, insertReconciliationCenterSchema,
-  insertEinvoiceQueueSchema, insertApiKeySchema, insertMigrationJobSchema,
+  insertApiKeySchema, insertMigrationJobSchema,
 } from "@shared/schema";
 
 function validate(schema: any, data: any) {
@@ -75,7 +75,6 @@ export function registerExtendedRoutes2(app: Express) {
   crud(app, "/api/audit-package", "audit_package", insertAuditPackageSchema, ["year", "type", "title", "description", "content", "preparedBy", "reviewedBy", "status", "signedOffAt"]);
   crud(app, "/api/budget-versions", "budget_versions", insertBudgetVersionSchema, ["name", "year", "scenario", "version", "data", "totalRevenue", "totalCosts", "totalResult", "approvedBy", "approvedAt", "status"]);
   crud(app, "/api/reconciliation-center", "reconciliation_center", insertReconciliationCenterSchema, ["period", "type", "accountNumber", "bookAmount", "externalAmount", "difference", "matchedTransactions", "unmatchedTransactions", "autoMatched", "status", "notes"]);
-  crud(app, "/api/einvoice-queue", "einvoice_queue", insertEinvoiceQueueSchema, ["direction", "invoiceNumber", "invoiceId", "counterpartyName", "amount", "format", "validationStatus", "validationErrors", "routingStatus", "status", "processedAt"]);
   crud(app, "/api/api-keys", "api_keys", insertApiKeySchema, ["name", "keyPrefix", "keyHash", "scopes", "rateLimit", "lastUsed", "webhookUrl", "webhookEvents", "webhookLog", "status", "expiresAt"]);
   crud(app, "/api/migration-jobs", "migration_jobs", insertMigrationJobSchema, ["source", "sourceVersion", "fileName", "mapping", "totalRows", "importedRows", "errorRows", "validationErrors", "rollbackAvailable", "rolledBackAt", "status"]);
 

@@ -531,7 +531,7 @@ export function retentionDefaults() {
 export function dpaText(): string {
   return `DATABEHANDLERAFTALE — UDKAST
 
-Mellem ADD SmartRegnskab ("Databehandleren") og den virksomhed, der accepterer aftalen i ADD SmartRegnskab ("Den Dataansvarlige"), indgås dette udkast til databehandleraftale efter databeskyttelsesforordningens artikel 28.
+Mellem ADD MultiService ApS, CVR 44822539, Lynæs Søpark 49, 3390 Hundested ("Databehandleren") og den virksomhed, der accepterer aftalen i ADD SmartRegnskab ("Den Dataansvarlige"), indgås dette udkast til databehandleraftale efter databeskyttelsesforordningens artikel 28. Kontakt: regnskab@addsmartregnskab.dk.
 
 1. Formål og omfang
 Databehandleren behandler personoplysninger på vegne af Den Dataansvarlige for at levere bogføring, fakturering, bilagshåndtering, bankafstemning, lønrelaterede registreringer, rapportering, automatisering, support og sikkerhedslogning. Oplysninger kan omfatte identitets- og kontaktoplysninger, kunde- og leverandøroplysninger, regnskabsbilag, betalingsoplysninger, brugerdata og revisionsspor.
@@ -560,7 +560,7 @@ Dette er et teknisk udkast. Virksomhedsoplysninger, underdatabehandlere, kontakt
 export function privacyPolicyText(): string {
   return `PRIVATLIVSPOLITIK — UDKAST
 
-ADD SmartRegnskab behandler de oplysninger, der er nødvendige for at oprette og sikre brugerkonti, levere regnskabsfunktioner, yde support, administrere abonnementer og dokumentere sikkerhedshændelser.
+ADD MultiService ApS, CVR 44822539, Lynæs Søpark 49, 3390 Hundested, behandler gennem ADD SmartRegnskab de oplysninger, der er nødvendige for at oprette og sikre brugerkonti, levere regnskabsfunktioner, yde support, administrere abonnementer og dokumentere sikkerhedshændelser. Kontakt: regnskab@addsmartregnskab.dk.
 
 Oplysninger
 Der kan behandles navn, e-mail, telefonnummer, virksomhedsoplysninger, login- og sikkerhedslog, kunde- og leverandørdata, bilag, posteringer, fakturaer, betalingsstatus og supporthenvendelser. Betalingskortoplysninger bør behandles direkte af den valgte betalingsudbyder og ikke gemmes i applikationen.

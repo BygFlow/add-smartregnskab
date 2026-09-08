@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `einvoice_company_provider_message_unique` ON `einvoice_queue` (`company_id`,`provider_message_id`);

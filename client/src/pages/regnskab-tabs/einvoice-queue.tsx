@@ -3,7 +3,8 @@ import { apiRequest, ApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, Send, FileCheck } from "lucide-react";
+import { useState } from "react";
+import { Send, FileCheck, Download, Plus } from "lucide-react";
 
 /* OIOUBL/NemHandel e-faktura-kø */
 
@@ -19,7 +20,11 @@ type EInvoice = {
   validationStatus?: string | null;
   routingStatus?: string | null;
   status?: string | null;
+  lastError?: string | null;
+  hasDocument?: boolean;
 };
+
+type ProviderStatus = { configured: boolean; validatorConfigured: boolean; inboundConfigured: boolean; supportedFormats: string[] };
 
 const DIRECTION_STYLE: Record<string, string> = {
   udgående: "badge-soft badge-soft-blue",
@@ -32,11 +37,13 @@ const DIRECTION_LABEL: Record<string, string> = {
 
 const VALIDATION_STYLE: Record<string, string> = {
   afventer: "badge-soft badge-soft-amber",
+  lokal_godkendt: "badge-soft badge-soft-amber",
   godkendt: "badge-soft badge-soft-green",
   afvist: "badge-soft badge-soft-red",
 };
 const VALIDATION_LABEL: Record<string, string> = {
   afventer: "Afventer",
+  lokal_godkendt: "Kun lokalkontrol",
   godkendt: "Godkendt",
   afvist: "Afvist",
 };
@@ -67,6 +74,8 @@ function fmtAmount(amount?: string | null, currency = "DKK"): string {
 export default function EInvoiceQueue({ companyId }: { companyId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [invoiceId, setInvoiceId] = useState("");
+  const [format, setFormat] = useState("OIOUBL_2_1");
 
   const queryKey = ["/api/einvoice-queue", companyId];
 
@@ -80,12 +89,20 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
   });
 
   const invoices = data ?? [];
+  const { data: provider } = useQuery<ProviderStatus>({
+    queryKey: ["/api/einvoice-queue/status"],
+    queryFn: async () => (await apiRequest("GET", "/api/einvoice-queue/status")).json(),
+  });
+
+  const createMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/einvoice-queue/from-invoice", { invoiceId: Number(invoiceId), format })).json(),
+    onSuccess: () => { setInvoiceId(""); qc.invalidateQueries({ queryKey }); toast({ title: "E-faktura oprettet", description: "XML er genereret og valideret. Ingen afsendelse sker uden et separat klik." }); },
+    onError: (err: unknown) => toast({ title: "Kunne ikke oprette", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
+  });
 
   const validateMut = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("PATCH", `/api/einvoice-queue/${id}?companyId=${companyId}`, {
-        validationStatus: "godkendt",
-      });
+      const res = await apiRequest("POST", `/api/einvoice-queue/${id}/validate`);
       return await res.json();
     },
     onSuccess: () => {
@@ -101,15 +118,12 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
 
   const sendMut = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("PATCH", `/api/einvoice-queue/${id}?companyId=${companyId}`, {
-        routingStatus: "sendt",
-        status: "sendt",
-      });
+      const res = await apiRequest("POST", `/api/einvoice-queue/${id}/send`);
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/einvoice-queue"] });
-      toast({ title: "Faktura sendt", description: "Fakturaen er sendt via NemHandel." });
+      toast({ title: "Leverandøren har modtaget fakturaen", description: "Afsendelsen er registreret med leverandørens svar og revisionsspor." });
     },
     onError: (err: unknown) => {
       const message =
@@ -117,6 +131,20 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
       toast({ title: "Kunne ikke sende", description: message, variant: "destructive" });
     },
   });
+
+  const downloadXml = async (invoice: EInvoice) => {
+    try {
+      const response = await apiRequest("GET", `/api/einvoice-queue/${invoice.id}/download`);
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${invoice.invoiceNumber || invoice.id}.xml`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({ title: "Kunne ikke hente XML", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" });
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -127,8 +155,16 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
         </p>
       </div>
 
-      <div className="rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-        OIOUBL/NemHandel (beta) — Kræver NemHandel aftale.
+      <div className={`rounded-md border p-3 text-sm ${provider?.configured ? "border-green-300 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300" : "border-amber-300/60 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"}`}>
+        {provider?.configured
+          ? "Afsendelsesleverandør er tilsluttet. Kontrollér stadig leveringskvitteringen i køen."
+          : "Afsendelse er låst, indtil en rigtig NemHandel/Peppol-leverandør er tilsluttet. Systemet kan ikke længere markere dokumenter som sendt uden leverandørsvar."}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2 rounded-md border p-3">
+        <label className="grid gap-1 text-sm"><span>Internt faktura-ID</span><input className="h-9 rounded-md border bg-background px-3" inputMode="numeric" value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)} placeholder="fx 42" /></label>
+        <label className="grid gap-1 text-sm"><span>Format</span><select className="h-9 rounded-md border bg-background px-3" value={format} onChange={(event) => setFormat(event.target.value)}><option value="OIOUBL_2_1">OIOUBL 2.1</option><option value="PEPPOL_BIS_3">Peppol BIS Billing 3</option></select></label>
+        <Button onClick={() => createMut.mutate()} disabled={!invoiceId || createMut.isPending}><Plus className="h-4 w-4" /> Opret e-faktura</Button>
       </div>
 
       {isLoading ? (
@@ -194,6 +230,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
                       >
                         <FileCheck className="h-3.5 w-3.5" /> Valider
                       </Button>
+                      {inv.hasDocument && <Button size="sm" variant="ghost" onClick={() => downloadXml(inv)}><Download className="h-3.5 w-3.5" /> XML</Button>}
                       <Button
                         size="sm"
                         variant="secondary"
@@ -202,13 +239,14 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
                           sendMut.isPending ||
                           inv.validationStatus !== "godkendt" ||
                           inv.routingStatus === "sendt" ||
-                          inv.routingStatus === "leveret"
+                          inv.routingStatus === "leveret" || !provider?.configured
                         }
                         onClick={() => sendMut.mutate(inv.id)}
                       >
                         <Send className="h-3.5 w-3.5" /> Send
                       </Button>
                     </div>
+                    {inv.lastError && <p className="mt-1 max-w-xs text-xs text-destructive">{inv.lastError}</p>}
                   </td>
                 </tr>
               ))}

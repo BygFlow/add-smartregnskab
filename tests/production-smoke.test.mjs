@@ -152,6 +152,34 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       body: JSON.stringify({ cvr: "12345678", address: "Testvej 1, 2100 København Ø", iban: "DK5000400440116243", currency: "DKK" }),
     });
     assert.equal(companyUpdate.status, 200);
+    const customerResponse = await fetch(`${base}/api/customers`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "NemHandel Kunde", cvr: "87654321", ean: "5790001234567", address: "Testgade 2, 2100 København Ø" }),
+    });
+    assert.equal(customerResponse.status, 201);
+    const customer = await customerResponse.json();
+    const invoiceResponse = await fetch(`${base}/api/invoices`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId: customer.id, issueDate: "2026-09-08", items: [{ description: "Rådgivning", quantity: 1, unitPrice: 1000, vatRate: 25 }] }),
+    });
+    assert.equal(invoiceResponse.status, 201);
+    const invoice = await invoiceResponse.json();
+    const einvoiceStatus = await fetch(`${base}/api/einvoice-queue/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(einvoiceStatus.status, 200);
+    assert.equal((await einvoiceStatus.json()).configured, false);
+    const electronicResponse = await fetch(`${base}/api/einvoice-queue/from-invoice`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ invoiceId: invoice.id, format: "PEPPOL_BIS_3" }),
+    });
+    assert.equal(electronicResponse.status, 201);
+    const electronic = await electronicResponse.json();
+    assert.equal(electronic.validationStatus, "lokal_godkendt");
+    const xmlDownload = await fetch(`${base}/api/einvoice-queue/${electronic.id}/download`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(xmlDownload.status, 200);
+    assert.match(await xmlDownload.text(), /peppol\.eu:2017:poacc:billing:3\.0/);
+    const blockedSend = await fetch(`${base}/api/einvoice-queue/${electronic.id}/send`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(blockedSend.status, 409);
+    assert.match((await blockedSend.json()).error, /bestå validering/);
     const createdAccounts = [];
     for (const account of [
       { accountNumber: "1010", standardAccountNumber: "1010", name: "Salg", type: "indtaegt" },
