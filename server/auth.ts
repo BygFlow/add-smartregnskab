@@ -167,6 +167,10 @@ export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) return res.status(401).json({ error: "Ikke logget ind." });
     if (req.auth.isPlatformAdmin) return next();
+    // Regnskabsroller er allerede kontrolleret af den globale, modulbaserede
+    // RBAC-vagt. De må derfor passere gamle ruter, der historisk kun nævnte leder.
+    if (roles.includes("leder") && req.auth.role === "regnskab_admin") return next();
+    if (roles.includes("leder") && !roles.includes("regnskab_admin") && req.auth.role === "regnskab_bogfoerer") return next();
     if (!roles.includes(req.auth.role)) {
       return res.status(403).json({ error: "Du har ikke rettigheder til denne handling." });
     }
@@ -245,7 +249,84 @@ export function enforceBaselineAccess(req: Request, res: Response, next: NextFun
     return res.status(403).json({ error: "Du har ikke adgang til denne funktion." });
   }
 
+  // En regnskabsbogfører får kun adgang via de konfigurerede role_controls.
+  // Selve vurderingen foretages af enforceConfiguredAccountingAccess efter
+  // baseline-vagten. Regnskab uden adgang er bevidst default-deny.
+  if (role === "regnskab_bogfoerer") return next();
+  if (role === "regnskab_admin") return next();
+  if (role === "regnskab_ingen") {
+    const accountPaths = ["/api/auth/me", "/api/auth/logout", "/api/auth/password"];
+    if (accountPaths.includes(path)) return next();
+    return res.status(403).json({ error: "Din regnskabsrolle har ingen adgang." });
+  }
+
   return res.status(403).json({ error: "Ukendt eller ugyldig brugerrolle." });
+}
+
+type AccountingModule = "bogføring" | "bilag" | "bank" | "moms" | "løn" | "anlæg" | "rapporter" | "administration";
+
+const ACCOUNTING_API_MODULES: Array<{ module: AccountingModule; prefixes: string[] }> = [
+  { module: "bogføring", prefixes: ["/api/accounts", "/api/journal-entries", "/api/journal-lines", "/api/accounting", "/api/regnskabssystem", "/api/accounting-rules", "/api/accounting-category-rules", "/api/dimension"] },
+  { module: "bilag", prefixes: ["/api/vouchers", "/api/document-inbox", "/api/attachments", "/api/expense", "/api/file-objects", "/api/file-versions"] },
+  { module: "bank", prefixes: ["/api/bank", "/api/reconciliation", "/api/payment-runs"] },
+  { module: "moms", prefixes: ["/api/vat", "/api/tax", "/api/advanced-vat", "/api/currency-transactions"] },
+  { module: "løn", prefixes: ["/api/payroll", "/api/employees"] },
+  { module: "anlæg", prefixes: ["/api/fixed-assets", "/api/inventory-accounts"] },
+  { module: "rapporter", prefixes: ["/api/reports", "/api/annual-reports", "/api/year-end", "/api/period-closes", "/api/audit", "/api/cashflow", "/api/budget"] },
+  { module: "administration", prefixes: ["/api/users", "/api/role-controls", "/api/integration", "/api/api-keys", "/api/compliance", "/api/backups", "/api/ai-governance"] },
+];
+
+function accountingModuleFor(path: string): AccountingModule | null {
+  for (const entry of ACCOUNTING_API_MODULES) {
+    if (entry.prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return entry.module;
+  }
+  return null;
+}
+
+/** Håndhæver virksomhedsdefinerede regnskabsrettigheder på API-niveau. */
+export async function enforceConfiguredAccountingAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    const auth = req.auth;
+    if (!auth) return res.status(401).json({ error: "Ikke logget ind." });
+    if (auth.isPlatformAdmin || auth.role === "leder") return next();
+    if (!["regnskab_admin", "regnskab_bogfoerer"].includes(auth.role)) return next();
+
+    const path = req.originalUrl.split("?")[0];
+    if (["/api/auth/me", "/api/auth/logout", "/api/auth/password"].some((p) => path === p || path.startsWith(`${p}/`))) return next();
+    if ((req.method === "GET" || req.method === "HEAD") && ["/api/companies", "/api/company"].some((p) => path === p || path.startsWith(`${p}/`))) return next();
+
+    const module = accountingModuleFor(path);
+    if (!module) return res.status(403).json({ error: "Ressourcen er ikke tildelt din regnskabsrolle." });
+    if (auth.role === "regnskab_admin") return next();
+    const rows = await storage.all("role_controls", auth.companyId) as any[];
+    const rule = rows.find((row) => row.roleName === auth.role && row.module === module);
+    if (!rule) return res.status(403).json({ error: `Ingen adgang til modulet ${module}.` });
+    if (rule.requiresTwoFactor && auth.user.twoFactorEnabled !== 1) {
+      return res.status(403).json({ error: "Denne handling kræver to-faktor-login.", code: "to_faktor_kraeves" });
+    }
+
+    const approvalAction = /\/(approve|godkend|submit|indsend|close|afslut|send|execute|run)(\/|$)/i.test(path);
+    const allowed = req.method === "GET" || req.method === "HEAD"
+      ? true
+      : req.method === "DELETE"
+        ? !!rule.canDelete
+        : approvalAction
+          ? !!rule.canApprove
+          : req.method === "POST"
+            ? !!rule.canCreate
+            : !!rule.canEdit;
+    if (!allowed) return res.status(403).json({ error: `Din rolle må ikke udføre denne handling i modulet ${module}.` });
+
+    if (approvalAction && rule.approvalLimit != null) {
+      const amount = Number(req.body?.amount ?? req.body?.totalAmount ?? req.body?.value);
+      if (Number.isFinite(amount) && Math.abs(amount) > Number(rule.approvalLimit)) {
+        return res.status(403).json({ error: `Beløbet overstiger din godkendelsesgrænse på ${rule.approvalLimit} kr.` });
+      }
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 // ── Planbegrænsninger ──

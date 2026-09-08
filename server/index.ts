@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve, join } from "node:path";
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 
 function validateProductionEnvironment(): void {
   if (process.env.NODE_ENV !== "production") return;

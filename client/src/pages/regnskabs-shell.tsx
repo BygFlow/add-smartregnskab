@@ -68,7 +68,7 @@ const NAV_GROUPS = [
       { path: "/smartregnskab/app/rapporter", label: "Rapporter", icon: FileBarChart, tab: "rapporter" },
       { path: "/smartregnskab/app/revision", label: "Revisionsspor", icon: ShieldCheck, tab: "revision" },
       { path: "/smartregnskab/app/revisorportal", label: "Revisorportal (beta)", icon: FileCheck, tab: "revisorportal" },
-      { path: "/smartregnskab/app/roller_kontrol", label: "Roller & Kontrol (beta)", icon: KeyRound, tab: "roller_kontrol" },
+      { path: "/smartregnskab/app/roller_kontrol", label: "Roller & Kontrol", icon: KeyRound, tab: "roller_kontrol" },
       { path: "/smartregnskab/app/revisionspakke", label: "Revisionspakke (beta)", icon: FileCheck, tab: "revisionspakke" },
       { path: "/smartregnskab/app/budget_scenarier", label: "Budget & Scenarier", icon: TrendingUp, tab: "budget_scenarier" },
       { path: "/smartregnskab/app/afstemningscenter", label: "Afstemningscenter", icon: ShieldCheck, tab: "afstemningscenter" },

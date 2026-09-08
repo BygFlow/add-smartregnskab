@@ -35,7 +35,7 @@ function AuthenticatedApp() {
   const { user, company, companyId } = useAuth();
   const [location] = useRouteLocation();
   const role = user?.role ?? "";
-  if (!["leder", "holdleder", "platform_admin"].includes(role)) return <AccessDenied />;
+  if (!["leder", "holdleder", "platform_admin", "regnskab_admin", "regnskab_bogfoerer"].includes(role)) return <AccessDenied />;
   if (!location.startsWith("/smartregnskab/app")) return <Redirect to="/smartregnskab/app" />;
   return (
     <RegnskabsPlatformShell

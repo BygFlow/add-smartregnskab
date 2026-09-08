@@ -2,7 +2,7 @@
 // This file is imported and called from routes.ts
 import type { Express } from "express";
 import { storage } from "./storage";
-import { tenantId } from "./auth";
+import { requireRole, tenantId } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
@@ -457,15 +457,17 @@ export function registerExtendedRoutes(app: Express) {
 
   // ── Roller & kontrol ──
   const rcFields = ["roleName", "module", "canCreate", "canEdit", "canDelete", "canApprove", "approvalLimit", "requiresTwoFactor"];
-  app.get("/api/role-controls", h(async (req, res) => { res.json(await storage.all("role_controls", tenantId(req))); }));
-  app.post("/api/role-controls", h(async (req, res) => {
+  app.get("/api/role-controls", requireRole("leder", "regnskab_admin"), h(async (req, res) => { res.json(await storage.all("role_controls", tenantId(req))); }));
+  app.post("/api/role-controls", requireRole("leder", "regnskab_admin"), h(async (req, res) => {
     const data = validate(insertRoleControlSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
+    const duplicate = (await storage.all("role_controls", tenantId(req))).find((row: any) => row.roleName === data.roleName && row.module === data.module);
+    if (duplicate) return res.status(409).json({ error: "Der findes allerede en rettighedsregel for denne rolle og dette modul." });
     res.status(201).json(await storage.insert("role_controls", data));
   }));
-  app.patch("/api/role-controls/:id", h(async (req, res) => {
+  app.patch("/api/role-controls/:id", requireRole("leder", "regnskab_admin"), h(async (req, res) => {
     res.json(await storage.update("role_controls", Number(req.params.id), UPDATABLE(rcFields)(req), tenantId(req)));
   }));
-  app.delete("/api/role-controls/:id", h(async (req, res) => {
+  app.delete("/api/role-controls/:id", requireRole("leder", "regnskab_admin"), h(async (req, res) => {
     await storage.delete("role_controls", Number(req.params.id), tenantId(req)); res.status(204).send();
   }));
 

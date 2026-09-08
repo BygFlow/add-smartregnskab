@@ -1,6 +1,6 @@
 // ── Eksterne connector-adaptere ──
 // Hver adapter foretager rigtige HTTPS-kald mod udbyderens API når credentials er udfyldt.
-// Uden credentials returneres en demo-respons, så opsætningsflowet kan afprøves.
+// Demo-svar er kun tilladt i lokal udvikling med ALLOW_CONNECTOR_DEMO=1.
 
 import type { Integration } from "@shared/schema";
 
@@ -33,6 +33,12 @@ export type InvoiceLine = {
 };
 
 const TIMEOUT_MS = 12000;
+const demoAllowed = () => process.env.NODE_ENV !== "production" && process.env.ALLOW_CONNECTOR_DEMO === "1";
+
+function missingCredentials(message: string): ConnectorResult {
+  if (demoAllowed()) return { ok: true, demo: true, message: `Demo: ${message}` };
+  return { ok: false, demo: false, message };
+}
 
 async function httpJson(url: string, init: RequestInit): Promise<{ status: number; body: any; raw: string }> {
   const controller = new AbortController();
@@ -80,7 +86,7 @@ function economicHeaders(integration: Integration) {
 
 async function economicTest(integration: Integration): Promise<ConnectorResult> {
   if (!integration.apiKey || !integration.apiSecret) {
-    return { ok: true, demo: true, message: "Demo-forbindelse oprettet. Udfyld AppSecretToken og AgreementGrantToken for at forbinde til jeres rigtige e-conomic-aftale." };
+    return missingCredentials("Udfyld AppSecretToken og AgreementGrantToken for at forbinde til jeres rigtige e-conomic-aftale.");
   }
   const base = integration.baseUrl || ECONOMIC_BASE;
   try {
@@ -97,7 +103,8 @@ async function economicTest(integration: Integration): Promise<ConnectorResult> 
 
 async function economicPushInvoices(integration: Integration, invoices: InvoiceLine[]): Promise<ConnectorResult> {
   if (!integration.apiKey || !integration.apiSecret) {
-    return { ok: true, demo: true, recordCount: invoices.length, message: `Demo-synk: ${invoices.length} faktura(er) ville blive oprettet som kladder i e-conomic.` };
+    const missing = missingCredentials("e-conomic-synkronisering kræver AppSecretToken og AgreementGrantToken.");
+    return { ...missing, recordCount: 0 };
   }
   const base = integration.baseUrl || ECONOMIC_BASE;
   // Verificér adgang før vi forsøger at skrive data
@@ -149,7 +156,7 @@ const DANLOEN_BASE = "https://api.danloen.dk";
 
 async function danloenTest(integration: Integration): Promise<ConnectorResult> {
   if (!integration.apiKey) {
-    return { ok: true, demo: true, message: "Demo-forbindelse oprettet. Indtast Danløn API-nøgle (bestilles hos Danløn support) for at forbinde til jeres rigtige lønaftale." };
+    return missingCredentials("Indtast Danløn API-nøgle (bestilles hos Danløn support) for at forbinde til jeres rigtige lønaftale.");
   }
   const base = integration.baseUrl || DANLOEN_BASE;
   try {
@@ -168,8 +175,8 @@ async function danloenTest(integration: Integration): Promise<ConnectorResult> {
 
 async function danloenPushPayroll(integration: Integration, lines: PayrollLine[]): Promise<ConnectorResult> {
   if (!integration.apiKey) {
-    const hours = lines.reduce((s, l) => s + l.hours, 0);
-    return { ok: true, demo: true, recordCount: lines.length, message: `Demo-synk: ${lines.length} lønlinje(r) (${hours.toFixed(2).replace(".", ",")} timer) ville blive sendt til Danløn.` };
+    const missing = missingCredentials("Danløn-synkronisering kræver en aktiv API-nøgle.");
+    return { ...missing, recordCount: 0 };
   }
   const base = integration.baseUrl || DANLOEN_BASE;
   const probe = await danloenTest(integration);
@@ -200,20 +207,17 @@ async function danloenPushPayroll(integration: Integration, lines: PayrollLine[]
 
 // ── Generisk fallback for udbydere uden implementeret API ──
 function genericTest(integration: Integration): ConnectorResult {
-  const hasCreds = Boolean(integration.apiKey);
   return {
-    ok: true,
-    demo: true,
-    message: hasCreds
-      ? `Nøgle gemt for ${integration.provider}. Direkte API-synk er ikke implementeret for denne udbyder endnu — brug eksportfilerne indtil da.`
-      : `Demo-forbindelse oprettet for ${integration.provider}. Direkte API-synk er ikke implementeret for denne udbyder endnu — brug eksportfilerne.`,
+    ok: false,
+    demo: false,
+    message: `Direkte API-synk er ikke implementeret for ${integration.provider}. Brug en understøttet udbyder eller den validerede eksportfil.`,
   };
 }
 
 function genericPush(integration: Integration, count: number): ConnectorResult {
   return {
-    ok: true, demo: true, recordCount: count,
-    message: `Demo-synk: ${count} post(er) forberedt til ${integration.provider}. Direkte API-synk er ikke implementeret for denne udbyder — brug eksportfilen.`,
+    ok: false, demo: false, recordCount: 0,
+    message: `${count} post(er) blev ikke sendt: direkte API-synk er ikke implementeret for ${integration.provider}. Brug den validerede eksportfil.`,
   };
 }
 

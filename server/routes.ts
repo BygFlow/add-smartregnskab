@@ -54,6 +54,7 @@ import {
   hashPassword, verifyPassword, createSession, safeUser,
   requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit,
   enforceBaselineAccess,
+  enforceConfiguredAccountingAccess,
 } from "./auth";
 import {
   testConnection, syncPayroll, syncInvoices, credentialFields, API_PROVIDERS,
@@ -465,6 +466,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.use("/api", requireAuth);
   app.use("/api", enforceBaselineAccess);
+  app.use("/api", enforceConfiguredAccountingAccess);
 
   app.get("/api/auth/me", h(async (req, res) => {
     const a = req.auth!;
@@ -1633,6 +1635,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ...item!, apiKey: item!.apiKey ? "••••••••" : null, apiSecret: item!.apiSecret ? "••••••••" : null });
   }));
   app.post("/api/integrations/:id/connect-demo", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    if (process.env.NODE_ENV === "production" || process.env.ALLOW_CONNECTOR_DEMO !== "1") {
+      return res.status(403).json({ error: "Demo-forbindelser er deaktiveret i produktion." });
+    }
     const existing = await storage.getIntegration(Number(req.params.id), tenantId(req));
     if (!existing) return res.status(404).json({ error: "Integrationen blev ikke fundet." });
     res.json(await storage.updateIntegration(existing.id, {
@@ -4483,7 +4488,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   // SYSTEMOPDATERINGER — auto-notifikation ved opdatering
   // ═══════════════════════════════════════════════════════════════
-  const currentVersion = "1.2.0";
+  const currentVersion = "1.3.0";
   const existingReleases = await storage.all("system_releases");
   const hasCurrentVersion = existingReleases.some((r: any) => r.version === currentVersion);
   if (!hasCurrentVersion) {
@@ -4881,7 +4886,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const companies = await storage.all("companies");
     const users = await storage.all("users");
     res.json({
-      version: latest?.version || "1.2.0",
+      version: latest?.version || "1.3.0",
       installedAt: releases.length > 0 ? releases[releases.length - 1].createdAt : null,
       lastUpdate: latest?.createdAt || null,
       companyCount: companies.length,

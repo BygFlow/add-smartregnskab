@@ -30,6 +30,18 @@ async function request(path, init = {}) {
   return { response, body };
 }
 
+async function requestStatus(path, expectedStatus, init = {}) {
+  const response = await fetch(`${base}${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", ...(init.headers || {}) },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.status !== expectedStatus) {
+    throw new Error(`${init.method || "GET"} ${path}: forventede ${expectedStatus}, fik ${response.status} ${JSON.stringify(body)}`);
+  }
+  return { response, body };
+}
+
 try {
   let ready;
   for (let attempt = 0; attempt < 60; attempt++) {
@@ -68,7 +80,24 @@ try {
   const key = await request("/api/api-keys/generate", { method: "POST", headers: auth, body: JSON.stringify({ name: "Smoke", scopes: "read" }) });
   const apiCustomers = await request("/api/customers", { headers: { authorization: `Bearer ${key.body.key}` } });
   if (apiCustomers.body.length !== 1) throw new Error("API-nøgle eller tenantfilter fejlede.");
-  console.log("Smoke-test OK: opstart, migration, signup, login, tenantdata, backup, kontrolcenter, AI-godkendelsesport og API-nøgle.");
+  await request("/api/role-controls", {
+    method: "POST", headers: auth,
+    body: JSON.stringify({ roleName: "regnskab_bogfoerer", module: "bogføring", canCreate: 0, canEdit: 0, canDelete: 0, canApprove: 0, requiresTwoFactor: 0 }),
+  });
+  await request("/api/users", {
+    method: "POST", headers: auth,
+    body: JSON.stringify({ name: "Smoke Bogfører", email: "bookkeeper@example.test", password: "Sikker!Bog2026", role: "regnskab_bogfoerer", active: 1, emailVerified: 1 }),
+  });
+  const bookkeeperLogin = await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email: "bookkeeper@example.test", password: "Sikker!Bog2026" }) });
+  const bookkeeperAuth = { authorization: `Bearer ${bookkeeperLogin.body.token}` };
+  await request("/api/accounts", { headers: bookkeeperAuth });
+  await requestStatus("/api/bank-transactions", 403, { headers: bookkeeperAuth });
+  await requestStatus("/api/accounts", 403, { method: "POST", headers: bookkeeperAuth, body: JSON.stringify({ accountNumber: "9999", name: "Må ikke oprettes", type: "aktiv" }) });
+  const integration = await request("/api/integrations", { method: "POST", headers: auth, body: JSON.stringify({ category: "regnskab", provider: "e-conomic" }) });
+  const connectorTest = await request(`/api/integrations/${integration.body.id}/test`, { method: "POST", headers: auth, body: "{}" });
+  if (connectorTest.body.ok !== false || connectorTest.body.demo !== false) throw new Error("Manglende produktionscredentials blev fejlagtigt godkendt.");
+  await requestStatus(`/api/integrations/${integration.body.id}/connect-demo`, 403, { method: "POST", headers: auth, body: "{}" });
+  console.log("Smoke-test OK: opstart, migration, signup, login, tenantdata, backup, kontrolcenter, AI-godkendelsesport, API-nøgle, håndhævet RBAC og fail-closed integrationer.");
 } finally {
   if (child.exitCode === null) {
     child.kill("SIGTERM");
