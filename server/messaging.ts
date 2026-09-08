@@ -1,12 +1,14 @@
 import { storage } from "./storage";
 import type { OutboxMessage } from "@shared/schema";
+import nodemailer from "nodemailer";
 
 /**
  * Udgående beskeder. Alt lægges først i en kø i databasen, så der altid er et
  * revisionsspor over hvad der er forsøgt sendt til hvem.
  *
  * Reel afsendelse sker kun hvis der er sat nøgler i miljøet:
- *   RESEND_API_KEY + MAIL_FROM   → e-mail via Resend
+ *   SMTP_HOST + SMTP_USER + SMTP_PASSWORD + MAIL_FROM → e-mail via SMTP
+ *   RESEND_API_KEY + MAIL_FROM                      → e-mail via Resend
  *   SMS_API_URL + SMS_API_KEY    → SMS via udbyderens HTTP-API
  * Uden nøgler får beskeden status "simuleret": den er gemt og synlig, men
  * intet forlader systemet. Det er bevidst — vi foregiver ikke at have sendt noget.
@@ -29,14 +31,64 @@ async function withTimeout(url: string, init: RequestInit): Promise<Response> {
 }
 
 export function emailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
+  return Boolean(
+    process.env.MAIL_FROM &&
+      (process.env.RESEND_API_KEY ||
+        (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD)),
+  );
 }
 
 export function smsConfigured(): boolean {
   return Boolean(process.env.SMS_API_URL && process.env.SMS_API_KEY);
 }
 
-async function sendEmail(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
+function safeMailError(error: unknown): string {
+  const candidate = error as { code?: string; responseCode?: number } | undefined;
+  if (candidate?.responseCode) return `SMTP-serveren afviste beskeden (${candidate.responseCode}).`;
+  if (candidate?.code === "EAUTH") return "SMTP-login blev afvist. Kontrollér mailadresse og adgangskode.";
+  if (candidate?.code === "ETIMEDOUT" || candidate?.code === "ESOCKET") {
+    return "SMTP-serveren svarede ikke i tide.";
+  }
+  return "E-mailen kunne ikke sendes på grund af en forbindelsesfejl.";
+}
+
+async function sendViaSmtp(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
+  const port = Number.parseInt(process.env.SMTP_PORT || "587", 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    return { ok: false, error: "SMTP-porten er ugyldig." };
+  }
+
+  try {
+    const transport = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: process.env.SMTP_SECURE === "true",
+      requireTLS: process.env.SMTP_SECURE !== "true",
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASSWORD,
+      },
+      connectionTimeout: TIMEOUT_MS,
+      greetingTimeout: TIMEOUT_MS,
+      socketTimeout: TIMEOUT_MS,
+      tls: { minVersion: "TLSv1.2" },
+    });
+
+    await transport.sendMail({
+      from: process.env.MAIL_FROM,
+      replyTo: process.env.MAIL_REPLY_TO || process.env.SMTP_USER,
+      to: msg.recipient,
+      subject: msg.subject ?? "Besked fra ADD SmartRegnskab",
+      text: msg.body,
+    });
+    transport.close();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: safeMailError(error) };
+  }
+}
+
+async function sendViaResend(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await withTimeout("https://api.resend.com/emails", {
       method: "POST",
@@ -60,6 +112,13 @@ async function sendEmail(msg: OutboxMessage): Promise<{ ok: boolean; error?: str
     if (e?.name === "AbortError") return { ok: false, error: "Mailudbyderen svarede ikke i tide." };
     return { ok: false, error: `Netværksfejl: ${e?.message ?? "ukendt"}` };
   }
+}
+
+async function sendEmail(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+    return sendViaSmtp(msg);
+  }
+  return sendViaResend(msg);
 }
 
 async function sendSms(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
@@ -140,7 +199,7 @@ export function invoiceEmail(opts: {
     subject: `Faktura ${opts.invoiceNumber} fra ${opts.companyName}`,
     body:
       `Hej ${opts.customerName}\n\n` +
-      `Vedhæftet finder du faktura ${opts.invoiceNumber} på ${opts.total} kr. inkl. moms.\n` +
+      `Du finder faktura ${opts.invoiceNumber} på ${opts.total} kr. inkl. moms i ADD SmartRegnskab.\n` +
       `Betalingsfristen er ${opts.dueDate}.\n\n` +
       `Har du spørgsmål til fakturaen, er du velkommen til at svare på denne mail.\n\n` +
       `Med venlig hilsen\n${opts.companyName}`,

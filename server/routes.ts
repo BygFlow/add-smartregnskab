@@ -4488,12 +4488,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   // SYSTEMOPDATERINGER — auto-notifikation ved opdatering
   // ═══════════════════════════════════════════════════════════════
-  const currentVersion = "1.3.0";
+  const currentVersion = "1.3.1";
   const existingReleases = await storage.all("system_releases");
   const hasCurrentVersion = existingReleases.some((r: any) => r.version === currentVersion);
   if (!hasCurrentVersion) {
     const release = await storage.insert("system_releases", {
-      version: currentVersion, title: "Systemopdatering 3.0",
+      version: currentVersion, title: "Simply-mail og sikker SMTP",
       description: "Separat regnskabssystem, import/eksport, auto-opdateringer, AI regnskab beta.",
       features: JSON.stringify(["Auto-opdateringer med besked", "Import/eksport af data", "Separat regnskabssystem", "AI Regnskab beta"]),
       status: "installeret", createdAt: nowIso(),
@@ -4886,7 +4886,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const companies = await storage.all("companies");
     const users = await storage.all("users");
     res.json({
-      version: latest?.version || "1.3.0",
+      version: latest?.version || "1.3.1",
       installedAt: releases.length > 0 ? releases[releases.length - 1].createdAt : null,
       lastUpdate: latest?.createdAt || null,
       companyCount: companies.length,

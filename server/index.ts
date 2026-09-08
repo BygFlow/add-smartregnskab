@@ -8,12 +8,13 @@ import { seedDatabase } from "./seed";
 import { seedReferenceData } from "./seed";
 import { startScheduler, jobOverview } from "./scheduler";
 import { usingFallbackKey } from "./crypto";
+import { emailConfigured } from "./messaging";
 import { ensureDatabaseSchema, checkDatabaseIntegrity } from "./storage";
 import { randomUUID } from "node:crypto";
 import { writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve, join } from "node:path";
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 
 function validateProductionEnvironment(): void {
   if (process.env.NODE_ENV !== "production") return;
@@ -223,7 +224,7 @@ app.get("/readyz", async (_req, res) => {
       log(`Database: ${process.env.DATABASE_PATH ?? "data.db"}`);
       log(`File storage: ${process.env.FILE_STORAGE_DIR ?? "default"}`);
       log(`Stripe: ${process.env.STRIPE_SECRET_KEY ? "configured" : "not configured"}`);
-      log(`Email: ${process.env.RESEND_API_KEY ? "configured" : "not configured"}`);
+      log(`Email: ${emailConfigured() ? "configured" : "not configured"}`);
       log(`Encryption: ${usingFallbackKey() ? "FALLBACK KEY (not production-safe)" : "configured"}`);
       startScheduler(); // automatiske job: gentagne opgaver, rykkere, fornyelse, GDPR
     },
