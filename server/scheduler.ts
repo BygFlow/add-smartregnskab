@@ -5,6 +5,7 @@ import { kr, dkDate } from "./documents";
 import { runDunning, renewSubscriptions } from "./payments";
 import { applyRetention } from "./gdpr";
 import { monitorRegulatorySources } from "./regulatory-monitor";
+import { createExternalBackup, externalBackupConfigured } from "./backup-service";
 
 /**
  * Automatiske job.
@@ -175,8 +176,8 @@ export async function jobTrialReminders(): Promise<JobResult> {
 
     const method = await storage.getDefaultPaymentMethod(company.id);
     const emne = days === 0
-      ? "Din prøveperiode hos ADD SmartDrift Clean slutter i dag"
-      : "Din prøveperiode hos ADD SmartDrift Clean slutter om 3 dage";
+      ? "Din prøveperiode hos ADD SmartRegnskab slutter i dag"
+      : "Din prøveperiode hos ADD SmartRegnskab slutter om 3 dage";
     const krav = method
       ? "Vi opkræver automatisk det første abonnement på dit registrerede betalingsmiddel."
       : "Tilføj et betalingsmiddel under Abonnement, så adgangen fortsætter uden pause.";
@@ -185,7 +186,7 @@ export async function jobTrialReminders(): Promise<JobResult> {
       await queueAndSend({
         companyId: company.id, channel: "email", recipient: company.email,
         subject: emne,
-        body: `Hej ${company.name}\n\nProeveperioden slutter ${dkDate(sub.trialEndsAt)}.\n\n${krav}\n\nMed venlig hilsen\nADD SmartDrift Clean`,
+        body: `Hej ${company.name}\n\nProeveperioden slutter ${dkDate(sub.trialEndsAt)}.\n\n${krav}\n\nMed venlig hilsen\nADD SmartRegnskab`,
         relatedType: "abonnement", relatedId: sub.id,
       });
       sent++;
@@ -297,6 +298,16 @@ export async function jobRegulatoryMonitor(): Promise<JobResult> {
 
 const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Promise<JobResult> }> = {
   regelovervaagning: { label: "Kontrollér officielle lov- og regelkilder", everyMinutes: 60 * 24, run: jobRegulatoryMonitor },
+  ekstern_backup: {
+    label: "Opret og verificér krypteret ekstern backup",
+    everyMinutes: 60 * 24,
+    run: async () => {
+      if (!externalBackupConfigured()) return { job: "ekstern_backup", affected: 0, detail: "S3-backup er endnu ikke konfigureret." };
+      const result = await createExternalBackup();
+      await storage.insert("backupJobs", { companyId: null, scope: "platform", status: "fuldfort", size: String(result.size), destination: "s3", autoSync: 1, summary: JSON.stringify({ key: result.key, checksum: result.checksum, verified: result.verified }), createdBy: "scheduler", createdAt: nowIso() });
+      return { job: "ekstern_backup", affected: 1, detail: `Backup ${result.key} er uploadet og verificeret (${result.size} byte).` };
+    },
+  },
 };
 
 export function jobOverview() {

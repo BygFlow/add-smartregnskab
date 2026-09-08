@@ -33,7 +33,7 @@ export const companies = pgTable("companies", {
   status: text("status").notNull().default("proeve"), // proeve, aktiv, i_restance, spaerret, opsagt
   kind: text("kind").notNull().default("kunde"), // kunde, platform
   createdAt: text("created_at").notNull().default("2026-01-01"),
-  notes: text("notes"), // interne noter for ADD SmartDrift Clean-teamet
+  notes: text("notes"), // interne noter for ADD SmartRegnskab-teamet
   // Moms og fakturering
   vatRate: doublePrecision("vat_rate").notNull().default(25), // procent — 0 ved momsfritagelse
   vatMode: text("vat_mode").notNull().default("dansk"), // dansk, eu_omvendt, eksport_fritaget, momsfri
@@ -351,7 +351,7 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type OutboxMessage = typeof messageOutbox.$inferSelect;
 
 // ═══════════════════════════════════════════════════════════
-//  PLATFORMLAG — ADD SmartDrift Clean som SaaS-forretning
+//  PLATFORMLAG — ADD SmartRegnskab som SaaS-forretning
 // ═══════════════════════════════════════════════════════════
 
 // ── Plans (abonnementspakker) ──
@@ -395,7 +395,7 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;
 
-// ── Platform Invoices (ADD SmartDrift Clean fakturerer virksomheden) ──
+// ── Platform Invoices (ADD SmartRegnskab fakturerer virksomheden) ──
 export const platformInvoices = pgTable("platform_invoices", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull(),

@@ -234,5 +234,5 @@ export function shiftSms(opts: {
   place: string | null;
 }): string {
   const where = opts.place ? ` hos ${opts.place}` : "";
-  return `Hej ${opts.employeeName}. Du er sat på vagt ${opts.date} kl. ${opts.startTime}-${opts.endTime}${where}. Mvh ADD SmartDrift Clean`;
+  return `Hej ${opts.employeeName}. Du er sat på vagt ${opts.date} kl. ${opts.startTime}-${opts.endTime}${where}. Mvh ADD SmartRegnskab`;
 }

@@ -32,7 +32,7 @@ export function seedDatabase() {
   if (count > 0) return;
 
   // ══════════════════════════════════════════════
-  //  PAKKER — ADD SmartDrift Cleans prisliste (4 pakker)
+  //  PAKKER — ADD SmartRegnskabs prisliste (4 pakker)
   // ══════════════════════════════════════════════
   const pStart = db.insert(plans).values({
     name: "Start", slug: "start",
@@ -171,17 +171,17 @@ export function seedDatabase() {
     notes: "Stor kunde — 18 ansatte.",
   }).returning().get();
 
-  // ADD SmartDrift Cleans egen driftsenhed — huser platformadministratoren
+  // ADD SmartRegnskabs egen driftsenhed — huser platformadministratoren
   const cPlatform = db.insert(companies).values({
-    name: "ADD SmartDrift Clean ApS (platform)",
+    name: "ADD Multiservice ApS (platform)",
     address: "Rentemestervej 62, 2400 København NV",
     cvr: "44 55 66 77",
     phone: "+45 71 99 00 11",
-    email: "hej@smartdriftclean.dk",
+    email: "hej@addsmartregnskab.dk",
     status: "aktiv",
     kind: "platform",
     createdAt: todayPlus(-400) + "T10:00:00.000Z",
-    notes: "Intern konto for ADD SmartDrift Cleans eget team.",
+    notes: "Intern konto for ADD SmartRegnskabs eget team.",
   }).returning().get();
 
   // ══════════════════════════════════════════════
@@ -238,27 +238,27 @@ export function seedDatabase() {
   // ══════════════════════════════════════════════
   //  BRUGERE — alle kodeord er hashede
   // ══════════════════════════════════════════════
-  db.insert(users).values({ companyId: cPlatform.id, name: "Platform Administrator", email: "platform@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "platform_admin", active: 1 }).run();
+  db.insert(users).values({ companyId: cPlatform.id, name: "Platform Administrator", email: "platform@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "platform_admin", active: 1 }).run();
 
-  db.insert(users).values({ companyId: c1.id, name: "Admin Bruger", email: "leder@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
-  db.insert(users).values({ companyId: c1.id, name: "Mette Hansen", email: "holdleder@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "holdleder", employeeId: 1, active: 1 }).run();
-  db.insert(users).values({ companyId: c1.id, name: "Lars Nielsen", email: "assistent@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "assistent", employeeId: 2, active: 1 }).run();
-  db.insert(users).values({ companyId: c1.id, name: "Anne Christensen", email: "kunde@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "kunde", customerId: 1, active: 1 }).run();
+  db.insert(users).values({ companyId: c1.id, name: "Admin Bruger", email: "leder@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c1.id, name: "Mette Hansen", email: "holdleder@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "holdleder", employeeId: 1, active: 1 }).run();
+  db.insert(users).values({ companyId: c1.id, name: "Lars Nielsen", email: "assistent@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "assistent", employeeId: 2, active: 1 }).run();
+  db.insert(users).values({ companyId: c1.id, name: "Anne Christensen", email: "kunde@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "kunde", customerId: 1, active: 1 }).run();
 
-  db.insert(users).values({ companyId: c2.id, name: "Erik Sørensen", email: "leder2@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
-  db.insert(users).values({ companyId: c3.id, name: "Hanne Krog", email: "leder3@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
-  db.insert(users).values({ companyId: c4.id, name: "Bo Martin", email: "leder4@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
-  db.insert(users).values({ companyId: c5.id, name: "Camilla Bjerg", email: "leder5@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
-  db.insert(users).values({ companyId: c6.id, name: "Dennis Lund", email: "leder6@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
-  db.insert(users).values({ companyId: c7.id, name: "Eva Holm", email: "leder7@smartdriftclean.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c2.id, name: "Erik Sørensen", email: "leder2@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c3.id, name: "Hanne Krog", email: "leder3@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c4.id, name: "Bo Martin", email: "leder4@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c5.id, name: "Camilla Bjerg", email: "leder5@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c6.id, name: "Dennis Lund", email: "leder6@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
+  db.insert(users).values({ companyId: c7.id, name: "Eva Holm", email: "leder7@addsmartregnskab.dk", password: DEMO_PW, emailVerified: 1, role: "leder", active: 1 }).run();
 
   // ══════════════════════════════════════════════
   //  MEDARBEJDERE
   // ══════════════════════════════════════════════
-  const e1 = db.insert(employees).values({ companyId: c1.id, name: "Mette Hansen", phone: "+4523456789", email: "mette@smartdriftclean.dk", role: "Holdleder", status: "optaget", weeklyHours: 40, employeeNumber: "M-0001", employmentStatus: "aktiv", startDate: "2023-03-01", position: "Holdleder", hourlyRate: 185, monthlySalary: 31000, contractType: "fast", skills: JSON.stringify(["IPC-certifikat", "Trappevask", "Kontorrenhold"]), contractDraft: "Ansættelseskontrakt for Mette Hansen..." }).returning().get();
-  const e2 = db.insert(employees).values({ companyId: c1.id, name: "Lars Nielsen", phone: "+4531223344", email: "lars@smartdriftclean.dk", role: "Rengøringsassistent", status: "ledig", weeklyHours: 37, employeeNumber: "M-0002", employmentStatus: "aktiv", startDate: "2024-01-15", position: "Rengøringsassistent", hourlyRate: 165, monthlySalary: 0, contractType: "timelønnet", skills: JSON.stringify(["Vinduespudsning", "Gulvvask"]) }).returning().get();
-  const e3 = db.insert(employees).values({ companyId: c1.id, name: "Sofia Petersen", phone: "+4542556677", email: "sofia@smartdriftclean.dk", role: "Rengøringsassistent", status: "ledig", weeklyHours: 30, employeeNumber: "M-0003", employmentStatus: "aktiv", startDate: "2024-06-01", position: "Rengøringsassistent", hourlyRate: 155, monthlySalary: 0, contractType: "timelønnet", skills: JSON.stringify(["Kontorrenhold", "Trappevask"]) }).returning().get();
-  const e4 = db.insert(employees).values({ companyId: c1.id, name: "Jens Müller", phone: "+4556789012", email: "jens@smartdriftclean.dk", role: "Rengøringsassistent", status: "orlov", weeklyHours: 37, employeeNumber: "M-0004", employmentStatus: "pauseret", startDate: "2023-08-01", endDate: "2026-02-01", position: "Rengøringsassistent", hourlyRate: 160, monthlySalary: 0, contractType: "fast", skills: JSON.stringify(["Flytterengøring"]) }).returning().get();
+  const e1 = db.insert(employees).values({ companyId: c1.id, name: "Mette Hansen", phone: "+4523456789", email: "mette@addsmartregnskab.dk", role: "Holdleder", status: "optaget", weeklyHours: 40, employeeNumber: "M-0001", employmentStatus: "aktiv", startDate: "2023-03-01", position: "Holdleder", hourlyRate: 185, monthlySalary: 31000, contractType: "fast", skills: JSON.stringify(["IPC-certifikat", "Trappevask", "Kontorrenhold"]), contractDraft: "Ansættelseskontrakt for Mette Hansen..." }).returning().get();
+  const e2 = db.insert(employees).values({ companyId: c1.id, name: "Lars Nielsen", phone: "+4531223344", email: "lars@addsmartregnskab.dk", role: "Rengøringsassistent", status: "ledig", weeklyHours: 37, employeeNumber: "M-0002", employmentStatus: "aktiv", startDate: "2024-01-15", position: "Rengøringsassistent", hourlyRate: 165, monthlySalary: 0, contractType: "timelønnet", skills: JSON.stringify(["Vinduespudsning", "Gulvvask"]) }).returning().get();
+  const e3 = db.insert(employees).values({ companyId: c1.id, name: "Sofia Petersen", phone: "+4542556677", email: "sofia@addsmartregnskab.dk", role: "Rengøringsassistent", status: "ledig", weeklyHours: 30, employeeNumber: "M-0003", employmentStatus: "aktiv", startDate: "2024-06-01", position: "Rengøringsassistent", hourlyRate: 155, monthlySalary: 0, contractType: "timelønnet", skills: JSON.stringify(["Kontorrenhold", "Trappevask"]) }).returning().get();
+  const e4 = db.insert(employees).values({ companyId: c1.id, name: "Jens Müller", phone: "+4556789012", email: "jens@addsmartregnskab.dk", role: "Rengøringsassistent", status: "orlov", weeklyHours: 37, employeeNumber: "M-0004", employmentStatus: "pauseret", startDate: "2023-08-01", endDate: "2026-02-01", position: "Rengøringsassistent", hourlyRate: 160, monthlySalary: 0, contractType: "fast", skills: JSON.stringify(["Flytterengøring"]) }).returning().get();
 
   db.insert(employees).values({ companyId: c2.id, name: "Pia Holm", phone: "+4523112233", email: "pia@nordjylland.dk", role: "Holdleder", status: "ledig", weeklyHours: 40 }).run();
   db.insert(employees).values({ companyId: c2.id, name: "Tom Berg", phone: "+4534556677", email: "tom@nordjylland.dk", role: "Rengøringsassistent", status: "optaget", weeklyHours: 37 }).run();
@@ -412,7 +412,7 @@ export function seedDatabase() {
     { sentAt: todayPlus(-60) + "T09:30:00.000Z", reminderCount: 1, lastReminderAt: todayPlus(-20) + "T09:00:00.000Z" });
 
   // ══════════════════════════════════════════════
-  //  ABONNEMENTSFAKTURAER — ADD SmartDrift Clean → virksomhederne
+  //  ABONNEMENTSFAKTURAER — ADD SmartRegnskab → virksomhederne
   // ══════════════════════════════════════════════
   db.insert(platformInvoices).values({
     companyId: c1.id, subscriptionId: 1, invoiceNumber: "RA-2026-0001",
@@ -743,7 +743,7 @@ export function seedDatabase() {
   const je1 = db.insert(journalEntries).values({
     companyId: c1.id, entryNumber: "B-001", date: todayPlus(-5), description: "Kontorrenhold Kvartalsafregning",
     reference: "INV-2026-081", sourceType: "faktura", sourceId: 1, status: "bogfoert",
-    createdBy: "leder@smartdriftclean.dk", createdAt: nowISO(),
+    createdBy: "leder@addsmartregnskab.dk", createdAt: nowISO(),
   }).returning().get();
   db.insert(journalLines).values({
     companyId: c1.id, journalEntryId: je1.id, accountId: 3, description: "Debitor Kvartalsafregning",
@@ -761,7 +761,7 @@ export function seedDatabase() {
   const je2 = db.insert(journalEntries).values({
     companyId: c1.id, entryNumber: "B-002", date: todayPlus(-3), description: "Indkoeb rengoeringsmidler",
     reference: "REM-78901", sourceType: "bilag", sourceId: null, status: "bogfoert",
-    createdBy: "leder@smartdriftclean.dk", createdAt: nowISO(),
+    createdBy: "leder@addsmartregnskab.dk", createdAt: nowISO(),
   }).returning().get();
   db.insert(journalLines).values({
     companyId: c1.id, journalEntryId: je2.id, accountId: 19, description: "Rengøringsmidler",
@@ -779,7 +779,7 @@ export function seedDatabase() {
   const je3 = db.insert(journalEntries).values({
     companyId: c1.id, entryNumber: "B-003", date: todayPlus(-1), description: "Loen januar 2026",
     reference: "LON-2026-01", sourceType: "loen", sourceId: null, status: "kladde",
-    createdBy: "leder@smartdriftclean.dk", createdAt: nowISO(),
+    createdBy: "leder@addsmartregnskab.dk", createdAt: nowISO(),
   }).returning().get();
   db.insert(journalLines).values({
     companyId: c1.id, journalEntryId: je3.id, accountId: 24, description: "Løn",
@@ -984,40 +984,40 @@ export function seedDatabase() {
   // SUPPORT SAGER
   db.insert(supportCases).values({
     companyId: c2.id, subject: "Problemer med fakturering", message: "Vi kan ikke oprette nye fakturaer systemet viser en fejlmeddelelse ved klik på Opret faktura.",
-    status: "aaben", priority: "hoej", reply: null, replyStatus: "kladde", createdBy: "leder2@smartdriftclean.dk",
+    status: "aaben", priority: "hoej", reply: null, replyStatus: "kladde", createdBy: "leder2@addsmartregnskab.dk",
     createdAt: todayPlus(-2) + "T09:00:00.000Z", updatedAt: todayPlus(-2) + "T09:00:00.000Z",
   }).run();
   db.insert(supportCases).values({
     companyId: c3.id, subject: "Spoergsmaal om AI-tilaeg", message: "Hvad koster AI-tilaegget og hvad indeholder det? Kan vi proeve det gratis?",
-    status: "aaben", priority: "mellem", reply: null, replyStatus: "kladde", createdBy: "leder3@smartdriftclean.dk",
+    status: "aaben", priority: "mellem", reply: null, replyStatus: "kladde", createdBy: "leder3@addsmartregnskab.dk",
     createdAt: todayPlus(-1) + "T14:30:00.000Z", updatedAt: todayPlus(-1) + "T14:30:00.000Z",
   }).run();
   db.insert(supportCases).values({
     companyId: c1.id, subject: "Eksport af loen til loensystem", message: "Vi skal bruge loen eksporteret i et format der kan laeses af Danloen. Er det muligt?",
     status: "lukket", priority: "mellem", reply: "Hej, ja vi understoetter eksport til Danloen via CSV format. Du finder det under Tidsregistrering Eksport Vaelg Danloen CSV.",
-    replyStatus: "sendt", createdBy: "leder@smartdriftclean.dk",
+    replyStatus: "sendt", createdBy: "leder@addsmartregnskab.dk",
     createdAt: todayPlus(-10) + "T10:00:00.000Z", updatedAt: todayPlus(-8) + "T15:00:00.000Z",
   }).run();
 
   // BACKUPS
   db.insert(backups).values({
     companyId: null, scope: "platform", status: "fuldfort", size: "45 MB",
-    summary: JSON.stringify({ tables: 25, rows: 12500 }), createdBy: "platform@smartdriftclean.dk",
+    summary: JSON.stringify({ tables: 25, rows: 12500 }), createdBy: "platform@addsmartregnskab.dk",
     createdAt: todayPlus(-1) + "T02:00:00.000Z",
   }).run();
   db.insert(backups).values({
     companyId: null, scope: "platform", status: "fuldfort", size: "42 MB",
-    summary: JSON.stringify({ tables: 25, rows: 11800 }), createdBy: "platform@smartdriftclean.dk",
+    summary: JSON.stringify({ tables: 25, rows: 11800 }), createdBy: "platform@addsmartregnskab.dk",
     createdAt: todayPlus(-8) + "T02:00:00.000Z",
   }).run();
   db.insert(backups).values({
     companyId: c1.id, scope: "company", status: "fuldfort", size: "12 MB",
-    summary: JSON.stringify({ tables: 15, rows: 2100 }), createdBy: "leder@smartdriftclean.dk",
+    summary: JSON.stringify({ tables: 15, rows: 2100 }), createdBy: "leder@addsmartregnskab.dk",
     createdAt: todayPlus(-2) + "T03:00:00.000Z",
   }).run();
   db.insert(backups).values({
     companyId: c1.id, scope: "company", status: "fuldfort", size: "11 MB",
-    summary: JSON.stringify({ tables: 15, rows: 1950 }), createdBy: "leder@smartdriftclean.dk",
+    summary: JSON.stringify({ tables: 15, rows: 1950 }), createdBy: "leder@addsmartregnskab.dk",
     createdAt: todayPlus(-9) + "T03:00:00.000Z",
   }).run();
 
@@ -1025,8 +1025,8 @@ export function seedDatabase() {
   //  KOMMUNIKATIONSINTEGRATION + BESKEDER
   // ══════════════════════════════════════════════
   db.insert(communicationIntegrations).values({
-    companyId: c1.id, provider: "email", fromEmail: "kontakt@smartdriftclean.dk",
-    fromName: "ADD SmartDrift Clean", status: "aktiv", config: "{}",
+    companyId: c1.id, provider: "email", fromEmail: "kontakt@addsmartregnskab.dk",
+    fromName: "ADD SmartRegnskab", status: "aktiv", config: "{}",
     createdAt: nowISO(),
   }).run();
 
@@ -1035,7 +1035,7 @@ export function seedDatabase() {
     companyId: c1.id, customerId: 2, relatedType: "aftale", relatedId: 2,
     channel: "email", recipientName: "Peter Lund", recipientEmail: "peter@nordhavnkc.dk",
     subject: "Tilbud på trappevask — Frederiksberg",
-    body: "Kære Peter\n\nVi fremsender hermed tilbud på trappevask for jeres boligforening.\n\nTilbudet dækker trappevask hver 14. dag i opgang A og B.\n\nMånedlig pris: 3.200 kr ekskl. moms\n\nTilbudet er gældende i 30 dage.\n\nMed venlig hilsen\nADD SmartDrift Clean",
+    body: "Kære Peter\n\nVi fremsender hermed tilbud på trappevask for jeres boligforening.\n\nTilbudet dækker trappevask hver 14. dag i opgang A og B.\n\nMånedlig pris: 3.200 kr ekskl. moms\n\nTilbudet er gældende i 30 dage.\n\nMed venlig hilsen\nADD SmartRegnskab",
     status: "sendt", aiGenerated: 1, approvedBy: 1,
     approvedAt: todayPlus(-2) + "T08:00:00.000Z",
     sentAt: todayPlus(-2) + "T09:00:00.000Z",

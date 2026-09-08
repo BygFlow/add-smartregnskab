@@ -353,12 +353,12 @@ const stripeProvider: PaymentProvider = {
         payment_method: input.paymentMethod.providerRef,
         confirm: true,
         off_session: true,
-        description: `ADD SmartDrift Clean abonnementsfaktura ${input.invoice.invoiceNumber}`,
+        description: `ADD SmartRegnskab abonnementsfaktura ${input.invoice.invoiceNumber}`,
         "metadata[company_id]": input.company.id,
         "metadata[platform_invoice_id]": input.invoice.id,
         "metadata[invoice_number]": input.invoice.invoiceNumber,
       },
-      `addsmartdriftclean-${input.invoice.id}-${input.attempt}`,
+      `addsmartregnskab-${input.invoice.id}-${input.attempt}`,
     );
     const providerRef = stringValue(response.payload.id) ?? null;
     const status = stringValue(response.payload.status);
@@ -414,8 +414,8 @@ const mobilePayProvider: PaymentProvider = {
   async createSetupIntent(input) {
     if (!this.configured) return simulatedResult(this.id, `setup:${input.companyId}`);
     const response = await mobilePayRequest("/subscriptions", {
-      externalReference: `addsmartdriftclean-company-${input.companyId}`,
-      description: "ADD SmartDrift Clean abonnement",
+      externalReference: `addsmartregnskab-company-${input.companyId}`,
+      description: "ADD SmartRegnskab abonnement",
     });
     return response.ok
       ? {
@@ -443,8 +443,8 @@ const mobilePayProvider: PaymentProvider = {
       amount: toOre(input.invoice.totalAmount),
       currencyCode: "DKK",
       paymentToken: input.paymentMethod.providerRef,
-      externalReference: `addsmartdriftclean-invoice-${input.invoice.id}-attempt-${input.attempt}`,
-      description: `ADD SmartDrift Clean abonnementsfaktura ${input.invoice.invoiceNumber}`,
+      externalReference: `addsmartregnskab-invoice-${input.invoice.id}-attempt-${input.attempt}`,
+      description: `ADD SmartRegnskab abonnementsfaktura ${input.invoice.invoiceNumber}`,
     });
     const providerRef =
       stringValue(response.payload.id) ??
@@ -899,7 +899,7 @@ function dunningMessage(
         `Vi mangler fortsat betaling af abonnementsfaktura ${invoice.invoiceNumber} på ${amount} kr. ` +
         `Den havde forfald ${invoice.dueDate}.\n\n` +
         "Hvis du allerede har betalt, kan du se bort fra denne påmindelse.\n\n" +
-        "Med venlig hilsen\nADD SmartDrift Clean",
+        "Med venlig hilsen\nADD SmartRegnskab",
     };
   }
   if (stage === 2) {
@@ -909,7 +909,7 @@ function dunningMessage(
         `Hej ${company.name}\n\n` +
         `Faktura ${invoice.invoiceNumber} på ${amount} kr. er stadig ikke betalt (${days} dage efter forfald). ` +
         "Virksomheden er nu registreret i restance. Opdatér venligst betalingsmidlet eller kontakt os.\n\n" +
-        "Med venlig hilsen\nADD SmartDrift Clean",
+        "Med venlig hilsen\nADD SmartRegnskab",
     };
   }
   return {
@@ -917,8 +917,8 @@ function dunningMessage(
     body:
       `Hej ${company.name}\n\n` +
       `Vi har stadig ikke modtaget betaling af faktura ${invoice.invoiceNumber} på ${amount} kr. ` +
-      "Adgangen til ADD SmartDrift Clean er derfor spærret, indtil betalingen er registreret.\n\n" +
-      "Med venlig hilsen\nADD SmartDrift Clean",
+      "Adgangen til ADD SmartRegnskab er derfor spærret, indtil betalingen er registreret.\n\n" +
+      "Med venlig hilsen\nADD SmartRegnskab",
   };
 }
 

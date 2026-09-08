@@ -6,12 +6,18 @@ import { regulatoryChanges, regulatorySources } from "@shared/schema";
 const OFFICIAL_SOURCES = [
   { sourceKey: "dk-bogfoeringslov-vejledning", name: "Erhvervsstyrelsen — Bogføringsloven", url: "https://erhvervsstyrelsen.dk/vejledning-bogfoeringsloven", jurisdiction: "DK" },
   { sourceKey: "dk-registrerede-bogfoeringssystemer", name: "Erhvervsstyrelsen — Registrerede bogføringssystemer", url: "https://erhvervsstyrelsen.dk/fortegnelse-over-registrerede-bogfoeringssystemer", jurisdiction: "DK" },
+  { sourceKey: "dk-ikke-registrerede-systemer", name: "Erhvervsstyrelsen — Ikke-registrerede bogføringssystemer", url: "https://erhvervsstyrelsen.dk/ikke-registrerede-digitale-bogfoeringssystemer", jurisdiction: "DK" },
+  { sourceKey: "dk-saft-standardkontoplan", name: "Erhvervsstyrelsen — SAF-T og standardkontoplan", url: "https://erhvervsstyrelsen.dk/standardkontoplan-saf-t", jurisdiction: "DK" },
+  { sourceKey: "dk-nemhandel", name: "Erhvervsstyrelsen — NemHandel", url: "https://erhvervsstyrelsen.dk/nemhandel-faelles-digital-infrastruktur", jurisdiction: "DK/EU" },
+  { sourceKey: "dk-bek-standard-systemer", name: "Retsinformation — Krav til digitale standardbogføringssystemer", url: "https://www.retsinformation.dk/eli/lta/2023/97", jurisdiction: "DK" },
+  { sourceKey: "dk-bek-registrering", name: "Retsinformation — Registrering af standardbogføringssystemer", url: "https://www.retsinformation.dk/eli/lta/2023/98", jurisdiction: "DK" },
+  { sourceKey: "dk-bek-ikke-registrerede", name: "Retsinformation — Krav til ikke-registrerede bogføringssystemer", url: "https://www.retsinformation.dk/eli/lta/2024/205", jurisdiction: "DK" },
   { sourceKey: "dk-skat-moms", name: "Skattestyrelsen — Moms", url: "https://skat.dk/erhverv/moms", jurisdiction: "DK" },
   { sourceKey: "dk-datatilsynet-ai", name: "Datatilsynet — Kunstig intelligens", url: "https://www.datatilsynet.dk/regler-og-vejledning/kunstig-intelligens", jurisdiction: "DK/EU" },
   { sourceKey: "eu-ai-act", name: "EUR-Lex — AI-forordningen", url: "https://eur-lex.europa.eu/eli/reg/2024/1689/oj?locale=da", jurisdiction: "EU" },
 ] as const;
 
-const ALLOWED_HOSTS = new Set(["erhvervsstyrelsen.dk", "skat.dk", "www.datatilsynet.dk", "eur-lex.europa.eu"]);
+const ALLOWED_HOSTS = new Set(["erhvervsstyrelsen.dk", "skat.dk", "www.datatilsynet.dk", "eur-lex.europa.eu", "www.retsinformation.dk"]);
 
 function normalizedHash(body: string): string {
   const normalized = body

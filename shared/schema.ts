@@ -14,7 +14,7 @@ export const companies = sqliteTable("companies", {
   status: text("status").notNull().default("proeve"), // proeve, aktiv, i_restance, spaerret, opsagt
   kind: text("kind").notNull().default("kunde"), // kunde, platform
   createdAt: text("created_at").notNull().default("2026-01-01"),
-  notes: text("notes"), // interne noter for ADD SmartDrift Clean-teamet
+  notes: text("notes"), // interne noter for ADD SmartRegnskab-teamet
   // Moms og fakturering
   vatRate: real("vat_rate").notNull().default(25), // procent — 0 ved momsfritagelse
   vatMode: text("vat_mode").notNull().default("dansk"), // dansk, eu_omvendt, eksport_fritaget, momsfri
@@ -390,7 +390,7 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type OutboxMessage = typeof messageOutbox.$inferSelect;
 
 // ═══════════════════════════════════════════════════════════
-//  PLATFORMLAG — ADD SmartDrift Clean som SaaS-forretning
+//  PLATFORMLAG — ADD SmartRegnskab som SaaS-forretning
 // ═══════════════════════════════════════════════════════════
 
 // ── Plans (abonnementspakker) ──
@@ -434,7 +434,7 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;
 
-// ── Platform Invoices (ADD SmartDrift Clean fakturerer virksomheden) ──
+// ── Platform Invoices (ADD SmartRegnskab fakturerer virksomheden) ──
 export const platformInvoices = sqliteTable("platform_invoices", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull(),
@@ -977,6 +977,7 @@ export const accounts = sqliteTable("accounts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull(),
   accountNumber: text("account_number").notNull(), // fx "1000", "55000"
+  standardAccountNumber: text("standard_account_number"), // mapping til Erhvervsstyrelsens fællesoffentlige standardkontoplan
   name: text("name").notNull(),
   type: text("type").notNull(), // aktiv, passiv, indtaegt, udgift, mellemregning
   vatCode: text("vat_code"), // fx "I25" (indkøb 25%), "S25" (salg 25%), "FRI", "EU"
@@ -1641,7 +1642,7 @@ export type InsertCashflowProjection = z.infer<typeof insertCashflowProjectionSc
 export type CashflowProjection = typeof cashflowProjections.$inferSelect;
 
 // ════════════════════════════════════════════════════════════════
-//  SMARTDRIFT CLEAN — 10 NYE TABELLER
+//  ÆLDRE INTERNE DRIFTSTABELLER — IKKE EKSPONERET I SMARTREGNSKAB
 // ════════════════════════════════════════════════════════════════
 
 // ── Ruteplanlægning ──
@@ -2034,7 +2035,7 @@ export type InsertImportJob2 = z.infer<typeof insertImportJob2Schema>;
 export type ImportJob2 = typeof importJobs2.$inferSelect;
 
 // ════════════════════════════════════════════════════════════════
-//  RYGESPURT 2: SmartDrift Clean — 12 nye features
+//  RYGESPURT 2: SmartRegnskab — 12 nye features
 // ════════════════════════════════════════════════════════════════
 
 // 1. Mobil/PWA — offline sync queue
@@ -2640,7 +2641,7 @@ export type AccountingCategoryRule = typeof accountingCategoryRules.$inferSelect
 export const platformSyncJobs = sqliteTable("platform_sync_jobs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id"),
-  sourcePlatform: text("source_platform").notNull(), // smartdrift_clean, smartregnskab
+  sourcePlatform: text("source_platform").notNull(), // ældre integrationsfelt, ikke offentligt eksponeret
   targetPlatform: text("target_platform").notNull(),
   syncType: text("sync_type").notNull(), // kunder, fakturaer, timer, løn, materialer, kontrakter
   status: text("status").notNull().default("afventer"),
@@ -3002,7 +3003,7 @@ export const navigationFavorites = sqliteTable("navigation_favorites", {
   companyId: integer("company_id"),
   path: text("path").notNull(),
   label: text("label").notNull(),
-  platform: text("platform").notNull(), // smartdrift_clean, smartregnskab
+  platform: text("platform").notNull(), // ældre integrationsfelt, ikke offentligt eksponeret
   sortOrder: integer("sort_order").default(0),
   createdAt: text("created_at").notNull(),
 });

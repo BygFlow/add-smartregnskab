@@ -245,32 +245,32 @@ export function registerExtendedRoutes9(app: Express) {
 
     switch (template) {
       case "welcome":
-        subject = `Velkommen til ADD SmartDrift Clean`;
-        body = `Hej ${d.companyName ?? ""}\n\nVelkommen til ADD SmartDrift Clean — din platform til styring af rengøringsvirksomhed.\n\nDu kan nu oprette opgaver, vagtplaner, fakturaer og meget mere.\n\nLog ind på ${process.env.APP_BASE_URL ?? "platformen"} for at komme i gang.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+        subject = `Velkommen til ADD SmartRegnskab`;
+        body = `Hej ${d.companyName ?? ""}\n\nVelkommen til ADD SmartRegnskab — din platform til bogføring, bilag, fakturering, moms og rapportering.\n\nLog ind på ${process.env.APP_BASE_URL ?? "platformen"} for at komme i gang.\n\nMed venlig hilsen\nADD SmartRegnskab`;
         break;
       case "trial_ending":
         subject = `Din prøveperiode udløber snart`;
-        body = `Hej ${d.companyName ?? ""}\n\nDin prøveperiode på ADD SmartDrift Clean udløber om ${d.daysLeft ?? 3} dage.\n\nFor at fortsætte uden afbrydelse, skal du vælge en pakke og tilknytte betaling.\n\nLog ind og gå til Abonnementer for at vælge pakke.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+        body = `Hej ${d.companyName ?? ""}\n\nDin prøveperiode på ADD SmartRegnskab udløber om ${d.daysLeft ?? 3} dage.\n\nFor at fortsætte uden afbrydelse, skal du vælge en pakke og tilknytte betaling.\n\nLog ind og gå til Abonnementer for at vælge pakke.\n\nMed venlig hilsen\nADD SmartRegnskab`;
         break;
       case "payment_failed":
         subject = `Betaling fejlet — handling påkrævet`;
-        body = `Hej ${d.companyName ?? ""}\n\nVi kunne ikke gennemføre betalingen for dit abonnement.\n\nBeløb: ${d.amount ?? ""} kr.\n\nOpdater venligst dine betalingsoplysninger i Abonnementer.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+        body = `Hej ${d.companyName ?? ""}\n\nVi kunne ikke gennemføre betalingen for dit abonnement.\n\nBeløb: ${d.amount ?? ""} kr.\n\nOpdater venligst dine betalingsoplysninger i Abonnementer.\n\nMed venlig hilsen\nADD SmartRegnskab`;
         break;
       case "task_assigned":
         subject = `Ny opgave tildelt: ${d.taskTitle ?? ""}`;
-        body = `Hej ${d.employeeName ?? ""}\n\nDu har fået en ny opgave:\n\nOpgave: ${d.taskTitle ?? ""}\nKunde: ${d.customerName ?? ""}\nDato: ${d.date ?? ""}\nTid: ${d.startTime ?? ""}\n\nSe detaljer i ADD SmartDrift Clean appen.\n\nMed venlig hilsen\n${d.companyName ?? "Virksomheden"}`;
+        body = `Hej ${d.employeeName ?? ""}\n\nDu har fået en ny opgave:\n\nOpgave: ${d.taskTitle ?? ""}\nKunde: ${d.customerName ?? ""}\nDato: ${d.date ?? ""}\nTid: ${d.startTime ?? ""}\n\nSe detaljer i ADD SmartRegnskab appen.\n\nMed venlig hilsen\n${d.companyName ?? "Virksomheden"}`;
         break;
       case "absence_notification":
         subject = `Fravær registreret: ${d.employeeName ?? ""}`;
-        body = `Hej\n\n${d.employeeName ?? "En medarbejder"} har registreret fravær.\n\nDato: ${d.date ?? ""}\nÅrsag: ${d.reason ?? "Ikke angivet"}\n\nGå til Vikar & Bemanding for at finde en vikar.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+        body = `Hej\n\n${d.employeeName ?? "En medarbejder"} har registreret fravær.\n\nDato: ${d.date ?? ""}\nÅrsag: ${d.reason ?? "Ikke angivet"}\n\nGå til Vikar & Bemanding for at finde en vikar.\n\nMed venlig hilsen\nADD SmartRegnskab`;
         break;
       case "sla_alert":
         subject = `SLA alert: ${d.alertType ?? ""}`;
-        body = `Hej\n\nDer er opstået en SLA alert:\n\nType: ${d.alertType ?? ""}\nBesked: ${d.message ?? ""}\nAlvorsgrad: ${d.severity ?? ""}\n\nSe detaljer i SLA Overvågning.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+        body = `Hej\n\nDer er opstået en SLA alert:\n\nType: ${d.alertType ?? ""}\nBesked: ${d.message ?? ""}\nAlvorsgrad: ${d.severity ?? ""}\n\nSe detaljer i SLA Overvågning.\n\nMed venlig hilsen\nADD SmartRegnskab`;
         break;
       case "weekly_report":
         subject = `Ugentlig rapport for ${d.week ?? ""}`;
-        body = `Hej ${d.companyName ?? ""}\n\nHer er din ugentlige oversigt:\n\nOpgaver udført: ${d.tasksCompleted ?? 0}\nTimer registreret: ${d.totalHours ?? 0}\nAfvigelser: ${d.deviations ?? 0}\n\nSe detaljer i ADD SmartDrift Clean.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+        body = `Hej ${d.companyName ?? ""}\n\nHer er din ugentlige oversigt:\n\nOpgaver udført: ${d.tasksCompleted ?? 0}\nTimer registreret: ${d.totalHours ?? 0}\nAfvigelser: ${d.deviations ?? 0}\n\nSe detaljer i ADD SmartRegnskab.\n\nMed venlig hilsen\nADD SmartRegnskab`;
         break;
       default:
         return res.status(400).json({ error: `Ukendt skabelon: ${template}` });

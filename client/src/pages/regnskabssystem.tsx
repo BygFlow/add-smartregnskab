@@ -111,8 +111,7 @@ import BrancheProfil from "@/pages/regnskab-tabs/branche-profil";
 import KontoplanSkabeloner from "@/pages/regnskab-tabs/kontoplan-skabeloner";
 import Dimensioner from "@/pages/regnskab-tabs/dimensioner";
 import Regnskabskategorier from "@/pages/regnskab-tabs/regnskabskategorier";
-import PlatformSync from "@/pages/regnskab-tabs/platform-sync";
-import SyncMappings from "@/pages/regnskab-tabs/sync-mappings";
+import Saft from "@/pages/regnskab-tabs/saft";
 import WorkflowBuilder from "@/pages/regnskab-tabs/workflow-builder";
 import IntegrationRuns from "@/pages/regnskab-tabs/integration-runs";
 import RetryQueue from "@/pages/regnskab-tabs/retry-queue";
@@ -5687,11 +5686,8 @@ export default function RegnskabssystemPage(props: any = {}) {
               <TabsContent value="regnskabskategorier" className="space-y-4">
                 <Regnskabskategorier companyId={effectiveCompanyId} />
               </TabsContent>
-              <TabsContent value="platform_sync" className="space-y-4">
-                <PlatformSync companyId={effectiveCompanyId} />
-              </TabsContent>
-              <TabsContent value="sync_mappings" className="space-y-4">
-                <SyncMappings companyId={effectiveCompanyId} />
+              <TabsContent value="saft" className="space-y-4">
+                <Saft />
               </TabsContent>
               <TabsContent value="workflow_builder" className="space-y-4">
                 <WorkflowBuilder companyId={effectiveCompanyId} />

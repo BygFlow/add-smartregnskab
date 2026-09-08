@@ -8,22 +8,30 @@ import { execFileSync } from "node:child_process";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 console.log("=== ADD SmartRegnskab — produktionsmigrering ===\n");
 
 // 1. Backup
 console.log("1. Tager backup...");
-try {
-  execFileSync(process.execPath, ["scripts/backup-sqlite.mjs"], { stdio: "inherit" });
-} catch {
-  console.error("Backup fejlede — afbryder migrering!");
-  process.exit(1);
+const databasePath = process.env.DATABASE_PATH || "data.db";
+if (existsSync(databasePath)) {
+  try {
+    execFileSync(process.execPath, ["scripts/backup-sqlite.mjs"], { stdio: "inherit" });
+  } catch {
+    console.error("Backup fejlede — afbryder migrering!");
+    process.exit(1);
+  }
+} else {
+  mkdirSync(dirname(databasePath), { recursive: true });
+  console.log("Ny installation — der findes endnu ingen database at sikkerhedskopiere.");
 }
 
 // 2. Migrer
 console.log("\n2. Kører versionsstyrede Drizzle-migrationer...");
 try {
-  const sqlite = new Database(process.env.DATABASE_PATH || "data.db");
+  const sqlite = new Database(databasePath);
   try {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("foreign_keys = ON");

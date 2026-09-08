@@ -266,7 +266,7 @@ export function daysBetween(a: string, b: string): number {
 }
 
 // ══════════════════════════════════════════════════
-//  Abonnementsfakturering — ADD SmartDrift Clean → virksomheden
+//  Abonnementsfakturering — ADD SmartRegnskab → virksomheden
 // ══════════════════════════════════════════════════
 
 export { addDays, addMonths };

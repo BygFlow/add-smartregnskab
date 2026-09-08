@@ -172,7 +172,7 @@ export async function invoicePdf(
 }
 
 // ══════════════════════════════════════════════════
-//  Abonnementsfaktura (ADD SmartDrift Clean → virksomheden)
+//  Abonnementsfaktura (ADD SmartRegnskab → virksomheden)
 // ══════════════════════════════════════════════════
 
 export async function platformInvoicePdf(
@@ -183,10 +183,14 @@ export async function platformInvoicePdf(
   const L = 48;
   const R = 547;
   const W = R - L;
+  const platformName = process.env.PLATFORM_COMPANY_NAME || "ADD Multiservice ApS";
+  const platformAddress = process.env.PLATFORM_COMPANY_ADDRESS || "";
+  const platformCvr = process.env.PLATFORM_COMPANY_CVR || "";
+  const platformInvoiceEmail = process.env.PLATFORM_INVOICE_EMAIL || "regnskab@addsmartregnskab.dk";
 
-  doc.font("Helvetica-Bold").fontSize(17).fillColor(ACCENT).text("ADD SmartDrift Clean", L, 48);
+  doc.font("Helvetica-Bold").fontSize(17).fillColor(ACCENT).text("ADD SmartRegnskab", L, 48);
   doc.font("Helvetica").fontSize(9).fillColor(MUTED)
-    .text("ADD SmartDrift Clean ApS\nKøbenhavn\nCVR 00000000\nfaktura@smartdriftclean.dk", L, 72, { lineGap: 1.5 });
+    .text([platformName, platformAddress, platformCvr ? `CVR ${platformCvr}` : null, platformInvoiceEmail].filter(Boolean).join("\n"), L, 72, { lineGap: 1.5 });
 
   doc.font("Helvetica-Bold").fontSize(20).fillColor(INK)
     .text("ABONNEMENT", L, 48, { width: W, align: "right" });
@@ -253,7 +257,7 @@ export async function platformInvoicePdf(
   }
 
   doc.font("Helvetica").fontSize(8.5).fillColor(MUTED)
-    .text("Tak for samarbejdet. Spørgsmål til fakturaen sendes til faktura@smartdriftclean.dk.",
+    .text(`Tak for samarbejdet. Spørgsmål til fakturaen sendes til ${platformInvoiceEmail}.`,
       L, 762, { width: W, align: "center" });
 
   return buffer(doc);

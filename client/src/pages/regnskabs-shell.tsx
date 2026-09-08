@@ -4,7 +4,7 @@ import { useHashLocation } from "wouter/use-hash-location";
 import { useAuth } from "@/lib/auth";
 import Regnskabssystem from "@/pages/regnskabssystem";
 import { Button } from "@/components/ui/button";
-import { Calculator, LayoutDashboard, Building2, FileText, Receipt, Landmark, CalendarClock, FileBarChart, Sparkles, Settings, LogOut, Menu, X, Zap, Users, ClipboardCheck, Link2, Inbox, Building, TrendingUp, Briefcase, CreditCard, Calendar, ShieldCheck, Wallet, BrainCircuit, Archive, Globe, FileCheck, KeyRound, Upload, Code, AlertCircle, DollarSign, Layers, Tags, RefreshCw, Workflow, Activity, RotateCw, GitBranch, Lock, Send, Truck, Package } from "lucide-react";
+import { Calculator, LayoutDashboard, Building2, FileText, Receipt, Landmark, CalendarClock, FileBarChart, Sparkles, Settings, LogOut, Menu, X, Zap, Users, ClipboardCheck, Link2, Inbox, Building, TrendingUp, Briefcase, CreditCard, Calendar, ShieldCheck, Wallet, BrainCircuit, Archive, Globe, FileCheck, KeyRound, Upload, Download, Code, AlertCircle, DollarSign, Layers, Tags, RefreshCw, Workflow, Activity, RotateCw, GitBranch, Lock, Send, Truck, Package } from "lucide-react";
 
 const NAV_GROUPS = [
   {
@@ -70,6 +70,7 @@ const NAV_GROUPS = [
       { path: "/smartregnskab/app/revisorportal", label: "Revisorportal (beta)", icon: FileCheck, tab: "revisorportal" },
       { path: "/smartregnskab/app/roller_kontrol", label: "Roller & Kontrol (beta)", icon: KeyRound, tab: "roller_kontrol" },
       { path: "/smartregnskab/app/revisionspakke", label: "Revisionspakke (beta)", icon: FileCheck, tab: "revisionspakke" },
+      { path: "/smartregnskab/app/saft", label: "SAF-T 2.1", icon: Download, tab: "saft" },
       { path: "/smartregnskab/app/budget_scenarier", label: "Budget & Scenarier", icon: TrendingUp, tab: "budget_scenarier" },
       { path: "/smartregnskab/app/afstemningscenter", label: "Afstemningscenter", icon: ShieldCheck, tab: "afstemningscenter" },
     ],
@@ -93,8 +94,6 @@ const NAV_GROUPS = [
       { path: "/smartregnskab/app/migration_wizard", label: "Datamigrering", icon: Upload, tab: "migration_wizard" },
       { path: "/smartregnskab/app/api_webhooks", label: "API & Webhooks (beta)", icon: Code, tab: "api_webhooks" },
       { path: "/smartregnskab/app/api_keys_mgmt", label: "API-nøgler (beta)", icon: KeyRound, tab: "api_keys_mgmt" },
-      { path: "/smartregnskab/app/platform_sync", label: "Platform Sync", icon: RefreshCw, tab: "platform_sync" },
-      { path: "/smartregnskab/app/sync_mappings", label: "Sync Mappings", icon: Link2, tab: "sync_mappings" },
       { path: "/smartregnskab/app/workflow_builder", label: "Workflow Builder", icon: Workflow, tab: "workflow_builder" },
       { path: "/smartregnskab/app/integration_runs", label: "Integration Log", icon: Activity, tab: "integration_runs" },
       { path: "/smartregnskab/app/retry_queue", label: "Retry Kø", icon: RotateCw, tab: "retry_queue" },
@@ -189,7 +188,7 @@ export function RegnskabsPlatformShell({
         ))}
       </nav>
 
-      {/* Bottom: user info + logout — NO link to SmartDrift Clean */}
+      {/* Bottom: user info + logout — NO link to SmartRegnskab */}
       <div className="p-3 border-t border-sidebar-border space-y-1">
         <div className="px-3 py-1 text-xs text-sidebar-foreground/60 truncate">{user?.name} ({role})</div>
         <Button

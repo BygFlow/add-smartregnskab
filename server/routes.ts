@@ -11,6 +11,7 @@ import { registerExtendedRoutes6 } from "./extended-routes-6";
 import { registerExtendedRoutes7 } from "./extended-routes-7";
 import { registerExtendedRoutes8 } from "./extended-routes-8";
 import { registerExtendedRoutes9 } from "./extended-routes-9";
+import { registerComplianceRoutes } from "./compliance-routes";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
@@ -507,11 +508,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/industry-account-templates", "/integration-configs", "/integration-retry-queue",
     "/integration-runs", "/inventory-accounts", "/invoices", "/journal-entries",
     "/migration-jobs", "/payment-runs", "/payroll-engine", "/payroll-entries",
-    "/payroll-reports", "/period-closes", "/platform-sync-jobs", "/platform-sync-mappings",
+    "/payroll-reports", "/period-closes",
     "/portal-documents", "/products", "/purchase-orders", "/receipts",
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
     "/regulatory-changes", "/reminder-flow", "/reports", "/role-controls",
-    "/security-audit-events", "/suppliers", "/system-health-events", "/tax-deadlines",
+    "/security-audit-events", "/suppliers", "/system-health-events", "/tax-deadlines", "/saft", "/external-backup",
     "/vat-periods", "/vat-reconciliations", "/vouchers", "/workflow-definitions",
     "/workflow-runs", "/year-end-closes",
   ];
@@ -1514,7 +1515,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({
       from: from ?? null, to: to ?? null, invoiceCount: invs.length,
       netAmount: net, salgsmoms: vat, totalAmount: round2(net + vat),
-      note: "Opgørelsen dækker kun udgående salgsmoms. Købsmoms registreres ikke i ADD SmartDrift Clean.",
+      note: "Opgørelsen dækker kun udgående salgsmoms. Købsmoms registreres ikke i ADD SmartRegnskab.",
     });
   }));
 
@@ -1865,7 +1866,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ══════════════════════════════════════════════════
-  //  PLATFORM — kun for ADD SmartDrift Cleans eget team
+  //  PLATFORM — kun for ADD SmartRegnskabs eget team
   // ══════════════════════════════════════════════════
 
   app.get("/api/platform/stats", requirePlatformAdmin, h(async (_req, res) => {
@@ -1878,7 +1879,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const plans = new Map((await storage.getPlans()).map((p) => [p.id, p]));
     const out = [];
     for (const c of allCompanies) {
-      // ADD SmartDrift Cleans egen konto vises ikke som kundevirksomhed
+      // ADD SmartRegnskabs egen konto vises ikke som kundevirksomhed
       if ((c as any).kind === "platform") continue;
       const sub = subs.find((s) => s.companyId === c.id);
       const plan = sub ? plans.get(sub.planId) : undefined;
@@ -2101,7 +2102,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         insights.push("Gå til Tilbud-siden og vælg en kunde for at generere et tilbudsforslag.");
       }
       else if (prompt.includes("hej") || prompt.includes("hallo") || prompt.includes("help") || prompt.includes("hjælp")) {
-        insights.push("Hej! Jeg er din AI-assistent i ADD SmartDrift Clean. Jeg kan hjælpe med:");
+        insights.push("Hej! Jeg er din AI-assistent i ADD SmartRegnskab. Jeg kan hjælpe med:");
         insights.push("• Fakturaer og betalinger — spørg om ubetalte fakturaer");
         insights.push("• Kunder og leads — spørg om kundeantal og lead-scoring");
         insights.push("• Opgaver og planlægning — spørg om ubesatte opgaver");
@@ -2162,7 +2163,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       response.push(`Antal fakturaer: ${invoices.length}`);
       const unpaidInv = invoices.filter((i: any) => i.status !== "betalt");
       if (unpaidInv.length > 0) response.push(`Ubetalte fakturaer: ${unpaidInv.length} til ${Math.round(unpaidInv.reduce((s: number, i: any) => s + (i.totalAmount ?? 0), 0))} kr.`);
-      const suggestedReply = `Hej ${customer.contact ?? customer.name}\n\nTak for din henvendelse. Vi har ${tasks.length} aktive opgaver hos jer og ser frem til at fortsætte samarbejdet.\n\nMed venlig hilsen\nADD SmartDrift Clean`;
+      const suggestedReply = `Hej ${customer.contact ?? customer.name}\n\nTak for din henvendelse. Vi har ${tasks.length} aktive opgaver hos jer og ser frem til at fortsætte samarbejdet.\n\nMed venlig hilsen\nADD SmartRegnskab`;
       res.json({ insights: response, risks: [], summary: suggestedReply });
     }
 
@@ -2348,7 +2349,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       channel: "email",
       recipient: company.email ?? "",
       subject: `Rykker: Faktura ${inv.invoiceNumber}`,
-      body: `Dette er en venlig påmindelse om, at faktura ${inv.invoiceNumber} på ${inv.totalAmount} kr. er forfalden.\n\nBetaling kan foretages via ADD SmartDrift Clean eller tilkontohaver.`,
+      body: `Dette er en venlig påmindelse om, at faktura ${inv.invoiceNumber} på ${inv.totalAmount} kr. er forfalden.\n\nBetaling kan foretages via ADD SmartRegnskab eller tilkontohaver.`,
       status: "i_koe",
       relatedType: "rykker",
       relatedId: inv.id,
@@ -2369,8 +2370,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       createdAt: new Date().toISOString(),
       channel: "email",
       recipient: company.email ?? "",
-      subject: `Faktura ${inv.invoiceNumber} fra ADD SmartDrift Clean`,
-      body: `Faktura ${inv.invoiceNumber} for perioden ${inv.periodStart} – ${inv.periodEnd} er klar.\n\nBeløb inkl. moms: ${inv.totalAmount} kr.\n\nFakturaen kan hentes i ADD SmartDrift Clean.`,
+      subject: `Faktura ${inv.invoiceNumber} fra ADD SmartRegnskab`,
+      body: `Faktura ${inv.invoiceNumber} for perioden ${inv.periodStart} – ${inv.periodEnd} er klar.\n\nBeløb inkl. moms: ${inv.totalAmount} kr.\n\nFakturaen kan hentes i ADD SmartRegnskab.`,
       status: "i_koe",
       relatedType: "faktura",
       relatedId: inv.id,
@@ -2499,7 +2500,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       channel: "email",
       recipient: customer.email,
       subject: `Tilbud ${quote.quoteNumber} fra ${company?.name ?? "os"}`,
-      body: `Hej ${customer.contact ?? customer.name}\n\nTak for din henvendelse. Vedhæftet finder du vores tilbud ${quote.quoteNumber} på ${kr(quote.totalAmount)} inkl. moms.\n\nTilbuddet er gyldigt til ${dkDate(quote.validUntil ?? "")}.\n\nMed venlig hilsen\n${company?.name ?? "ADD SmartDrift Clean"}`,
+      body: `Hej ${customer.contact ?? customer.name}\n\nTak for din henvendelse. Vedhæftet finder du vores tilbud ${quote.quoteNumber} på ${kr(quote.totalAmount)} inkl. moms.\n\nTilbuddet er gyldigt til ${dkDate(quote.validUntil ?? "")}.\n\nMed venlig hilsen\n${company?.name ?? "ADD SmartRegnskab"}`,
       relatedType: "tilbud",
       relatedId: quote.id,
     });
@@ -3886,7 +3887,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `Kunden er nu klar til at tildeles opgaver og modtage fakturaer.`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     } else if (combined.includes("faktura") && (combined.includes("send") || combined.includes("sende") || combined.includes("udsted") || combined.includes("opret"))) {
       reply = [
@@ -3905,7 +3906,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `Fakturaen sendes via e-mailintegrationen hvis denne er opsat, ellers kan du downloade en PDF.`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     } else if (combined.includes("gps") || combined.includes("sporing") || combined.includes("lokation")) {
       reply = [
@@ -3925,7 +3926,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `Bemærk: GPS-sporing kræver at medarbejderen har givet tilladelse via sin mobilenhed.`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     } else if (combined.includes("email") || combined.includes("e-mail") || combined.includes("smtp") || combined.includes("tilkobl")) {
       reply = [
@@ -3944,7 +3945,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `Når integrationen er aktiv, kan du sende fakturaer og leads direkte fra systemet.`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     } else if (combined.includes("ai") && (combined.includes("pris") || combined.includes("koster") || combined.includes("tilæg"))) {
       reply = [
@@ -3965,7 +3966,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `AI-tilægget kan aktiveres under "Virksomhed" → "Indstillinger".`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     } else if (combined.includes("vagtplan") || combined.includes("vagt") || combined.includes("planlæg")) {
       reply = [
@@ -3986,7 +3987,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `Medarbejderne kan se deres vagtplan i deres egen visning.`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     } else {
       reply = [
@@ -3999,7 +4000,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `Du kan også bruge AI-assistenten i support-panelet — den kan besvare mange almindelige spørgsmål med det samme.`,
         ``,
         `Med venlig hilsen`,
-        `ADD SmartDrift Clean Support`,
+        `ADD SmartRegnskab Support`,
       ].join("\n");
     }
     const updated = await storage.update("support_cases", id, { reply, replyStatus: "kladde" }, undefined);
@@ -4014,13 +4015,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.all("accounts", tenantId(req)));
   }));
   app.post("/api/accounts", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const data = validate(insertAccountSchema, req.body);
+    const data = validate(insertAccountSchema, { ...req.body, companyId: tenantId(req) });
     const item = await storage.insert("accounts", { ...data, companyId: tenantId(req), createdAt: new Date().toISOString() });
     await audit(req, "opret", "account", item.id, data.accountNumber + " " + data.name);
     res.json(item);
   }));
   app.delete("/api/accounts/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    await storage.delete("accounts", Number(req.params.id), tenantId(req));
+    const accountId = Number(req.params.id);
+    const used = (await storage.all("journal_lines", tenantId(req))).some((line: any) => line.accountId === accountId);
+    if (used) return res.status(409).json({ error: "Kontoen indgår i bogføringen og må ikke slettes. Deaktivér den i stedet." });
+    await storage.delete("accounts", accountId, tenantId(req));
     await audit(req, "slet", "account", Number(req.params.id));
     res.json({ ok: true });
   }));
@@ -4029,24 +4033,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.all("journal_entries", tenantId(req)));
   }));
   app.post("/api/journal-entries", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const data = validate(insertJournalEntrySchema, req.body);
+    const data = validate(insertJournalEntrySchema, { ...req.body, companyId: tenantId(req) });
+    const lines = (req.body as any)?.lines || [];
+    if (["bogført", "bogfort", "afstemt"].includes(String(data.status || "kladde"))) {
+      const debit = lines.reduce((sum: number, line: any) => sum + Number(line.debit || 0), 0);
+      const credit = lines.reduce((sum: number, line: any) => sum + Number(line.credit || 0), 0);
+      if (lines.length < 2 || Math.abs(debit - credit) > 0.005) return res.status(400).json({ error: "En bogført postering skal have mindst to linjer og balancere i debet/kredit." });
+    }
     const item = await storage.insert("journal_entries", { ...data, companyId: tenantId(req), createdAt: new Date().toISOString() });
     await audit(req, "opret", "journal_entry", item.id, data.entryNumber);
     // Bogfør linjer hvis medsendt
-    const lines = (req.body as any)?.lines || [];
     for (const line of lines) {
       await storage.insert("journal_lines", { ...line, companyId: tenantId(req), journalEntryId: item.id });
     }
     res.json(item);
   }));
   app.patch("/api/journal-entries/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
- const updates = req.body as any;
+    const id = Number(req.params.id);
+    const existing = await storage.get("journal_entries", id, tenantId(req));
+    if (!existing) return res.status(404).json({ error: "Posteringen findes ikke." });
+    if (["bogført", "bogfort", "afstemt"].includes(existing.status)) return res.status(409).json({ error: "Bogførte posteringer er låst. Opret en tilbageførsel i stedet." });
+    const updates = req.body as any;
+    if (["bogført", "bogfort", "afstemt"].includes(updates.status)) {
+      const lines = (await storage.all("journal_lines", tenantId(req))).filter((line: any) => line.journalEntryId === id);
+      const debit = lines.reduce((sum: number, line: any) => sum + Number(line.debit || 0), 0);
+      const credit = lines.reduce((sum: number, line: any) => sum + Number(line.credit || 0), 0);
+      if (lines.length < 2 || Math.abs(debit - credit) > 0.005) return res.status(400).json({ error: "Posteringen kan ikke bogføres, før den balancerer i debet/kredit." });
+    }
     res.json(await storage.update("journal_entries", Number(req.params.id), updates, tenantId(req)));
   }));
   app.delete("/api/journal-entries/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const existing = await storage.get("journal_entries", Number(req.params.id), tenantId(req));
+    if (!existing) return res.status(404).json({ error: "Posteringen findes ikke." });
+    if (["bogført", "bogfort", "afstemt"].includes(existing.status)) return res.status(409).json({ error: "Bogførte posteringer må ikke slettes. Opret en tilbageførsel i stedet." });
     await storage.delete("journal_entries", Number(req.params.id), tenantId(req));
     await audit(req, "slet", "journal_entry", Number(req.params.id));
     res.json({ ok: true });
+  }));
+  app.post("/api/journal-entries/:id/reverse", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const id = Number(req.params.id);
+    const existing = await storage.get("journal_entries", id, cid);
+    if (!existing) return res.status(404).json({ error: "Posteringen findes ikke." });
+    if (!["bogført", "bogfort", "afstemt"].includes(existing.status)) return res.status(409).json({ error: "Kun bogførte posteringer kan tilbageføres." });
+    const originalLines = (await storage.all("journal_lines", cid)).filter((line: any) => line.journalEntryId === id);
+    const entryNumber = String(req.body?.entryNumber || `REV-${existing.entryNumber}-${Date.now()}`);
+    const reversal = await storage.insert("journal_entries", { companyId: cid, entryNumber, date: String(req.body?.date || nowIso().slice(0, 10)), description: `Tilbageførsel af ${existing.entryNumber}: ${existing.description}`, reference: existing.entryNumber, sourceType: "tilbageførsel", sourceId: existing.id, status: "bogført", createdBy: req.auth?.user.email, createdAt: nowIso() });
+    for (const line of originalLines) await storage.insert("journal_lines", { companyId: cid, journalEntryId: reversal.id, accountId: line.accountId, description: `Tilbageførsel: ${line.description || existing.description}`, debit: Number(line.credit || 0), credit: Number(line.debit || 0), vatCode: line.vatCode });
+    await audit(req, "tilbagefør", "journal_entry", reversal.id, `Original ${existing.entryNumber}`);
+    res.status(201).json(reversal);
   }));
 
   app.get("/api/journal-lines", requireRole("leder", "platform_admin"), h(async (req, res) => {
@@ -4745,11 +4780,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/vouchers/:id", h(async (req, res) => {
     const cid = tenantId(req);
+    const existing = await storage.get("vouchers", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (existing.status === "bogfoert") return res.status(409).json({ error: "Et bogført bilag er låst og må ikke ændres." });
     res.json(await storage.update("vouchers", Number(req.params.id), req.body, cid));
   }));
 
   app.delete("/api/vouchers/:id", h(async (req, res) => {
-    const cid = tenantId(req); await storage.delete("vouchers", Number(req.params.id), cid); res.status(204).send();
+    const cid = tenantId(req);
+    const existing = await storage.get("vouchers", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (existing.status === "bogfoert") return res.status(409).json({ error: "Et bogført bilag må ikke slettes." });
+    await storage.delete("vouchers", Number(req.params.id), cid); res.status(204).send();
   }));
 
   // ═══════════════════════════════════════════════════════════════
@@ -5703,7 +5745,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ════════════════════════════════════════════════════
-  //  UDVIDEDE RUTER — SmartDrift Clean + SmartRegnskab
+  //  UDVIDEDE RUTER — SmartRegnskab + SmartRegnskab
   // ════════════════════════════════════════════════════
   registerExtendedRoutes(app);
   registerExtendedRoutes2(app);
@@ -5714,6 +5756,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerExtendedRoutes7(app);
   registerExtendedRoutes8(app);
   registerExtendedRoutes9(app);
+  registerComplianceRoutes(app);
 
   return httpServer;
 }

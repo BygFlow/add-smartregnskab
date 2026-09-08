@@ -51,7 +51,7 @@ function crud(app: Express, basePath: string, tableName: string, insertSchema: a
 }
 
 export function registerExtendedRoutes2(app: Express) {
-  // ══ SmartDrift Clean (12) ══
+  // ══ SmartRegnskab (12) ══
   crud(app, "/api/mobile-sync", "mobile_sync_queue", insertMobileSyncQueueSchema, ["employeeId", "employeeName", "deviceInfo", "syncType", "payload", "status", "syncedAt", "errorMessage"]);
   crud(app, "/api/live-board", "live_board_events", insertLiveBoardEventSchema, ["type", "title", "description", "severity", "relatedId", "relatedType", "location", "timestamp", "status"]);
   crud(app, "/api/customer-locations", "customer_locations", insertCustomerLocationSchema, ["customerId", "customerName", "name", "address", "zip", "city", "contactPerson", "contactPhone", "contactEmail", "accessInstructions", "keyNumber", "alarmCode", "cleaningAreas", "status"]);

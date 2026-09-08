@@ -1,4 +1,4 @@
-// Additional routes for SmartDrift Clean + SmartRegnskab features
+// Additional routes for SmartRegnskab + SmartRegnskab features
 // This file is imported and called from routes.ts
 import type { Express } from "express";
 import { storage } from "./storage";
@@ -49,7 +49,7 @@ export function registerExtendedRoutes(app: Express) {
   };
 
   // ════════════════════════════════════════════════════
-  //  SMARTDRIFT CLEAN — 10 nye features
+  //  Ældre interne driftsruter (afskåret af SmartRegnskabs API-filter)
   // ════════════════════════════════════════════════════
 
   // ── Ruteplanlægning ──

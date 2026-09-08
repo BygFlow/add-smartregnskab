@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `standard_account_number` text;

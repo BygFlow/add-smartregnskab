@@ -15,7 +15,7 @@ services:
     # NODE_ENV=production er allerede sat under Render-buildet. Medtag derfor
     # eksplicit devDependencies, fordi build-scriptet bruger tsx/Vite/esbuild.
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: node dist/index.cjs
+    startCommand: node scripts/migrate-sqlite-prod.mjs && node dist/index.cjs
 
     # ── Persistent disk (kritisk for SQLite + filer) ──
     disk:
@@ -45,6 +45,14 @@ services:
         sync: false
       - key: PLATFORM_ADMIN_PASSWORD
         sync: false          # Mindst 12 tegn; opbevares som secret
+      - key: PLATFORM_COMPANY_NAME
+        value: ADD Multiservice ApS
+      - key: PLATFORM_COMPANY_CVR
+        sync: false
+      - key: PLATFORM_COMPANY_ADDRESS
+        sync: false
+      - key: PLATFORM_INVOICE_EMAIL
+        value: regnskab@addsmartregnskab.dk
 
       # ── Kryptering (KRITISK — generer med: openssl rand -hex 32) ──
       - key: ENCRYPTION_KEY
@@ -85,3 +93,9 @@ services:
         sync: false
       - key: S3_SECRET_ACCESS_KEY
         sync: false
+      - key: S3_ENDPOINT
+        sync: false          # Valgfri URL til fx Cloudflare R2/Backblaze B2
+      - key: S3_FORCE_PATH_STYLE
+        value: "false"
+      - key: S3_BACKUP_PREFIX
+        value: smartregnskab/backups

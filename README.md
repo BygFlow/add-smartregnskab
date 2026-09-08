@@ -4,8 +4,9 @@ Selvstændig web- og mobilapplikation til dansk bogføring, fakturering, moms,
 afstemning, rapportering, dokumentarkiv og regnskabsautomatisering.
 
 SmartRegnskab har sit eget navn, login, PWA-manifest, mobil-app-id,
-produktkonfiguration og driftsmiljø. SmartDrift-ruter er afskåret ved serverens
-API-grænse og indgår ikke i den brugerrettede SmartRegnskab-applikation.
+produktkonfiguration og driftsmiljø. Kun SmartRegnskabs API-ruter er offentligt
+tilgængelige; ældre interne tabeller er ikke en del af produktets brugerflade
+eller API.
 
 ## Lokal start
 
@@ -37,6 +38,13 @@ deploy skal alle værdier markeret `sync: false` sættes i Render. Eksterne
 tjenester som Stripe, Resend, MobilePay og S3 aktiveres først, når gyldige
 nøgler er tilføjet.
 
+SAF-T 2.1 kan importeres og eksporteres fra menupunktet `SAF-T 2.1`. Eksporten
+bruger standardkontoplanens version `20260101` og afviser ubalancerede
+posteringer eller manglende stamdata.
+
+Ekstern backup kræver S3-kompatibel objektlagring. En konsistent databasekopi
+kontrolleres, uploades krypteret og verificeres med størrelse og SHA-256.
+
 Startkommando:
 
 ```bash
@@ -50,3 +58,6 @@ Sundhedstjek findes på `/healthz`, og readiness findes på `/readyz`.
 
 Tekster om privatliv og databehandling er tekniske udkast og skal godkendes og
 tilpasses af juridisk rådgiver før kommerciel produktion.
+
+Den tekniske registreringspakke og de resterende myndighedskrav findes i
+[`docs/REGISTRERING-ERHVERVSSTYRELSEN.md`](docs/REGISTRERING-ERHVERVSSTYRELSEN.md).

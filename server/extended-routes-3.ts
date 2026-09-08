@@ -272,7 +272,7 @@ export function registerExtendedRoutes3(app: Express) {
     const { sourcePlatform, targetPlatform, syncType } = req.body;
     const job = db.insert(schema.platformSyncJobs).values({
       companyId: cid,
-      sourcePlatform: sourcePlatform || "smartdrift_clean",
+      sourcePlatform: sourcePlatform || "external_system",
       targetPlatform: targetPlatform || "smartregnskab",
       syncType: syncType || "kunder",
       status: "synkroniserer",

@@ -146,6 +146,50 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(typeof controlCenter.score, "number");
     assert.equal(controlCenter.legal.registeredBookkeepingSystem, "not_verified");
 
+    const companyUpdate = await fetch(`${base}/api/company`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ cvr: "12345678", address: "Testvej 1, 2100 København Ø", iban: "DK5000400440116243", currency: "DKK" }),
+    });
+    assert.equal(companyUpdate.status, 200);
+    const createdAccounts = [];
+    for (const account of [
+      { accountNumber: "1010", standardAccountNumber: "1010", name: "Salg", type: "indtaegt" },
+      { accountNumber: "6190", standardAccountNumber: "6190", name: "Debitorer", type: "aktiv" },
+    ]) {
+      const accountResponse = await fetch(`${base}/api/accounts`, {
+        method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify(account),
+      });
+      assert.equal(accountResponse.status, 200);
+      createdAccounts.push(await accountResponse.json());
+    }
+    const entryResponse = await fetch(`${base}/api/journal-entries`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ entryNumber: "SMOKE-1", date: "2026-09-08", description: "SAF-T smoke test", status: "bogført", lines: [
+        { accountId: createdAccounts[1].id, description: "Debitor", debit: 125, credit: 0 },
+        { accountId: createdAccounts[0].id, description: "Salg", debit: 0, credit: 125 },
+      ] }),
+    });
+    assert.equal(entryResponse.status, 200);
+    const entry = await entryResponse.json();
+    const lockedDelete = await fetch(`${base}/api/journal-entries/${entry.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(lockedDelete.status, 409);
+    const saftStatus = await fetch(`${base}/api/saft/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(saftStatus.status, 200);
+    assert.equal((await saftStatus.json()).ready, true);
+    const saftExport = await fetch(`${base}/api/saft/export?from=2026-01-01&to=2026-12-31`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(saftExport.status, 200);
+    const saftXml = await saftExport.text();
+    assert.match(saftXml, /<AuditFileVersion>2\.1<\/AuditFileVersion>/);
+    assert.match(saftXml, /<TransactionID>SMOKE-1<\/TransactionID>/);
+    const saftPreview = await fetch(`${base}/api/saft/import/preview`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/xml" }, body: saftXml });
+    assert.equal(saftPreview.status, 200);
+    const preview = await saftPreview.json();
+    assert.deepEqual(preview.errors, []);
+    assert.equal(preview.entries.length, 1);
+    assert.equal(preview.totalDebit, preview.totalCredit);
+
     const demoLogin = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

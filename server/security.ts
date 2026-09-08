@@ -358,7 +358,7 @@ const ALMINDELIGE_ADGANGSKODER = new Set([
   "password", "password1", "passw0rd", "qwerty", "qwerty123", "abc123",
   "letmein", "welcome", "admin", "administrator", "iloveyou", "monkey",
   "dragon", "football", "baseball", "sunshine", "princess", "master",
-  "kodeord", "kodeord1", "adgangskode", "adgangskode1", "hemmelig", "addsmartdriftclean",
+  "kodeord", "kodeord1", "adgangskode", "adgangskode1", "hemmelig", "addsmartregnskab",
   "sommer2025", "sommer2026", "vinter2025", "foraar2025", "efteraar2025",
   "københavn", "aarhus", "danmark", "danmark123", "fodbold", "hygge",
 ]);
