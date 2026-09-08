@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb"/>
+      <stop offset="100%" style="stop-color:#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <!-- Shield/drift icon -->
+  <path d="M512 200 L720 280 L720 480 Q720 680 512 780 Q304 680 304 480 L304 280 Z" 
+        fill="none" stroke="white" stroke-width="40" stroke-linejoin="round"/>
+  <!-- Check mark inside shield -->
+  <path d="M420 500 L480 560 L620 400" 
+        fill="none" stroke="white" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Sparkle -->
+  <circle cx="680" cy="280" r="12" fill="white" opacity="0.8"/>
+  <circle cx="340" cy="340" r="8" fill="white" opacity="0.6"/>
+</svg>

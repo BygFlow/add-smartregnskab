@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `journal_entries_company_number_unique` ON `journal_entries` (`company_id`,`entry_number`);

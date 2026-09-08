@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `quotes_company_number_unique` ON `quotes` (`company_id`,`quote_number`);
