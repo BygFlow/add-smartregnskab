@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.env
+*.db
+*.db-*
+uploads
+backups
+android/.gradle
+android/build
+android/app/build
+android/capacitor-cordova-android-plugins/build
+android/*.keystore
+*.log

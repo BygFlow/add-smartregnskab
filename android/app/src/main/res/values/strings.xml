@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ADD SmartRegnskab</string>
+    <string name="title_activity_main">ADD SmartRegnskab</string>
+    <string name="package_name">dk.smartregnskab.app</string>
+    <string name="custom_url_scheme">dk.smartregnskab.app</string>
+</resources>

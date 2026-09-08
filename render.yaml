@@ -1,0 +1,87 @@
+# Render deployment konfiguration for ADD SmartRegnskab
+# https://render.com/docs/blueprint-spec
+# Opret en ny web service på Render og vælg dette repository.
+
+services:
+  - type: web
+    name: add-smartregnskab
+    runtime: node
+    plan: starter           # $7/mo — opgrader til standard ved behov
+    region: frankfurt       # Tættest på Danmark
+    branch: main
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+    # NODE_ENV=production er allerede sat under Render-buildet. Medtag derfor
+    # eksplicit devDependencies, fordi build-scriptet bruger tsx/Vite/esbuild.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node dist/index.cjs
+
+    # ── Persistent disk (kritisk for SQLite + filer) ──
+    disk:
+      name: smartregnskab-data
+      mountPath: /var/data
+      sizeGB: 5              # Start med 5 GB, kan udvides senere
+
+    envVars:
+      # ── Database & filer (peger mod persistent disk) ──
+      - key: DATABASE_PATH
+        value: /var/data/data.db
+      - key: FILE_STORAGE_DIR
+        value: /var/data/files
+      - key: BACKUP_DIR
+        value: /var/data/backups
+
+      # ── App ──
+      - key: NODE_ENV
+        value: production
+      - key: APP_BASE_URL
+        sync: false          # Sæt til SmartRegnskabs selvstændige produktionsadresse
+      - key: ALLOWED_ORIGINS
+        sync: false          # Kommasepareret liste over tilladte web/native origins
+
+      # ── Første platformadministrator ──
+      - key: PLATFORM_ADMIN_EMAIL
+        sync: false
+      - key: PLATFORM_ADMIN_PASSWORD
+        sync: false          # Mindst 12 tegn; opbevares som secret
+
+      # ── Kryptering (KRITISK — generer med: openssl rand -hex 32) ──
+      - key: ENCRYPTION_KEY
+        sync: false          # Sæt til en 64-char hex streng
+
+      # ── Stripe (betalinger) ──
+      - key: STRIPE_SECRET_KEY
+        sync: false          # sk_test_... eller sk_live_...
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false          # whsec_... fra Stripe dashboard
+
+      # ── Email (Resend) ──
+      - key: RESEND_API_KEY
+        sync: false          # re_... fra Resend
+      - key: MAIL_FROM
+        sync: false          # Fx regnskab@virksomhedens verificerede domæne
+
+      # ── SMS (valgfrit) ──
+      - key: SMS_API_URL
+        sync: false
+      - key: SMS_API_KEY
+        sync: false
+
+      # ── MobilePay (valgfrit) ──
+      - key: MOBILEPAY_CLIENT_ID
+        sync: false
+      - key: MOBILEPAY_CLIENT_SECRET
+        sync: false
+      - key: MOBILEPAY_WEBHOOK_SECRET
+        sync: false
+
+      # ── S3 filstorage (valgfrit — alternativ til lokal disk) ──
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false

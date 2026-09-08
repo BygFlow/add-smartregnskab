@@ -1,0 +1,37 @@
+{
+  "include": [
+    "client/src/main.tsx",
+    "client/src/App.tsx",
+    "client/src/lib/**/*",
+    "client/src/hooks/**/*",
+    "client/src/components/ui/**/*",
+    "client/src/components/theme-provider.tsx",
+    "client/src/pages/regnskab-login.tsx",
+    "client/src/pages/regnskabs-shell.tsx",
+    "client/src/pages/regnskabssystem.tsx",
+    "client/src/pages/regnskab-tabs/**/*",
+    "client/src/pages/offentlig.tsx",
+    "shared/**/*",
+    "server/**/*"
+  ],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "module": "ESNext",
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["./client/src/*"],
+      "@shared/*": ["./shared/*"]
+    }
+  }
+}
