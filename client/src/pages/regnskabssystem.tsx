@@ -133,6 +133,7 @@ const Produktkartotek = lazy(() => import("@/pages/regnskab-tabs/produktkartotek
 const FasteFakturaer = lazy(() => import("@/pages/regnskab-tabs/faste-fakturaer"));
 const Kontrolcenter = lazy(() => import("@/pages/regnskab-tabs/kontrolcenter"));
 const AiStyring = lazy(() => import("@/pages/regnskab-tabs/ai-styring"));
+const Driftsklarhed = lazy(() => import("@/pages/regnskab-tabs/driftsklarhed"));
 
 /* ---------- typer ---------- */
 
@@ -2257,6 +2258,10 @@ export default function RegnskabssystemPage(props: any = {}) {
               </TabsList>
 
               {/* ---------- DASHBOARD ---------- */}
+              <TabsContent value="driftsklarhed" className="space-y-4">
+                <Driftsklarhed />
+              </TabsContent>
+
               <TabsContent value="dashboard" className="space-y-4">
                 <SectionCard
                   title="Dashboard"

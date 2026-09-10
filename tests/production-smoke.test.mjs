@@ -149,6 +149,34 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(aiDecisionResponse.status, 201);
     assert.equal((await aiDecisionResponse.json()).status, "afventer_godkendelse");
 
+    const invalidAiDecision = await fetch(`${base}/api/ai-governance/decisions`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ actionType: "categorize", recommendation: "Bogfør", reasoning: "Test", confidence: 1, riskLevel: "ukendt", evidence: ["voucher:1"] }),
+    });
+    assert.equal(invalidAiDecision.status, 400);
+
+    const supportKnowledge = await fetch(`${base}/api/support/knowledge`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(supportKnowledge.status, 200);
+    assert.ok((await supportKnowledge.json()).articles.length >= 8);
+    const adaptersResponse = await fetch(`${base}/api/integration-adapters/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(adaptersResponse.status, 200);
+    assert.ok((await adaptersResponse.json()).adapters.some((item) => item.id === "nemhandel"));
+
+    const importContent = "Leverandørnavn;CVR;Email\nSmoke Leverandør ApS;11223344;invoice@supplier.example";
+    const importPreviewResponse = await fetch(`${base}/api/migration/preview`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ source: "economic", entity: "suppliers", content: importContent }) });
+    assert.equal(importPreviewResponse.status, 200);
+    const importPreview = await importPreviewResponse.json();
+    assert.equal(importPreview.validRows, 1);
+    const tamperedImport = await fetch(`${base}/api/migration/commit`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ source: "economic", entity: "suppliers", content: `${importContent}\nAnden;99887766;x@y.dk`, token: importPreview.token }) });
+    assert.equal(tamperedImport.status, 409);
+    const importCommitResponse = await fetch(`${base}/api/migration/commit`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ source: "economic", entity: "suppliers", content: importContent, token: importPreview.token, fileName: "suppliers.csv" }) });
+    assert.equal(importCommitResponse.status, 201);
+    const imported = await importCommitResponse.json();
+    assert.equal(imported.importedRows, 1);
+    const rollbackResponse = await fetch(`${base}/api/migration-jobs/${imported.job.id}/rollback`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(rollbackResponse.status, 200);
+    assert.equal((await rollbackResponse.json()).removedRows, 1);
+
     const controlCenterResponse = await fetch(`${base}/api/accounting-control-center`, {
       headers: { Authorization: `Bearer ${leaderToken}` },
     });
@@ -160,7 +188,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const companyUpdate = await fetch(`${base}/api/company`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ cvr: "12345678", address: "Testvej 1, 2100 København Ø", iban: "DK5000400440116243", currency: "DKK" }),
+      body: JSON.stringify({ cvr: "12345678", address: "Testvej 1, 2100 København Ø", email: "company@example.test", iban: "DK5000400440116243", currency: "DKK" }),
     });
     assert.equal(companyUpdate.status, 200);
     const customerResponse = await fetch(`${base}/api/customers`, {
@@ -175,6 +203,11 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     });
     assert.equal(invoiceResponse.status, 201);
     const invoice = await invoiceResponse.json();
+    const onboardingResponse = await fetch(`${base}/api/onboarding/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(onboardingResponse.status, 200);
+    const onboarding = await onboardingResponse.json();
+    assert.equal(onboarding.total, 5);
+    assert.ok(onboarding.completed >= 2);
     const einvoiceStatus = await fetch(`${base}/api/einvoice-queue/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(einvoiceStatus.status, 200);
     assert.equal((await einvoiceStatus.json()).configured, false);
@@ -268,6 +301,24 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.deepEqual(preview.errors, []);
     assert.equal(preview.entries.length, 1);
     assert.equal(preview.totalDebit, preview.totalCredit);
+
+    const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
+    assert.equal(operationsResponse.status, 200);
+    const operations = await operationsResponse.json();
+    assert.equal(operations.version, "3.6.0");
+    assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
+
+    const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {
+      method: "POST", headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Isoleret ApS", adminName: "Anden leder", adminEmail: "second@example.test", adminPassword: "A-strong-second-password-2026", planId: plans[0].id, trialDays: 14 }),
+    });
+    assert.equal(companyTwoResponse.status, 201);
+    const secondLogin = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "second@example.test", password: "A-strong-second-password-2026" }) });
+    const secondToken = (await secondLogin.json()).token;
+    const secondCustomerResponse = await fetch(`${base}/api/customers`, { method: "POST", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Hemmelig kunde" }) });
+    assert.equal(secondCustomerResponse.status, 201);
+    const secondCustomer = await secondCustomerResponse.json();
+    assert.equal((await fetch(`${base}/api/customers/${secondCustomer.id}`, { headers: { Authorization: `Bearer ${leaderToken}` } })).status, 404);
 
     const demoLogin = await fetch(`${base}/api/auth/login`, {
       method: "POST",

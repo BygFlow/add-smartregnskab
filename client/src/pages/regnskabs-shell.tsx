@@ -11,6 +11,7 @@ const NAV_GROUPS = [
     label: "Overblik",
     items: [
       { path: "/smartregnskab/app", label: "Dashboard", icon: LayoutDashboard, tab: "dashboard" },
+      { path: "/smartregnskab/app/driftsklarhed", label: "Driftsklarhed", icon: ShieldCheck, tab: "driftsklarhed" },
       { path: "/smartregnskab/app/kontrolcenter", label: "Kontrolcenter", icon: ShieldCheck, tab: "kontrolcenter" },
       { path: "/smartregnskab/app/virksomheder", label: "Virksomheder", icon: Building2, tab: null },
     ],

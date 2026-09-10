@@ -159,12 +159,4 @@ export function registerExtendedRoutes2(app: Express) {
     res.status(201).json({ ...record, key: rawKey });
   }));
 
-  // ── Migration validate ──
-  app.post("/api/migration-jobs/:id/rollback", h(async (req, res) => {
-    const cid = tid(req);
-    const updated = await storage.update("migration_jobs", Number(req.params.id), {
-      status: "rolled_back", rolledBackAt: nowIso(),
-    }, cid);
-    res.json(updated);
-  }));
 }

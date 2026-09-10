@@ -30,6 +30,14 @@ type SystemHealthEvent = {
   createdAt: string;
 };
 
+type OperationsStatus = {
+  generatedAt: string;
+  version: string;
+  overall: "operational" | "attention" | "blocked";
+  services: Array<{ id: string; name: string; status: "ok" | "warning" | "error"; message: string }>;
+  blockers: string[];
+};
+
 const COMPONENT_STYLE: Record<string, string> = {
   database: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
   api: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
@@ -95,6 +103,12 @@ export default function Systemovervågning({ companyId }: { companyId: number })
 
   const queryKey = ["/api/system-health-events", companyId];
 
+  const operationsQuery = useQuery<OperationsStatus>({
+    queryKey: ["/api/operations/status"],
+    queryFn: async () => (await apiRequest("GET", "/api/operations/status")).json(),
+    refetchInterval: 60_000,
+  });
+
   const { data, isLoading } = useQuery<SystemHealthEvent[]>({
     queryKey,
     queryFn: async () => {
@@ -137,6 +151,18 @@ export default function Systemovervågning({ companyId }: { companyId: number })
           Sundhedstilstand for database, API, synkronisering, mail og lagring.
         </p>
       </div>
+
+      {operationsQuery.data && (
+        <div className="space-y-3 rounded-md border border-border p-4" data-testid="operations-status">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><div className="font-medium">Produktionsstatus · v{operationsQuery.data.version}</div><div className="text-xs text-muted-foreground">Senest kontrolleret {dkDate(operationsQuery.data.generatedAt)}</div></div>
+            <span className={badgeClass(operationsQuery.data.overall === "operational" ? "badge-soft-green" : operationsQuery.data.overall === "blocked" ? "badge-soft-red" : "badge-soft-amber")}>{operationsQuery.data.overall === "operational" ? "Driftsklar" : operationsQuery.data.overall === "blocked" ? "Blokeret" : "Kræver opsætning"}</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {operationsQuery.data.services.map((service) => <div key={service.id} className="rounded-md bg-muted/40 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{service.name}</span><span className={badgeClass(STATUS_STYLE[service.status])}>{STATUS_LABEL[service.status] || service.status}</span></div><p className="mt-1 text-xs text-muted-foreground">{service.message}</p></div>)}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-md border border-border overflow-hidden">
         <MetricCard

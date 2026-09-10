@@ -1,6 +1,6 @@
 {
   "name": "add-smartregnskab",
-  "version": "3.5.1",
+  "version": "3.6.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -11,6 +11,8 @@
     "test": "node --test tests/*.test.mjs",
     "verify": "npm run check && npm run build && npm test",
     "readiness": "node scripts/release-readiness.mjs",
+    "security:check": "node scripts/security-self-check.mjs",
+    "authority:pack": "node scripts/build-authority-pack.mjs",
     "restore:drill": "node scripts/restore-drill.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-sqlite-prod.mjs",

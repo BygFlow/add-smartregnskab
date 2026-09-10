@@ -12,6 +12,8 @@ import { registerExtendedRoutes7 } from "./extended-routes-7";
 import { registerExtendedRoutes8 } from "./extended-routes-8";
 import { registerExtendedRoutes9 } from "./extended-routes-9";
 import { registerComplianceRoutes } from "./compliance-routes";
+import { registerMigrationRoutes } from "./migration-routes";
+import { registerReadinessRoutes } from "./readiness-routes";
 import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice-routes";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
@@ -497,7 +499,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.use("/api", requireAuth);
   const regnskabApiPrefixes = [
-    "/auth", "/company", "/users", "/security", "/support-cases", "/subscription", "/platform",
+    "/auth", "/company", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
     "/accounting-category-rules", "/accounting-control-center", "/accounting-integrations",
     "/accounting-rules", "/accounts", "/accruals", "/advanced-vat", "/ai-accounting-tasks",
     "/ai-governance", "/ai-regnskab", "/annual-reports", "/api-keys", "/archive-records",
@@ -510,7 +512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/einvoice-queue", "/file-objects", "/file-versions", "/fixed-assets", "/import-jobs2",
     "/industry-account-templates", "/integration-configs", "/integration-retry-queue",
     "/integration-runs", "/inventory-accounts", "/invoices", "/journal-entries",
-    "/migration-jobs", "/payment-runs", "/payroll-engine", "/payroll-entries",
+    "/integration-adapters", "/migration", "/migration-jobs", "/onboarding", "/operations", "/payment-runs", "/payroll-engine", "/payroll-entries",
     "/payroll-reports", "/period-closes",
     "/portal-documents", "/products", "/purchase-orders", "/receipts",
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
@@ -526,7 +528,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use("/api", (req, res, next) => {
     if (req.auth!.role !== "kunde") return next();
     const readOnlyPrefixes = ["/company", "/tasks", "/invoices", "/attachments", "/notifications"];
-    const selfServicePrefixes = ["/auth/me", "/auth/logout", "/auth/password", "/security", "/support-cases"];
+    const selfServicePrefixes = ["/auth/me", "/auth/logout", "/auth/password", "/security", "/support", "/support-cases"];
     const relativePath = req.path;
     if (req.method === "GET" && readOnlyPrefixes.some((prefix) => relativePath.startsWith(prefix))) return next();
     if (selfServicePrefixes.some((prefix) => relativePath.startsWith(prefix))) return next();
@@ -3850,11 +3852,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (req.auth?.user?.role === "platform_admin") {
       res.json(await storage.all("support_cases", undefined));
     } else {
-      res.json(await storage.all("support_cases", tenantId(req)));
+      const rows = await storage.all("support_cases", tenantId(req));
+      res.json(req.auth?.role === "kunde" ? rows.filter((row: any) => row.createdBy === req.auth?.user?.email) : rows);
     }
   }));
   app.post("/api/support-cases", requireAuth, h(async (req, res) => {
-    const data = validate(insertSupportCaseSchema, req.body);
+    const data = validate(insertSupportCaseSchema, { ...req.body, companyId: tenantId(req), status: "aaben", reply: null, replyStatus: "kladde" });
     const item = await storage.insert("support_cases", {
       ...data, companyId: tenantId(req),
       createdBy: req.auth?.user?.email || "",
@@ -3865,9 +3868,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
   app.patch("/api/support-cases/:id", requireAuth, h(async (req, res) => {
     const id = Number(req.params.id);
-    const updates = req.body as any;
+    const platformAdmin = req.auth?.user?.role === "platform_admin";
+    const tid = platformAdmin ? undefined : tenantId(req);
+    const current = await storage.get("support_cases", id, tid);
+    if (!current) return res.status(404).json({ error: "Supportsagen blev ikke fundet." });
+    if (req.auth?.role === "kunde" && current.createdBy !== req.auth?.user?.email) return res.status(403).json({ error: "Ingen adgang til supportsagen." });
+    const allowed = platformAdmin ? ["status", "priority", "reply", "replyStatus"] : ["status", "priority"];
+    const updates: any = {};
+    for (const field of allowed) if (req.body?.[field] !== undefined) updates[field] = req.body[field];
+    if (updates.status && !["aaben", "under_behandling", "lukket"].includes(String(updates.status))) return res.status(400).json({ error: "Ugyldig status." });
+    if (updates.priority && !["lav", "normal", "hoj", "høj", "akut"].includes(String(updates.priority))) return res.status(400).json({ error: "Ugyldig prioritet." });
     updates.updatedAt = new Date().toISOString();
-    const tid = req.auth?.user?.role === "platform_admin" ? undefined : tenantId(req);
     const item = await storage.update("support_cases", id, updates, tid);
     await audit(req, "opdater", "support_case", id, updates.status || "");
     res.json(item);
@@ -5769,6 +5780,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerExtendedRoutes8(app);
   registerExtendedRoutes9(app);
   registerComplianceRoutes(app);
+  registerMigrationRoutes(app);
+  registerReadinessRoutes(app);
   registerEInvoiceRoutes(app);
 
   return httpServer;

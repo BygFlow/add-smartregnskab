@@ -149,12 +149,13 @@ export function registerExtendedRoutes3(app: Express) {
     const settings = getGovernance(cid);
     if (!settings.enabled) return res.status(409).json({ error: "AI-styring er slået fra." });
     const actionType = String(req.body?.actionType ?? "").trim();
-    const recommendation = String(req.body?.recommendation ?? "").trim();
-    const reasoning = String(req.body?.reasoning ?? "").trim();
-    const evidence = Array.isArray(req.body?.evidence) ? req.body.evidence : [];
+    const recommendation = String(req.body?.recommendation ?? "").trim().slice(0, 4_000);
+    const reasoning = String(req.body?.reasoning ?? "").trim().slice(0, 8_000);
+    const evidence = Array.isArray(req.body?.evidence) ? req.body.evidence.map((item: unknown) => String(item).trim().slice(0, 1_000)).filter(Boolean).slice(0, 50) : [];
     const confidence = Math.min(1, Math.max(0, Number(req.body?.confidence ?? 0)));
     const riskLevel = String(req.body?.riskLevel ?? "lav").toLowerCase();
     if (!actionType || !recommendation || !reasoning) return res.status(400).json({ error: "Handling, anbefaling og begrundelse er påkrævet." });
+    if (!["lav", "middel", "høj", "hoej", "kritisk"].includes(riskLevel)) return res.status(400).json({ error: "Risikonniveauet er ugyldigt." });
     const requiresApproval = new Set<string>(JSON.parse(settings.approvalActions)).has(actionType)
       || ["høj", "hoej", "kritisk"].includes(riskLevel) || confidence < settings.minimumConfidence
       || (settings.requireEvidence && evidence.length === 0);

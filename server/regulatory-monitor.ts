@@ -9,6 +9,7 @@ const OFFICIAL_SOURCES = [
   { sourceKey: "dk-ikke-registrerede-systemer", name: "Erhvervsstyrelsen — Ikke-registrerede bogføringssystemer", url: "https://erhvervsstyrelsen.dk/ikke-registrerede-digitale-bogfoeringssystemer", jurisdiction: "DK" },
   { sourceKey: "dk-saft-standardkontoplan", name: "Erhvervsstyrelsen — SAF-T og standardkontoplan", url: "https://erhvervsstyrelsen.dk/standardkontoplan-saf-t", jurisdiction: "DK" },
   { sourceKey: "dk-nemhandel", name: "Erhvervsstyrelsen — NemHandel", url: "https://erhvervsstyrelsen.dk/nemhandel-faelles-digital-infrastruktur", jurisdiction: "DK/EU" },
+  { sourceKey: "dk-einvoice-regler-hoering-2026", name: "Erhvervsstyrelsen — Nye e-fakturakrav 2026", url: "https://erhvervsstyrelsen.dk/bekendtgoerelse-med-nye-krav-til-digitale-standard-bogfoeringssystemer-er-nu-i-hoering", jurisdiction: "DK/EU" },
   { sourceKey: "dk-bek-standard-systemer", name: "Retsinformation — Krav til digitale standardbogføringssystemer", url: "https://www.retsinformation.dk/eli/lta/2023/97", jurisdiction: "DK" },
   { sourceKey: "dk-bek-registrering", name: "Retsinformation — Registrering af standardbogføringssystemer", url: "https://www.retsinformation.dk/eli/lta/2023/98", jurisdiction: "DK" },
   { sourceKey: "dk-bek-ikke-registrerede", name: "Retsinformation — Krav til ikke-registrerede bogføringssystemer", url: "https://www.retsinformation.dk/eli/lta/2024/205", jurisdiction: "DK" },
