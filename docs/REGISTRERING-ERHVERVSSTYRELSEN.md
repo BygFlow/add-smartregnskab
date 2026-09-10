@@ -6,8 +6,8 @@ Status: teknisk forberedelse. Dokumentet er ikke en myndighedsgodkendelse.
 
 - Produkt: ADD SmartRegnskab
 - Produktionsadresse: https://app.addsmartregnskab.dk
-- Udbyder: ADD MultiService ApS
-- CVR: 44822539
+- Udbyder: ADD SmartDrift ApS
+- CVR: 46761898
 - Adresse: Lynæs Søpark 49, 3390 Hundested
 - Kontakt: regnskab@addsmartregnskab.dk
 - Versionsstyring: Git, automatiseret CI og versionsstyrede databasemigrationer

@@ -28,6 +28,9 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       ENCRYPTION_KEY: "test-only-key-material-that-is-at-least-thirty-two-characters",
       PLATFORM_ADMIN_EMAIL: "bootstrap@example.test",
       PLATFORM_ADMIN_PASSWORD: "A-strong-bootstrap-password-2026",
+      PLATFORM_COMPANY_NAME: "ADD SmartDrift ApS",
+      PLATFORM_COMPANY_CVR: "46761898",
+      PLATFORM_COMPANY_ADDRESS: "Lynæs Søpark 49, 3390 Hundested",
       APP_BASE_URL: base,
       ALLOWED_ORIGINS: base,
       EINVOICE_WEBHOOK_SECRET: "test-einvoice-webhook-secret",
@@ -80,6 +83,12 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(adminLogin.status, 200);
     const platformToken = (await adminLogin.json()).token;
     assert.ok(platformToken);
+    const platformCompanyResponse = await fetch(`${base}/api/company`, { headers: { Authorization: `Bearer ${platformToken}` } });
+    assert.equal(platformCompanyResponse.status, 200);
+    const platformCompany = await platformCompanyResponse.json();
+    assert.equal(platformCompany.name, "ADD SmartDrift ApS");
+    assert.equal(platformCompany.cvr, "46761898");
+    assert.equal(platformCompany.address, "Lynæs Søpark 49, 3390 Hundested");
 
     const plansResponse = await fetch(`${base}/api/plans`, { headers: { Authorization: `Bearer ${platformToken}` } });
     const plans = await plansResponse.json();

@@ -46,11 +46,11 @@ services:
       - key: PLATFORM_ADMIN_PASSWORD
         sync: false          # Mindst 12 tegn; opbevares som secret
       - key: PLATFORM_COMPANY_NAME
-        value: ADD Multiservice ApS
+        value: ADD SmartDrift ApS
       - key: PLATFORM_COMPANY_CVR
-        sync: false
+        value: "46761898"
       - key: PLATFORM_COMPANY_ADDRESS
-        sync: false
+        value: Lynæs Søpark 49, 3390 Hundested
       - key: PLATFORM_INVOICE_EMAIL
         value: regnskab@addsmartregnskab.dk
 

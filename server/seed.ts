@@ -173,9 +173,9 @@ export function seedDatabase() {
 
   // ADD SmartRegnskabs egen driftsenhed — huser platformadministratoren
   const cPlatform = db.insert(companies).values({
-    name: "ADD Multiservice ApS (platform)",
-    address: "Rentemestervej 62, 2400 København NV",
-    cvr: "44 55 66 77",
+    name: "ADD SmartDrift ApS",
+    address: "Lynæs Søpark 49, 3390 Hundested",
+    cvr: "46761898",
     phone: "+45 71 99 00 11",
     email: "hej@addsmartregnskab.dk",
     status: "aktiv",

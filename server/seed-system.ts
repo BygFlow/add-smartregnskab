@@ -1,6 +1,7 @@
 import { db } from "./storage";
 import { companies, plans, users } from "@shared/schema";
 import { hashPassword } from "./auth";
+import { eq } from "drizzle-orm";
 
 const DEFAULT_PLANS = [
   { name: "Start", slug: "start", description: "Bogføring, kontoplan, bilag og fakturering.", monthlyPrice: 199, pricePerEmployee: 0, maxEmployees: 3, maxCustomers: 100, features: ["regnskab", "fakturering", "bilag", "moms"], sortOrder: 1 },
@@ -18,6 +19,18 @@ export function seedSystemData(): void {
     });
   }
 
+  // Hold den systemejede platformskonto synkroniseret med den juridiske
+  // udbyder. Kundernes virksomhedsoplysninger berøres aldrig.
+  const platformIdentity = {
+    name: process.env.PLATFORM_COMPANY_NAME?.trim() || "ADD SmartDrift ApS",
+    cvr: process.env.PLATFORM_COMPANY_CVR?.trim() || "46761898",
+    address: process.env.PLATFORM_COMPANY_ADDRESS?.trim() || "Lynæs Søpark 49, 3390 Hundested",
+  };
+  const existingPlatform = db.select().from(companies).all().find((company) => company.kind === "platform");
+  if (existingPlatform) {
+    db.update(companies).set(platformIdentity).where(eq(companies.id, existingPlatform.id)).run();
+  }
+
   const email = process.env.PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.PLATFORM_ADMIN_PASSWORD;
   if (!email && !password) return;
@@ -28,7 +41,7 @@ export function seedSystemData(): void {
 
   db.transaction((tx) => {
     const company = tx.insert(companies).values({
-      name: "ADD SmartRegnskab (platform)",
+      ...platformIdentity,
       email,
       status: "aktiv",
       kind: "platform",

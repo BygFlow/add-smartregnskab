@@ -13,9 +13,9 @@ const requiredFiles = [
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
-const grep = spawnSync("git", ["grep", "-In", "SmartDrift", "--", ".", ":(exclude)migrations/meta/*", ":(exclude)scripts/release-readiness.mjs"], { encoding: "utf8" });
+const grep = spawnSync("git", ["grep", "-In", "SmartDrift Clean", "--", ".", ":(exclude)migrations/meta/*", ":(exclude)scripts/release-readiness.mjs"], { encoding: "utf8" });
 const trackedText = grep.status === 1 ? "" : String(grep.stdout || grep.stderr || "");
-add("brand-separation", trackedText.trim() === "", "code", trackedText.trim() || "Ingen SmartDrift-referencer i produktkoden.");
+add("brand-separation", trackedText.trim() === "", "code", trackedText.trim() || "Ingen SmartDrift Clean-referencer i produktkoden; SmartRegnskab er fortsat et separat produkt.");
 
 const productionEnv = [
   ["external-backup", ["S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]],

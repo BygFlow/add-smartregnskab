@@ -4,9 +4,9 @@ Status: teknisk og organisatorisk udkast til juridisk godkendelse.
 
 ## Roller og formål
 
-ADD MultiService ApS er databehandler for kundens brug af ADD SmartRegnskab,
+ADD SmartDrift ApS er databehandler for kundens brug af ADD SmartRegnskab,
 mens den enkelte kunde som udgangspunkt er dataansvarlig for oplysninger om
-egne medarbejdere, kunder og leverandører. ADD MultiService ApS er selv
+egne medarbejdere, kunder og leverandører. ADD SmartDrift ApS er selv
 dataansvarlig for konto-, abonnements-, support- og faktureringsoplysninger.
 
 Behandlingen omfatter drift af bogføring, fakturering, bilag, support,
@@ -47,4 +47,3 @@ eller sikkerhedsnøgler.
 - Risikoanalyse og vurdering af, om GPS- og AI-behandling kræver DPIA.
 - Underskrevne databehandleraftaler med alle underdatabehandlere.
 - Dokumentation af dataplacering og eventuelle overførselsgrundlag uden for EU/EØS.
-

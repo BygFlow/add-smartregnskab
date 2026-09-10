@@ -183,9 +183,9 @@ export async function platformInvoicePdf(
   const L = 48;
   const R = 547;
   const W = R - L;
-  const platformName = process.env.PLATFORM_COMPANY_NAME || "ADD Multiservice ApS";
-  const platformAddress = process.env.PLATFORM_COMPANY_ADDRESS || "";
-  const platformCvr = process.env.PLATFORM_COMPANY_CVR || "";
+  const platformName = process.env.PLATFORM_COMPANY_NAME || "ADD SmartDrift ApS";
+  const platformAddress = process.env.PLATFORM_COMPANY_ADDRESS || "Lynæs Søpark 49, 3390 Hundested";
+  const platformCvr = process.env.PLATFORM_COMPANY_CVR || "46761898";
   const platformInvoiceEmail = process.env.PLATFORM_INVOICE_EMAIL || "regnskab@addsmartregnskab.dk";
 
   doc.font("Helvetica-Bold").fontSize(17).fillColor(ACCENT).text("ADD SmartRegnskab", L, 48);
