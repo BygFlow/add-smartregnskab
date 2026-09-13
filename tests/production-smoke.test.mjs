@@ -118,6 +118,11 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       body: JSON.stringify({ name: "Assistent", email: "assistant@example.test", password: "A-strong-assistant-password", role: "assistent" }),
     });
     assert.equal(assistantResponse.status, 201);
+    const forbiddenRole = await fetch(`${base}/api/users`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Forkert rolle", email: "wrong-role@example.test", password: "A-strong-password-2026", role: "revisor" }),
+    });
+    assert.equal(forbiddenRole.status, 400);
     const assistantLogin = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -305,7 +310,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.6.0");
+    assert.equal(operations.version, "3.7.0");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {
@@ -313,8 +318,62 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       body: JSON.stringify({ name: "Isoleret ApS", adminName: "Anden leder", adminEmail: "second@example.test", adminPassword: "A-strong-second-password-2026", planId: plans[0].id, trialDays: 14 }),
     });
     assert.equal(companyTwoResponse.status, 201);
+    const companyTwoResult = await companyTwoResponse.json();
     const secondLogin = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "second@example.test", password: "A-strong-second-password-2026" }) });
     const secondToken = (await secondLogin.json()).token;
+
+    const professionalInvite = await fetch(`${base}/api/professional/invite`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "second@example.test", role: "revisor" }),
+    });
+    assert.equal(professionalInvite.status, 201);
+    const professionalClients = await fetch(`${base}/api/professional/clients`, { headers: { Authorization: `Bearer ${secondToken}` } });
+    assert.equal(professionalClients.status, 200);
+    assert.equal((await professionalClients.json()).clients.length, 2);
+    const switchToClient = await fetch(`${base}/api/professional/switch-company`, {
+      method: "POST", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId: companyResult.company.id }),
+    });
+    assert.equal(switchToClient.status, 200);
+    assert.equal((await fetch(`${base}/api/invoices`, { headers: { Authorization: `Bearer ${secondToken}` } })).status, 403, "MFA must be fail-closed for professionals");
+    const liveDb = new Database(join(temp, "smartregnskab.db"));
+    try { liveDb.prepare("UPDATE users SET two_factor_enabled = 1 WHERE email = ?").run("second@example.test"); } finally { liveDb.close(); }
+    assert.equal((await fetch(`${base}/api/invoices`, { headers: { Authorization: `Bearer ${secondToken}` } })).status, 200);
+    assert.equal((await fetch(`${base}/api/professional/team`, { headers: { Authorization: `Bearer ${secondToken}` } })).status, 403);
+    assert.equal((await fetch(`${base}/api/professional/invite`, {
+      method: "POST", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "unauthorized@example.test", role: "revisor" }),
+    })).status, 403);
+    assert.equal((await fetch(`${base}/api/invoices`, {
+      method: "POST", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" }, body: JSON.stringify({}),
+    })).status, 403, "auditor access must be read-only");
+    assert.equal((await fetch(`${base}/api/regnskabssystem/dashboard/${companyResult.company.id}`, { headers: { Authorization: `Bearer ${secondToken}` } })).status, 200);
+    assert.equal((await fetch(`${base}/api/regnskabssystem/dashboard/${companyTwoResult.company.id}`, { headers: { Authorization: `Bearer ${secondToken}` } })).status, 403);
+    const approvalCreate = await fetch(`${base}/api/professional/approvals`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Godkend smoke-moms", approvalType: "moms" }),
+    });
+    assert.equal(approvalCreate.status, 201);
+    const approval = await approvalCreate.json();
+    const selfApproval = await fetch(`${base}/api/professional/approvals/${approval.id}/decision`, {
+      method: "PATCH", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ decision: "approved" }),
+    });
+    assert.equal(selfApproval.status, 409);
+    const approvalDecision = await fetch(`${base}/api/professional/approvals/${approval.id}/decision`, {
+      method: "PATCH", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ decision: "approved" }),
+    });
+    assert.equal(approvalDecision.status, 200);
+    assert.equal((await approvalDecision.json()).status, "approved");
+    const repeatedDecision = await fetch(`${base}/api/professional/approvals/${approval.id}/decision`, {
+      method: "PATCH", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ decision: "rejected" }),
+    });
+    assert.equal(repeatedDecision.status, 409);
+    const switchHome = await fetch(`${base}/api/professional/switch-company`, {
+      method: "POST", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId: companyTwoResult.company.id }),
+    });
+    assert.equal(switchHome.status, 200);
+
     const secondCustomerResponse = await fetch(`${base}/api/customers`, { method: "POST", headers: { Authorization: `Bearer ${secondToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Hemmelig kunde" }) });
     assert.equal(secondCustomerResponse.status, 201);
     const secondCustomer = await secondCustomerResponse.json();

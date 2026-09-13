@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { randomBytes } from "crypto";
+import QRCode from "qrcode";
 import type { Server } from "node:http";
-import { storage } from "./storage";
+import { db, storage } from "./storage";
 import { registerExtendedRoutes } from "./extended-routes";
 import { registerExtendedRoutes2 } from "./extended-routes-2";
 import { registerExtendedRoutes3 } from "./extended-routes-3";
@@ -15,6 +16,7 @@ import { registerComplianceRoutes } from "./compliance-routes";
 import { registerMigrationRoutes } from "./migration-routes";
 import { registerReadinessRoutes } from "./readiness-routes";
 import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice-routes";
+import { registerProfessionalRoutes } from "./professional-routes";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
@@ -48,7 +50,7 @@ import {
   insertPaymentRunSchema,
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
-  insertCashflowProjectionSchema,
+  insertCashflowProjectionSchema, professionalMemberships,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
 type SafeParse<T> = {
@@ -56,7 +58,7 @@ type SafeParse<T> = {
 };
 import {
   hashPassword, verifyPassword, createSession, safeUser,
-  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, sessionStorageKey,
+  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, sessionStorageKey, professionalAccessGuard,
 } from "./auth";
 import {
   testConnection, syncPayroll, syncInvoices, credentialFields, API_PROVIDERS,
@@ -456,6 +458,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       customerId: payload.customerId ?? null,
       createdAt: nowIso(),
     } as any);
+    if (payload.professionalAccess === true) {
+      const now = nowIso();
+      await db.insert(professionalMemberships).values({
+        userId: user.id,
+        companyId: result.row.companyId,
+        professionalRole: payload.professionalRole ?? payload.role,
+        permissions: JSON.stringify(Array.isArray(payload.permissions) ? payload.permissions : []),
+        status: "active",
+        requiresTwoFactor: 1,
+        accessExpiresAt: payload.accessExpiresAt ?? null,
+        createdBy: payload.invitedBy ?? null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
     res.status(201).json({ ok: true, user: safeUser(user), message: "Din konto er oprettet. Log ind nu." });
   }));
 
@@ -498,6 +515,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerPublicEInvoiceRoutes(app);
 
   app.use("/api", requireAuth);
+  app.use("/api", professionalAccessGuard);
   const regnskabApiPrefixes = [
     "/auth", "/company", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
     "/accounting-category-rules", "/accounting-control-center", "/accounting-integrations",
@@ -516,7 +534,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/payroll-reports", "/period-closes",
     "/portal-documents", "/products", "/purchase-orders", "/receipts",
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
-    "/regulatory-changes", "/reminder-flow", "/reports", "/role-controls",
+    "/regulatory-changes", "/reminder-flow", "/reports", "/role-controls", "/professional",
     "/security-audit-events", "/suppliers", "/system-health-events", "/tax-deadlines", "/saft", "/external-backup",
     "/vat-periods", "/vat-reconciliations", "/vouchers", "/workflow-definitions",
     "/workflow-runs", "/year-end-closes",
@@ -560,7 +578,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const company = await storage.getCompany(a.companyId);
     const plan = await storage.getCompanyPlan(a.companyId);
     const subscription = await storage.getSubscriptionByCompany(a.companyId);
-    res.json({ user: safeUser(a.user), company, plan, subscription });
+    res.json({
+      user: { ...safeUser(a.user), companyId: a.companyId, homeCompanyId: a.user.companyId, role: a.role },
+      company, plan, subscription,
+      professional: a.professionalMembership ? { role: a.role, permissions: a.permissions } : null,
+    });
   }));
 
   app.post("/api/auth/logout", h(async (req, res) => {
@@ -612,6 +634,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/users", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     const raw = { ...req.body, companyId: cid };
+    const permittedRoles = req.auth!.isPlatformAdmin
+      ? ["leder", "holdleder", "assistent", "kunde", "platform_admin"]
+      : ["leder", "holdleder", "assistent", "kunde"];
+    if (!permittedRoles.includes(String(raw.role ?? "assistent"))) {
+      return res.status(400).json({ error: "Ugyldig rolle. Brug fagportalen til bogholder- og revisoradgang." });
+    }
     if (raw.role === "platform_admin" && req.auth!.user.role !== "platform_admin") {
       return res.status(403).json({ error: "Du kan ikke oprette en platformadministrator." });
     }
@@ -639,7 +667,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const patch: Record<string, unknown> = {};
     if (req.body.name !== undefined) patch.name = req.body.name;
-    if (req.body.role !== undefined && req.body.role !== "platform_admin") patch.role = req.body.role;
+    if (req.body.role !== undefined) {
+      const permittedRoles = ["leder", "holdleder", "assistent", "kunde"];
+      if (!permittedRoles.includes(String(req.body.role))) return res.status(400).json({ error: "Ugyldig rolle." });
+      patch.role = req.body.role;
+    }
     if (req.body.active !== undefined) patch.active = req.body.active ? 1 : 0;
     if (req.body.password) {
       if (String(req.body.password).length < 8) {
@@ -3044,6 +3076,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({
       secret,
       uri: totpUri(secret, a.user.email),
+      qrDataUrl: await QRCode.toDataURL(totpUri(secret, a.user.email), { width: 240, margin: 1 }),
       vejledning: "Scan koden i Google Authenticator, Microsoft Authenticator eller 1Password, og indtast derefter de seks cifre.",
     });
   }));
@@ -3096,6 +3129,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (await storage.getUserByEmail(email)) {
       return res.status(409).json({ error: "Der findes allerede en bruger med denne e-mailadresse." });
     }
+    const invitedRole = String(req.body?.role ?? "assistent");
+    if (!["leder", "holdleder", "assistent", "kunde"].includes(invitedRole)) {
+      return res.status(400).json({ error: "Ugyldig rolle. Brug fagportalen til bogholder- og revisoradgang." });
+    }
     const limit = await checkLimit(cid, "employees");
     if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
 
@@ -3103,7 +3140,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { token, expiresAt } = await issueToken("invitation", email, {
       companyId: cid,
       payload: {
-        role: req.body?.role ?? "assistent",
+        role: invitedRole,
         name: req.body?.name ?? null,
         employeeId: req.body?.employeeId ?? null,
         customerId: req.body?.customerId ?? null,
@@ -4718,8 +4755,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.get("/api/regnskabssystem/:companyId", h(async (req, res) => {
-    const cid = Number(req.params.companyId); const role = req.auth?.user?.role; const userId = req.auth?.user?.companyId;
-    if (role !== "platform_admin" && cid !== userId) return res.status(403).json({ error: "Ingen adgang." });
+    const cid = Number(req.params.companyId);
+    if (!req.auth!.isPlatformAdmin && cid !== tenantId(req)) return res.status(403).json({ error: "Ingen adgang." });
     const [company, accounts, entries, vatPeriods, lines] = await Promise.all([
       storage.getCompany(cid), storage.all("accounts", cid), storage.all("journal_entries", cid), storage.all("vat_periods", cid), storage.all("journal_lines", cid),
     ]);
@@ -4907,9 +4944,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   app.get("/api/regnskabssystem/dashboard/:companyId", h(async (req, res) => {
     const cid = Number(req.params.companyId);
-    const role = req.auth?.user?.role;
-    const userId = req.auth?.user?.companyId;
-    if (role !== "platform_admin" && cid !== userId) return res.status(403).json({ error: "Ingen adgang." });
+    if (!req.auth!.isPlatformAdmin && cid !== tenantId(req)) return res.status(403).json({ error: "Ingen adgang." });
     const [invoices, entries, vouchers, vatPeriods, taxDls, bankTx] = await Promise.all([
       storage.all("invoices", cid), storage.all("journal_entries", cid), storage.all("vouchers", cid),
       storage.all("vat_periods", cid), storage.all("tax_deadlines", cid), storage.all("bank_transactions", cid),
@@ -4929,9 +4964,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   app.get("/api/regnskabssystem/report/:companyId/:type", h(async (req, res) => {
     const cid = Number(req.params.companyId);
-    const role = req.auth?.user?.role;
-    const userId = req.auth?.user?.companyId;
-    if (role !== "platform_admin" && cid !== userId) return res.status(403).json({ error: "Ingen adgang." });
+    if (!req.auth!.isPlatformAdmin && cid !== tenantId(req)) return res.status(403).json({ error: "Ingen adgang." });
     const { type } = req.params;
     const [invoices, entries, lines, accounts, vouchers, vatPeriods] = await Promise.all([
       storage.all("invoices", cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
@@ -5783,6 +5816,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerMigrationRoutes(app);
   registerReadinessRoutes(app);
   registerEInvoiceRoutes(app);
+  registerProfessionalRoutes(app);
 
   return httpServer;
 }

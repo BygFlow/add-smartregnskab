@@ -2,6 +2,9 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual, randomUUID } from
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
+import { professionalMemberships } from "@shared/schema";
+import { db } from "./storage";
+import { and, eq } from "drizzle-orm";
 
 // ── Adgangskoder: scrypt med pr.-bruger salt ──
 // Format: scrypt$<salt-hex>$<hash-hex>. Bruger Node's indbyggede crypto,
@@ -40,9 +43,11 @@ export async function createSession(userId: number): Promise<string> {
   const token = `${randomUUID()}${randomBytes(16).toString("hex")}`;
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_DAYS * 86400_000);
+  const user = await storage.getUser(userId);
   await storage.createSession({
     token: sessionStorageKey(token),
     userId,
+    activeCompanyId: user?.companyId ?? null,
     createdAt: now.toISOString(),
     expiresAt: expires.toISOString(),
   });
@@ -58,7 +63,10 @@ export function safeUser(user: User) {
 export interface AuthContext {
   userId: number;
   companyId: number;
+  homeCompanyId: number;
   role: string;
+  professionalMembership: typeof professionalMemberships.$inferSelect | null;
+  permissions: string[];
   email: string;
   employeeId: number | null;
   isPlatformAdmin: boolean;
@@ -104,11 +112,34 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   const isPlatformAdmin = user.role === "platform_admin";
+  let activeCompanyId = session.activeCompanyId ?? user.companyId;
+  let professionalMembership: typeof professionalMemberships.$inferSelect | null = null;
+  if (!isPlatformAdmin && activeCompanyId !== user.companyId) {
+    professionalMembership = await db.select().from(professionalMemberships).where(and(
+      eq(professionalMemberships.userId, user.id),
+      eq(professionalMemberships.companyId, activeCompanyId),
+      eq(professionalMemberships.status, "active"),
+    )).get() ?? null;
+    if (!professionalMembership
+      || (professionalMembership.accessExpiresAt && new Date(professionalMembership.accessExpiresAt) <= new Date())) {
+      await storage.updateSessionCompany(storedToken, user.companyId);
+      activeCompanyId = user.companyId;
+      professionalMembership = null;
+    }
+  } else if (!isPlatformAdmin && ["bogholder", "revisor", "revisor_admin"].includes(user.role)) {
+    professionalMembership = await db.select().from(professionalMemberships).where(and(
+      eq(professionalMemberships.userId, user.id),
+      eq(professionalMemberships.companyId, activeCompanyId),
+      eq(professionalMemberships.status, "active"),
+    )).get() ?? null;
+  }
+  let permissions: string[] = [];
+  try { permissions = professionalMembership ? JSON.parse(professionalMembership.permissions) : []; } catch { permissions = []; }
 
   // Spærrede virksomheder mister adgang — men platformadmins kommer altid ind,
   // ellers kunne vi ikke genåbne en spærret konto.
   if (!isPlatformAdmin) {
-    const company = await storage.getCompany(user.companyId);
+    const company = await storage.getCompany(activeCompanyId);
     if (!company) return res.status(401).json({ error: "Virksomheden findes ikke." });
     if (company.status === "spaerret" || company.status === "opsagt") {
       return res.status(402).json({
@@ -120,8 +151,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   req.auth = {
     userId: user.id,
-    companyId: user.companyId,
-    role: user.role,
+    companyId: activeCompanyId,
+    homeCompanyId: user.companyId,
+    role: professionalMembership?.professionalRole ?? user.role,
+    professionalMembership,
+    permissions,
     email: user.email,
     employeeId: user.employeeId ?? null,
     isPlatformAdmin,
@@ -149,7 +183,9 @@ export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) return res.status(401).json({ error: "Ikke logget ind." });
     if (req.auth.isPlatformAdmin) return next();
-    if (!roles.includes(req.auth.role)) {
+    const professionalRole = ["bogholder", "revisor", "revisor_admin"].includes(req.auth.role);
+    const accountingRoleAccepted = professionalRole && roles.some((role) => role === "leder" || role === "holdleder");
+    if (!roles.includes(req.auth.role) && !accountingRoleAccepted) {
       return res.status(403).json({ error: "Du har ikke rettigheder til denne handling." });
     }
     next();
@@ -159,6 +195,40 @@ export function requireRole(...roles: string[]) {
 export function requirePlatformAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.auth?.isPlatformAdmin) {
     return res.status(403).json({ error: "Kun ADD SmartRegnskab-administratorer har adgang hertil." });
+  }
+  next();
+}
+
+const PROFESSIONAL_ROLES = ["bogholder", "revisor", "revisor_admin"];
+
+/** Fail-closed adgangsvagt for eksterne fagbrugere. */
+export function professionalAccessGuard(req: Request, res: Response, next: NextFunction) {
+  const auth = req.auth;
+  if (!auth || !PROFESSIONAL_ROLES.includes(auth.role)) return next();
+  if (!auth.professionalMembership) {
+    const recoveryPaths = ["/auth/me", "/auth/logout", "/security", "/professional/clients", "/professional/switch-company"];
+    if (recoveryPaths.some((prefix) => req.path.startsWith(prefix))) return next();
+    return res.status(403).json({ error: "Din faglige klientadgang er ikke aktiv.", code: "fagadgang_mangler" });
+  }
+  if (auth.professionalMembership.requiresTwoFactor === 1 && auth.user.twoFactorEnabled !== 1) {
+    const allowed = ["/auth/me", "/auth/logout", "/security", "/professional/clients", "/professional/switch-company"];
+    if (!allowed.some((prefix) => req.path.startsWith(prefix))) {
+      return res.status(403).json({ error: "Tofaktorgodkendelse skal aktiveres, før klientdata kan åbnes.", code: "mfa_kraeves" });
+    }
+  }
+  const permissions = new Set(auth.permissions);
+  const privileged = ["/users", "/platform", "/subscription", "/api-keys", "/backup"];
+  if (privileged.some((prefix) => req.path.startsWith(prefix)) && !permissions.has("users:manage")) {
+    return res.status(403).json({ error: "Fagprofilen må ikke administrere virksomhedens brugere eller platform." });
+  }
+  if (req.method === "DELETE" && !permissions.has("accounting:delete")) {
+    return res.status(403).json({ error: "Sletning kræver en særskilt klienttilladelse." });
+  }
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)
+      && !req.path.startsWith("/professional")
+      && !req.path.startsWith("/auditor-portal")
+      && !permissions.has("accounting:write")) {
+    return res.status(403).json({ error: "Denne fagprofil har skrivebeskyttet adgang." });
   }
   next();
 }

@@ -12,6 +12,7 @@ const requiredFiles = [
   "docs/REGISTRERINGS-CHECKLISTE.md", "docs/PILOT-OG-ACCEPTTEST.md",
   "docs/ONBOARDING-OG-OPSÆTNING.md", "docs/SUPPORTCENTER.md", "docs/PRISER-OG-PAKKER.md",
   "docs/INTEGRATIONSADAPTERE.md", "docs/SIKKERHEDSREVIEW-3.6.0.md", "docs/LOVSTATUS-2026-09-10.md",
+  "docs/FAGPORTAL-3.7.0.md", "server/professional-routes.ts",
   "server/saft.ts", "server/backup-service.ts", "server/einvoice.ts", "server/einvoice-routes.ts",
   "server/import-adapters.ts", "server/migration-routes.ts", "server/readiness-routes.ts",
 ];

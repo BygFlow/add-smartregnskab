@@ -104,8 +104,9 @@ export interface IStorage {
   updateCompany(id: number, data: Partial<InsertCompany>): Promise<Company | undefined>;
 
   // Sessions
-  createSession(data: { token: string; userId: number; createdAt: string; expiresAt: string }): Promise<Session>;
+  createSession(data: { token: string; userId: number; activeCompanyId?: number | null; createdAt: string; expiresAt: string }): Promise<Session>;
   getSession(token: string): Promise<Session | undefined>;
+  updateSessionCompany(token: string, companyId: number): Promise<Session | undefined>;
   deleteSession(token: string): Promise<boolean>;
   deleteUserSessions(userId: number): Promise<boolean>;
 
@@ -244,11 +245,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Sessions ──
-  async createSession(data: { token: string; userId: number; createdAt: string; expiresAt: string }): Promise<Session> {
+  async createSession(data: { token: string; userId: number; activeCompanyId?: number | null; createdAt: string; expiresAt: string }): Promise<Session> {
     return db.insert(sessions).values(data).returning().get();
   }
   async getSession(token: string): Promise<Session | undefined> {
     return db.select().from(sessions).where(eq(sessions.token, token)).get();
+  }
+  async updateSessionCompany(token: string, companyId: number): Promise<Session | undefined> {
+    return db.update(sessions).set({ activeCompanyId: companyId }).where(eq(sessions.token, token)).returning().get();
   }
   async deleteSession(token: string): Promise<boolean> {
     return db.delete(sessions).where(eq(sessions.token, token)).run().changes > 0;

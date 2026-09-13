@@ -9,6 +9,7 @@ import { queryClient } from "@/lib/queryClient";
 import RegnskabLogin from "@/pages/regnskab-login";
 import { RegnskabsPlatformShell } from "@/pages/regnskabs-shell";
 import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig";
+import Fagportal from "@/pages/regnskab-tabs/fagportal";
 
 function useRouteLocation(): [string, (to: string, options?: { replace?: boolean }) => void] {
   const [location, navigate] = useHashLocation();
@@ -42,6 +43,10 @@ function Root() {
         </section>
       </main>
     );
+  }
+
+  if (["bogholder", "revisor", "revisor_admin"].includes(user.role) && user.twoFactorEnabled !== 1) {
+    return <main className="min-h-screen bg-background p-6"><Fagportal /></main>;
   }
 
   return (

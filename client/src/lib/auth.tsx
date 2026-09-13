@@ -12,6 +12,8 @@ export type SessionUser = {
   employeeId: number | null;
   customerId: number | null;
   active: number;
+  twoFactorEnabled: number;
+  homeCompanyId?: number;
 };
 
 type AuthState = {
@@ -28,7 +30,7 @@ type AuthContextValue = AuthState & {
   isPlatformAdmin: boolean;
   /** Det firma, brugeren arbejder i. Kun platformadmins kan skifte væk fra deres eget. */
   companyId: number;
-  switchCompany: (id: number) => void;
+  switchCompany: (id: number) => Promise<void>;
   login: (email: string, password: string, code?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -108,10 +110,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isPlatformAdmin = state.user?.role === "platform_admin";
   const hasAI = isPlatformAdmin || ((state.company as any)?.aiEnabled === 1);
 
-  const switchCompany = useCallback((id: number) => {
-    setViewCompanyId(id);
+  const switchCompany = useCallback(async (id: number) => {
+    if (isPlatformAdmin) {
+      setViewCompanyId(id);
+      queryClient.clear();
+      return;
+    }
+    await apiRequest("POST", "/api/professional/switch-company", { companyId: id });
     queryClient.clear();
-  }, []);
+    const res = await apiRequest("GET", "/api/auth/me");
+    const data = await res.json();
+    setState({ user: data.user, company: data.company ?? null, plan: data.plan ?? null, subscription: data.subscription ?? null });
+  }, [isPlatformAdmin]);
 
   const value = useMemo<AuthContextValue>(() => ({
     ...state,

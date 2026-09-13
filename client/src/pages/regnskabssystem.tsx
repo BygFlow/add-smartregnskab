@@ -134,6 +134,7 @@ const FasteFakturaer = lazy(() => import("@/pages/regnskab-tabs/faste-fakturaer"
 const Kontrolcenter = lazy(() => import("@/pages/regnskab-tabs/kontrolcenter"));
 const AiStyring = lazy(() => import("@/pages/regnskab-tabs/ai-styring"));
 const Driftsklarhed = lazy(() => import("@/pages/regnskab-tabs/driftsklarhed"));
+const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
 
 /* ---------- typer ---------- */
 
@@ -5603,6 +5604,9 @@ export default function RegnskabssystemPage(props: any = {}) {
               </TabsContent>
 
               {/* ── Nye SmartRegnskab tabs ── */}
+              <TabsContent value="fagportal" className="space-y-4">
+                <Fagportal />
+              </TabsContent>
               <TabsContent value="bank_integrationer" className="space-y-4">
                 <BankIntegrationer companyId={effectiveCompanyId} />
               </TabsContent>

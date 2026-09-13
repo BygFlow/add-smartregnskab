@@ -1,5 +1,16 @@
 # Ændringslog
 
+## 3.7.0 — 2026-09-13
+
+- Ny flerklientportal for bogholdere, revisorer og revisionsadministratorer.
+- Ét login kan skifte sikkert mellem klientvirksomheder via servervaliderede medlemskaber.
+- Obligatorisk tofaktorgodkendelse, udløb, suspension og tilbagekaldelse af fagadgang.
+- Serverhåndhævede læse-, skrive-, slette-, godkendelses- og administratorrettigheder.
+- Fire-øjne-godkendelser for bogføring, moms, betaling og årsafslutning.
+- Beskyttelse mod selv-godkendelse og adgang på tværs af virksomheder.
+- Sikker invitation af både nye og eksisterende fagbrugere.
+- Android version 3.7.0 (versionCode 11).
+
 ## 3.6.0 — 2026-09-10
 
 - Ny driftsklarheds- og onboardingkontrol med målbare trin.

@@ -29,6 +29,9 @@ const ROLE_LABELS: Record<string, string> = {
   holdleder: "Holdleder",
   assistent: "Medarbejder",
   kunde: "Kundeadgang",
+  bogholder: "Bogholder",
+  revisor: "Revisor",
+  revisor_admin: "Revisionsadministrator",
 };
 
 function tokenFromHash() {

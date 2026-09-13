@@ -17,7 +17,7 @@
  *   inspections.customer_visible
  */
 
-import { boolean, doublePrecision, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import type * as z from "zod/mini";
 
@@ -76,11 +76,47 @@ export const users = pgTable("users", {
 export const sessions = pgTable("sessions", {
   token: text("token").primaryKey(),
   userId: integer("user_id").notNull(),
+  activeCompanyId: integer("active_company_id"),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
 
 export type Session = typeof sessions.$inferSelect;
+
+export const professionalMemberships = pgTable("professional_memberships", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  companyId: integer("company_id").notNull(),
+  professionalRole: text("professional_role").notNull(),
+  permissions: text("permissions").notNull().default("[]"),
+  status: text("status").notNull().default("active"),
+  requiresTwoFactor: boolean("requires_two_factor").notNull().default(true),
+  accessExpiresAt: text("access_expires_at"),
+  createdBy: integer("created_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({
+  userCompanyUnique: uniqueIndex("professional_membership_user_company_unique").on(table.userId, table.companyId),
+}));
+
+export const professionalApprovals = pgTable("professional_approvals", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  requestedBy: integer("requested_by").notNull(),
+  assignedTo: integer("assigned_to"),
+  approvalType: text("approval_type").notNull(),
+  resourceType: text("resource_type"),
+  resourceId: text("resource_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  decisionNote: text("decision_note"),
+  dueDate: text("due_date"),
+  decidedBy: integer("decided_by"),
+  decidedAt: text("decided_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;

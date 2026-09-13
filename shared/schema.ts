@@ -86,11 +86,54 @@ export const users = sqliteTable("users", {
 export const sessions = sqliteTable("sessions", {
   token: text("token").primaryKey(),
   userId: integer("user_id").notNull(),
+  activeCompanyId: integer("active_company_id"),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
 
 export type Session = typeof sessions.$inferSelect;
+
+// Eksterne bogholdere og revisorer kan arbejde i flere klientvirksomheder med
+// ét login. Rettighederne gemmes pr. klient og kontrolleres på serveren.
+export const professionalMemberships = sqliteTable("professional_memberships", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  companyId: integer("company_id").notNull(),
+  professionalRole: text("professional_role").notNull(), // bogholder, revisor, revisor_admin
+  permissions: text("permissions").notNull().default("[]"),
+  status: text("status").notNull().default("active"), // pending, active, suspended, revoked
+  requiresTwoFactor: integer("requires_two_factor").notNull().default(1),
+  accessExpiresAt: text("access_expires_at"),
+  createdBy: integer("created_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({
+  userCompanyUnique: uniqueIndex("professional_membership_user_company_unique").on(table.userId, table.companyId),
+}));
+
+export const professionalApprovals = sqliteTable("professional_approvals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  requestedBy: integer("requested_by").notNull(),
+  assignedTo: integer("assigned_to"),
+  approvalType: text("approval_type").notNull(),
+  resourceType: text("resource_type"),
+  resourceId: text("resource_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"), // pending, approved, rejected, cancelled
+  decisionNote: text("decision_note"),
+  dueDate: text("due_date"),
+  decidedBy: integer("decided_by"),
+  decidedAt: text("decided_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertProfessionalMembershipSchema = createInsertSchema(professionalMemberships).omit({ id: true });
+export const insertProfessionalApprovalSchema = createInsertSchema(professionalApprovals).omit({ id: true });
+export type ProfessionalMembership = typeof professionalMemberships.$inferSelect;
+export type ProfessionalApproval = typeof professionalApprovals.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
