@@ -166,6 +166,21 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const adaptersResponse = await fetch(`${base}/api/integration-adapters/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(adaptersResponse.status, 200);
     assert.ok((await adaptersResponse.json()).adapters.some((item) => item.id === "nemhandel"));
+    const aiiaStatusResponse = await fetch(`${base}/api/bank/aiia/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(aiiaStatusResponse.status, 200);
+    const aiiaStatus = await aiiaStatusResponse.json();
+    assert.equal(aiiaStatus.configured, false);
+    assert.equal(aiiaStatus.connected, false);
+    const blockedAiiaConnect = await fetch(`${base}/api/bank/aiia/connect`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: "{}" });
+    assert.equal(blockedAiiaConnect.status, 503);
+    const paymentStatusResponse = await fetch(`${base}/api/payment/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(paymentStatusResponse.status, 200);
+    const paymentStatus = await paymentStatusResponse.json();
+    assert.ok(paymentStatus.providers.some((provider) => provider.id === "quickpay" && provider.configured === false));
+    const blockedQuickpaySetup = await fetch(`${base}/api/payment/setup/quickpay`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: "{}" });
+    assert.equal(blockedQuickpaySetup.status, 503);
+    const unsignedQuickpayCallback = await fetch(`${base}/api/webhooks/quickpay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: 123, type: "Payment", accepted: true, state: "processed" }) });
+    assert.equal(unsignedQuickpayCallback.status, 400);
 
     const importContent = "Leverandørnavn;CVR;Email\nSmoke Leverandør ApS;11223344;invoice@supplier.example";
     const importPreviewResponse = await fetch(`${base}/api/migration/preview`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ source: "economic", entity: "suppliers", content: importContent }) });
@@ -310,7 +325,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.7.0");
+    assert.equal(operations.version, "3.8.0");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {
@@ -417,6 +432,10 @@ test("production migration script backs up and applies checked-in migrations", a
     try {
       const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'companies'").get();
       assert.equal(row?.name, "companies");
+      const columns = migrated.prepare("PRAGMA table_info(bank_transactions)").all().map((column) => column.name);
+      assert.ok(columns.includes("external_id"));
+      assert.ok(columns.includes("account_ref"));
+      assert.ok(columns.includes("provider"));
     } finally {
       migrated.close();
     }

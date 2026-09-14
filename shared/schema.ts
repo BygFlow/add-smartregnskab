@@ -524,8 +524,8 @@ export type AuditLog = typeof auditLogs.$inferSelect;
 export const paymentMethods = sqliteTable("payment_methods", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull(),
-  provider: text("provider").notNull(), // stripe, mobilepay, betalingsservice
-  providerRef: text("provider_ref").notNull(), // fx Stripe payment_method-id
+  provider: text("provider").notNull(), // quickpay, stripe, mobilepay, betalingsservice
+  providerRef: text("provider_ref").notNull(), // fx QuickPay subscription-id
   brand: text("brand"), // visa, mastercard, mobilepay
   last4: text("last4"),
   expMonth: integer("exp_month"),
@@ -546,7 +546,7 @@ export const payments = sqliteTable("payments", {
   platformInvoiceId: integer("platform_invoice_id"),
   paymentMethodId: integer("payment_method_id"),
   provider: text("provider").notNull(),
-  providerRef: text("provider_ref"), // fx Stripe payment_intent-id
+  providerRef: text("provider_ref"), // fx QuickPay payment-id
   amount: real("amount").notNull(),
   currency: text("currency").notNull().default("DKK"),
   status: text("status").notNull().default("afventer"), // afventer, gennemfoert, fejlet, refunderet, simuleret
@@ -1410,6 +1410,9 @@ export const bankTransactions = sqliteTable("bank_transactions", {
   description: text("description"),
   amount: real("amount").notNull(),
   balance: real("balance").default(0),
+  provider: text("provider"),
+  accountRef: text("account_ref"),
+  externalId: text("external_id"),
   matchedType: text("matched_type"), // invoice, voucher, journal, none
   matchedId: integer("matched_id"),
   status: text("status").notNull().default("afventer"), // afventer, matchet, ignoreret
@@ -1884,7 +1887,7 @@ export const bankIntegrations = sqliteTable("bank_integrations", {
   displayName: text("display_name").notNull(),
   status: text("status").notNull().default("afventer"), // afventer, forbundet, afbrudt, fejl
   lastSync: text("last_sync"),
-  config: text("config"), // JSON
+  config: text("config"), // Krypteret provider-session; må aldrig sendes til klienten
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
 });

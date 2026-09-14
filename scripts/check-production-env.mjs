@@ -16,8 +16,13 @@ const REQUIRED = [
 ];
 
 const PAYMENT = [
-  { key: "STRIPE_SECRET_KEY", label: "Stripe secret key", hint: "sk_live_..." },
-  { key: "STRIPE_WEBHOOK_SECRET", label: "Stripe webhook secret", hint: "whsec_..." },
+  { key: "QUICKPAY_API_KEY", label: "QuickPay API key" },
+  { key: "QUICKPAY_PRIVATE_KEY", label: "QuickPay private key" },
+];
+
+const BANKDATA = [
+  { key: "AIIA_CLIENT_ID", label: "AiiA client-id" },
+  { key: "AIIA_CLIENT_SECRET", label: "AiiA client-secret" },
 ];
 
 const EMAIL = [
@@ -62,7 +67,8 @@ function invalid(message) {
 console.log("ADD SmartRegnskab — miljøtjek\n");
 
 check(REQUIRED, "Kritisk (skal være sat)");
-check(PAYMENT, "Betaling (Stripe)");
+check(PAYMENT, "Betaling (QuickPay)");
+check(BANKDATA, "Bankdata (AiiA)");
 check(EMAIL, "Email (Resend)");
 check(OPTIONAL, "Valgfrit");
 
@@ -75,7 +81,7 @@ try {
 } catch {
   invalid("APP_BASE_URL er ikke en gyldig URL.");
 }
-for (const group of [PAYMENT, EMAIL]) {
+for (const group of [PAYMENT, BANKDATA, EMAIL]) {
   const count = group.filter((item) => process.env[item.key]).length;
   if (count > 0 && count < group.length) invalid(`${group.map((item) => item.key).join(" + ")} skal sættes samlet.`);
 }

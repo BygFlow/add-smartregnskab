@@ -280,9 +280,12 @@ export function registerExtendedRoutes(app: Express) {
 
   // ── Bank/SKAT/NemHandel integrationer ──
   const biFields = ["type", "displayName", "status", "lastSync", "config", "notes"];
-  app.get("/api/bank-integrations", h(async (req, res) => { res.json(await storage.all("bank_integrations", tenantId(req))); }));
+  app.get("/api/bank-integrations", h(async (req, res) => {
+    const rows = await storage.all("bank_integrations", tenantId(req));
+    res.json(rows.map(({ config: _secret, ...row }: any) => ({ ...row, configured: Boolean(_secret) })));
+  }));
   app.post("/api/bank-integrations", h(async (req, res) => {
-    const data = validate(insertBankIntegrationSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
+    const data = validate(insertBankIntegrationSchema, { ...req.body, config: null, companyId: tenantId(req), createdAt: nowIso() });
     res.status(201).json(await storage.insert("bank_integrations", data));
   }));
   app.patch("/api/bank-integrations/:id", h(async (req, res) => {

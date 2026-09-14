@@ -311,13 +311,13 @@ export async function disableTwoFactor(userId: number): Promise<boolean> {
 
 /** Udsteder et kryptografisk stærkt engangstoken til tilmelding eller kodeord. */
 export async function issueToken(
-  kind: "verificer_email" | "nulstil_kode" | "invitation",
+  kind: "verificer_email" | "nulstil_kode" | "invitation" | "aiia_oauth",
   email: string,
   opts: TokenIndstillinger = {},
 ): Promise<{ token: string; expiresAt: string }> {
   const normaliseretEmail = normaliserEmail(email);
   const bruger = opts.userId === undefined ? await storage.getUserByEmail(normaliseretEmail) : undefined;
-  const levetidMs = kind === "nulstil_kode" ? 60 * 60_000 : 24 * 60 * 60_000;
+  const levetidMs = kind === "aiia_oauth" ? 10 * 60_000 : kind === "nulstil_kode" ? 60 * 60_000 : 24 * 60 * 60_000;
   const expiresAt = new Date(Date.now() + levetidMs).toISOString();
   const token = randomBytes(32).toString("hex");
 
@@ -339,7 +339,7 @@ export async function issueToken(
 /** Validerer og forbruger et token. Udløbne og brugte tokens kan aldrig genbruges. */
 export async function consumeToken(
   token: string,
-  kind: "verificer_email" | "nulstil_kode" | "invitation",
+  kind: "verificer_email" | "nulstil_kode" | "invitation" | "aiia_oauth",
 ): Promise<{ ok: boolean; error?: string; row?: any }> {
   const række = await storage.getAuthToken(token);
   if (!række) return { ok: false, error: "Tokenet findes ikke." };

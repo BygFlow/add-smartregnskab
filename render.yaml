@@ -58,11 +58,25 @@ services:
       - key: ENCRYPTION_KEY
         sync: false          # Sæt til en 64-char hex streng
 
-      # ── Stripe (betalinger) ──
-      - key: STRIPE_SECRET_KEY
-        sync: false          # sk_test_... eller sk_live_...
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false          # whsec_... fra Stripe dashboard
+      # ── QuickPay (abonnementer og betalinger) ──
+      - key: QUICKPAY_API_KEY
+        sync: false
+      - key: QUICKPAY_PRIVATE_KEY
+        sync: false
+      - key: QUICKPAY_SETUP_AMOUNT_ORE
+        value: "0"
+
+      # ── AiiA / Mastercard Open Banking ──
+      - key: AIIA_CLIENT_ID
+        sync: false
+      - key: AIIA_CLIENT_SECRET
+        sync: false
+      - key: AIIA_BASE_URL
+        value: https://api.aiia.eu
+      - key: AIIA_REDIRECT_URI
+        value: https://app.addsmartregnskab.dk/api/bank/aiia/callback
+      - key: AIIA_SCOPES
+        value: accounts offline_access
 
       # ── Email (Resend) ──
       - key: RESEND_API_KEY

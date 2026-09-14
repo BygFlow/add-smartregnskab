@@ -6,6 +6,7 @@ import { runDunning, renewSubscriptions } from "./payments";
 import { applyRetention } from "./gdpr";
 import { monitorRegulatorySources } from "./regulatory-monitor";
 import { createExternalBackup, externalBackupConfigured } from "./backup-service";
+import { syncAllAiia } from "./aiia";
 
 /**
  * Automatiske job.
@@ -309,6 +310,18 @@ export async function jobRegulatoryMonitor(): Promise<JobResult> {
 // ══════════════════════════════════════════════════
 
 const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Promise<JobResult> }> = {
+  aiia_bank_sync: {
+    label: "Hent nye bankposter fra AiiA",
+    everyMinutes: 15,
+    run: async () => {
+      const result = await syncAllAiia();
+      return {
+        job: "aiia_bank_sync",
+        affected: result.imported,
+        detail: `${result.imported} bankposter importeret for ${result.companies} virksomheder; ${result.failed} synkroniseringer fejlede.`,
+      };
+    },
+  },
   regelovervaagning: { label: "Kontrollér officielle lov- og regelkilder", everyMinutes: 60 * 24, run: jobRegulatoryMonitor },
   ekstern_backup: {
     label: "Opret og verificér krypteret ekstern backup",

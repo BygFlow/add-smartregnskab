@@ -35,7 +35,7 @@ migrering, backup, login, roller og centrale regnskabsfunktioner.
 
 `render.yaml` beskriver en separat Render-tjeneste med persistent disk. Før
 deploy skal alle værdier markeret `sync: false` sættes i Render. Eksterne
-tjenester som Stripe, Resend, MobilePay og S3 aktiveres først, når gyldige
+tjenester som QuickPay, AiiA, Resend, MobilePay og S3 aktiveres først, når gyldige
 nøgler er tilføjet.
 
 SAF-T 2.1 kan importeres og eksporteres fra menupunktet `SAF-T 2.1`. Eksporten

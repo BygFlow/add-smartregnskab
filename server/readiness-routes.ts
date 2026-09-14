@@ -48,6 +48,8 @@ export function registerReadinessRoutes(app: Express) {
       { id: "nemhandel", name: "NemHandel/Peppol", mode: "API", configured: electronic.configured && electronic.validatorConfigured && electronic.inboundConfigured },
       { id: "smtp", name: "Simply.com mail", mode: "SMTP", configured: emailConfigured() },
       { id: "s3", name: "Ekstern backup", mode: "S3", configured: externalBackupConfigured() },
+      { id: "aiia", name: "AiiA / Mastercard Open Banking", mode: "OAuth 2.0", configured: configured("AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET") },
+      { id: "quickpay", name: "QuickPay", mode: "API v10", configured: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") },
       { id: "stripe", name: "Stripe", mode: "API", configured: configured("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET") },
     ] });
   }));
@@ -61,10 +63,11 @@ export function registerReadinessRoutes(app: Express) {
       { id: "email", name: "Udgående mail", status: emailConfigured() ? "ok" : "warning", message: emailConfigured() ? "SMTP/afsender er konfigureret." : "Mailnøgler mangler." },
       { id: "backup", name: "Ekstern backup", status: externalBackupConfigured() ? "ok" : "warning", message: externalBackupConfigured() ? "S3-adapter er konfigureret." : "S3-adapter kræver produktionsnøgler." },
       { id: "einvoice", name: "NemHandel/Peppol", status: electronic.configured && electronic.validatorConfigured && electronic.inboundConfigured ? "ok" : "warning", message: electronic.configured ? "Afsendelsesadapter er konfigureret; kontrollér validator og inbound-webhook." : "Access point-nøgler mangler." },
-      { id: "payments", name: "Betalinger", status: configured("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET") ? "ok" : "warning", message: configured("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET") ? "Stripe og webhook er konfigureret." : "Betalingsnøgler mangler." },
+      { id: "bankdata", name: "Automatisk bankdata", status: configured("AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET") ? "ok" : "warning", message: configured("AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET") ? "AiiA OAuth er konfigureret." : "AiiA-produktionsnøgler mangler." },
+      { id: "payments", name: "Betalinger", status: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") ? "ok" : "warning", message: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") ? "QuickPay API og callbacksignatur er konfigureret." : "QuickPay-produktionsnøgler mangler." },
       { id: "security", name: "Sikkerhedsnøgler", status: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "ok" : "error", message: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "Session og kryptering bruger produktionsnøgler." : "Kritiske sikkerhedsnøgler mangler." },
     ];
     const blocking = services.filter((service) => service.status === "error");
-    res.json({ generatedAt: new Date().toISOString(), version: "3.7.0", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
+    res.json({ generatedAt: new Date().toISOString(), version: "3.8.0", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
   }));
 }

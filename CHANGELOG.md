@@ -1,5 +1,15 @@
 # Ændringslog
 
+## 3.8.0 — 2026-09-14
+
+- AiiA/Mastercard Open Banking OAuth 2.0-flow med engangs-state og udtrykkeligt banksamtykke.
+- Krypteret opbevaring og automatisk fornyelse af AiiA-tokens.
+- Automatisk import af bogførte DKK-bankposter hvert 15. minut med ekstern-id og dubletbeskyttelse.
+- QuickPay API v10 som primær abonnementsbetaling med betalingslink, tilbagevendende opkrævning og refundering.
+- QuickPay-callback valideres med HMAC-SHA256 over den rå request body og behandles idempotent.
+- Driftsklarhed, miljøskabelon, Render-konfiguration og bankintegrationens brugerflade er opdateret.
+- Android version 3.8.0 (versionCode 12).
+
 ## 3.7.0 — 2026-09-13
 
 - Ny flerklientportal for bogholdere, revisorer og revisionsadministratorer.

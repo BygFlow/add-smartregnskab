@@ -43,6 +43,13 @@
       "when": 1789280675256,
       "tag": "0005_silent_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789369200000,
+      "tag": "0006_aiia_quickpay",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ const requiredFiles = [
   "docs/ONBOARDING-OG-OPSÆTNING.md", "docs/SUPPORTCENTER.md", "docs/PRISER-OG-PAKKER.md",
   "docs/INTEGRATIONSADAPTERE.md", "docs/SIKKERHEDSREVIEW-3.6.0.md", "docs/LOVSTATUS-2026-09-10.md",
   "docs/FAGPORTAL-3.7.0.md", "server/professional-routes.ts",
+  "docs/AIIA-QUICKPAY-DRIFT.md", "server/aiia.ts", "server/payments.ts",
   "server/saft.ts", "server/backup-service.ts", "server/einvoice.ts", "server/einvoice-routes.ts",
   "server/import-adapters.ts", "server/migration-routes.ts", "server/readiness-routes.ts",
 ];
@@ -27,7 +28,8 @@ const productionEnv = [
   ["einvoice-access-point", ["EINVOICE_PROVIDER_URL", "EINVOICE_PROVIDER_API_KEY"]],
   ["einvoice-validator", ["EINVOICE_VALIDATOR_URL"]],
   ["einvoice-inbound", ["EINVOICE_WEBHOOK_SECRET"]],
-  ["subscription-payments", ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]],
+  ["subscription-payments", ["QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY"]],
+  ["automatic-bankdata", ["AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET"]],
 ];
 for (const [id, names] of productionEnv) {
   const missing = names.filter((name) => !process.env[name]);

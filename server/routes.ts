@@ -17,6 +17,7 @@ import { registerMigrationRoutes } from "./migration-routes";
 import { registerReadinessRoutes } from "./readiness-routes";
 import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice-routes";
 import { registerProfessionalRoutes } from "./professional-routes";
+import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
@@ -81,7 +82,7 @@ import {
   issueToken, consumeToken, passwordStrength, resetPassword,
 } from "./security";
 import {
-  paymentProviderStatus, chargeInvoice, runDunning, renewSubscriptions, handleWebhook,
+  paymentProviderStatus, createPaymentProviderSetup, chargeInvoice, runDunning, renewSubscriptions, handleWebhook,
 } from "./payments";
 import {
   exportSubjectData, exportSubjectJson, exportSubjectCsv,
@@ -496,7 +497,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         : typeof req.body === "string"
           ? req.body
           : JSON.stringify(req.body ?? {});
-    const rawSig = req.headers["stripe-signature"] ?? req.headers["x-mobilepay-signature"]
+    const rawSig = req.headers["stripe-signature"] ?? req.headers["quickpay-checksum-sha256"] ?? req.headers["x-mobilepay-signature"]
       ?? req.headers["x-signature"];
     const sig = Array.isArray(rawSig) ? rawSig[0] : rawSig;
     const result = await handleWebhook(String(req.params.provider), raw, sig);
@@ -513,6 +514,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   registerPublicEInvoiceRoutes(app);
+  registerPublicAiiaRoutes(app);
 
   app.use("/api", requireAuth);
   app.use("/api", professionalAccessGuard);
@@ -521,7 +523,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/accounting-category-rules", "/accounting-control-center", "/accounting-integrations",
     "/accounting-rules", "/accounts", "/accruals", "/advanced-vat", "/ai-accounting-tasks",
     "/ai-governance", "/ai-regnskab", "/annual-reports", "/api-keys", "/archive-records",
-    "/audit-log", "/audit-package", "/auditor-portal", "/backups", "/bank-integrations",
+    "/audit-log", "/audit-package", "/auditor-portal", "/backups", "/bank", "/bank-integrations",
     "/bank-payments", "/bank-reconciliation", "/bank-transactions", "/budget-versions",
     "/budgets", "/business-profiles", "/cashflow-projections", "/compliance-checks",
     "/compliance-documents", "/consolidation", "/control-tests", "/cost-centers",
@@ -530,7 +532,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/einvoice-queue", "/file-objects", "/file-versions", "/fixed-assets", "/import-jobs2",
     "/industry-account-templates", "/integration-configs", "/integration-retry-queue",
     "/integration-runs", "/inventory-accounts", "/invoices", "/journal-entries",
-    "/integration-adapters", "/migration", "/migration-jobs", "/onboarding", "/operations", "/payment-runs", "/payroll-engine", "/payroll-entries",
+    "/integration-adapters", "/migration", "/migration-jobs", "/onboarding", "/operations", "/payment", "/payment-runs", "/billing", "/payroll-engine", "/payroll-entries",
     "/payroll-reports", "/period-closes",
     "/portal-documents", "/products", "/purchase-orders", "/receipts",
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
@@ -3193,7 +3195,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/payment/methods", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     const provider = String(req.body?.provider ?? "stripe");
-    if (!["stripe", "mobilepay", "betalingsservice"].includes(provider)) {
+    if (!["quickpay", "stripe", "mobilepay", "betalingsservice"].includes(provider)) {
       return res.status(400).json({ error: "Ukendt betalingsudbyder." });
     }
     const existing = await storage.getPaymentMethods(cid);
@@ -3892,6 +3894,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const rows = await storage.all("support_cases", tenantId(req));
       res.json(req.auth?.role === "kunde" ? rows.filter((row: any) => row.createdBy === req.auth?.user?.email) : rows);
     }
+  }));
+
+  app.post("/api/payment/setup/:provider", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const result = await createPaymentProviderSetup(tenantId(req), String(req.params.provider));
+    await audit(req, result.ok ? "betalingsopsætning_startet" : "betalingsopsætning_fejlet", "paymentProvider", null, String(req.params.provider));
+    res.status(result.ok ? 201 : 503).json(result);
   }));
   app.post("/api/support-cases", requireAuth, h(async (req, res) => {
     const data = validate(insertSupportCaseSchema, { ...req.body, companyId: tenantId(req), status: "aaben", reply: null, replyStatus: "kladde" });
@@ -5817,6 +5825,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerReadinessRoutes(app);
   registerEInvoiceRoutes(app);
   registerProfessionalRoutes(app);
+  registerAiiaRoutes(app);
 
   return httpServer;
 }

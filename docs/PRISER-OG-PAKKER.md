@@ -10,4 +10,4 @@ De aktive priser hentes fra plan-tabellen og vises i produktet. Planernes funkti
 - Opsigelse, dataportabilitet, sletning og adgang efter ophør følger abonnementsvilkår og exitprocedure.
 - Prisændringer versionsstyres og varsles efter de gældende aftaler.
 
-Produktet kan oprette prøveabonnement uden betalingsadapter. Automatisk kortbetaling er kun tilgængelig, når Stripe-nøgler og signaturkontrolleret webhook er konfigureret.
+Produktet kan oprette prøveabonnement uden betalingsadapter. Automatisk kortbetaling er kun tilgængelig, når QuickPay API-nøglen og den signaturkontrollerede callback er konfigureret.

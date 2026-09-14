@@ -11,7 +11,7 @@ import type {
   Subscription,
 } from "@shared/schema";
 
-type PaymentProviderId = "stripe" | "mobilepay" | "betalingsservice";
+type PaymentProviderId = "quickpay" | "stripe" | "mobilepay" | "betalingsservice";
 type PaymentStatus = "afventer" | "gennemfoert" | "fejlet" | "simuleret";
 
 interface SetupIntentInput {
@@ -39,6 +39,8 @@ interface ProviderResult {
   simulated: boolean;
   failureReason?: string;
   fileRecord?: string;
+  redirectUrl?: string;
+  paymentMethodId?: number;
 }
 
 export interface PaymentProvider {
@@ -67,6 +69,7 @@ export interface ChargeInvoiceResult {
 }
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
+const QUICKPAY_API_BASE = "https://api.quickpay.net";
 const MOBILEPAY_AUTH_URL =
   "https://api.mobilepay.dk/merchant-authentication-openapi/connect/token";
 const MOBILEPAY_SUBSCRIPTIONS_API_BASE =
@@ -314,6 +317,124 @@ function mobilePayWebhookVerification(
   }
 }
 
+async function quickpayRequest(
+  method: "GET" | "POST" | "PUT",
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<{ ok: boolean; payload: Record<string, unknown>; error?: string }> {
+  try {
+    const response = await fetch(`${QUICKPAY_API_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Basic ${Buffer.from(`:${process.env.QUICKPAY_API_KEY!}`).toString("base64")}`,
+        "Accept-Version": "v10",
+        Accept: "application/json",
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const payload = await readJson(response);
+    return response.ok
+      ? { ok: true, payload }
+      : { ok: false, payload, error: providerError(payload, `QuickPay svarede ${response.status}.`) };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      payload: {},
+      error: `Netværksfejl hos QuickPay: ${error instanceof Error ? error.message : "ukendt fejl"}`,
+    };
+  }
+}
+
+function quickpayWebhookVerification(
+  rawBody: string,
+  signatureHeader: string | undefined,
+): { valid: boolean; eventId: string; eventType: string; data: Record<string, unknown> } {
+  const data = parseJsonObject(rawBody);
+  const resourceId = String(data.id ?? "ukendt");
+  const eventId = `quickpay_${resourceId}_${stableHash(rawBody).slice(0, 24)}`;
+  const resourceType = String(data.type ?? "").toLowerCase();
+  const state = String(data.state ?? "").toLowerCase();
+  const accepted = data.accepted === true;
+  const operations = Array.isArray(data.operations) ? data.operations as Array<Record<string, unknown>> : [];
+  const latest = operations.length ? operations[operations.length - 1] : undefined;
+  const operationType = String(latest?.type ?? "").toLowerCase();
+  let eventType = `${resourceType || "resource"}.updated`;
+  if (resourceType === "subscription" && accepted) eventType = "subscription.authorized";
+  else if (operationType === "refund" && accepted) eventType = "payment.refunded";
+  else if (resourceType === "payment" && accepted && state === "processed") eventType = "payment.completed";
+  else if (resourceType === "payment" && ["rejected", "cancelled"].includes(state)) eventType = "payment.failed";
+
+  const secret = process.env.QUICKPAY_PRIVATE_KEY;
+  if (!secret || !signatureHeader || !/^[a-fA-F0-9]{64}$/.test(signatureHeader.trim())) {
+    return { valid: false, eventId, eventType, data };
+  }
+  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest();
+  const received = Buffer.from(signatureHeader.trim(), "hex");
+  return { valid: secureEqual(expected, received), eventId, eventType, data };
+}
+
+function quickpayOrderId(prefix: string, companyId: number, suffix: number): string {
+  return `${prefix}${companyId.toString(36)}${suffix.toString(36)}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20).padEnd(4, "0");
+}
+
+const quickpayProvider: PaymentProvider = {
+  id: "quickpay",
+  label: "QuickPay",
+  get configured(): boolean {
+    return Boolean(process.env.QUICKPAY_API_KEY && process.env.QUICKPAY_PRIVATE_KEY);
+  },
+  async createSetupIntent(input) {
+    if (!this.configured) return simulatedResult(this.id, `setup:${input.companyId}`);
+    const orderId = quickpayOrderId("sub", input.companyId, Date.now());
+    const created = await quickpayRequest("POST", "/subscriptions", {
+      order_id: orderId,
+      currency: "DKK",
+      description: "ADD SmartRegnskab abonnement",
+      variables: { company_id: input.companyId },
+    });
+    const subscriptionId = stringValue(created.payload.id) ?? numberValue(created.payload.id)?.toString();
+    if (!created.ok || !subscriptionId) {
+      return { ok: false, status: "fejlet", providerRef: null, simulated: false, failureReason: created.error ?? "QuickPay-abonnementet kunne ikke oprettes." };
+    }
+    const setupAmount = Math.max(0, Number(process.env.QUICKPAY_SETUP_AMOUNT_ORE || 0));
+    const link = await quickpayRequest("PUT", `/subscriptions/${encodeURIComponent(subscriptionId)}/link`, {
+      amount: setupAmount,
+      language: "da",
+      continue_url: `${process.env.APP_BASE_URL || ""}/#/smartregnskab/app/abonnement?quickpay=ok`,
+      cancel_url: `${process.env.APP_BASE_URL || ""}/#/smartregnskab/app/abonnement?quickpay=cancelled`,
+      callback_url: `${process.env.APP_BASE_URL || ""}/api/webhooks/quickpay`,
+    });
+    const redirectUrl = stringValue(link.payload.url);
+    return link.ok && redirectUrl
+      ? { ok: true, status: "afventer", providerRef: subscriptionId, simulated: false, redirectUrl }
+      : { ok: false, status: "fejlet", providerRef: subscriptionId, simulated: false, failureReason: link.error ?? "QuickPay-betalingslinket kunne ikke oprettes." };
+  },
+  async charge(input) {
+    if (!this.configured) return simulatedResult(this.id, `charge:${input.invoice.id}:${input.attempt}`);
+    const response = await quickpayRequest("POST", `/subscriptions/${encodeURIComponent(input.paymentMethod.providerRef)}/recurring`, {
+      amount: toOre(input.invoice.totalAmount),
+      order_id: quickpayOrderId("inv", input.company.id, input.invoice.id * 100 + input.attempt),
+      auto_capture: true,
+      variables: { company_id: input.company.id, platform_invoice_id: input.invoice.id },
+    });
+    const providerRef = stringValue(response.payload.id) ?? numberValue(response.payload.id)?.toString() ?? null;
+    if (!response.ok) return { ok: false, status: "fejlet", providerRef, simulated: false, failureReason: response.error ?? "QuickPay afviste opkrævningen." };
+    if (response.payload.accepted === true && String(response.payload.state ?? "").toLowerCase() === "processed") {
+      return { ok: true, status: "gennemfoert", providerRef, simulated: false };
+    }
+    return { ok: true, status: "afventer", providerRef, simulated: false };
+  },
+  async refund(input) {
+    if (!this.configured) return simulatedResult(this.id, `refund:${input.providerRef}:${toOre(input.amount)}`);
+    const response = await quickpayRequest("POST", `/payments/${encodeURIComponent(input.providerRef)}/refund`, { amount: toOre(input.amount) });
+    return response.ok
+      ? { ok: true, status: "afventer", providerRef: input.providerRef, simulated: false }
+      : { ok: false, status: "fejlet", providerRef: input.providerRef, simulated: false, failureReason: response.error ?? "QuickPay-refunderingen fejlede." };
+  },
+  verifyWebhook: quickpayWebhookVerification,
+};
+
 const stripeProvider: PaymentProvider = {
   id: "stripe",
   label: "Stripe",
@@ -558,6 +679,7 @@ const betalingsserviceProvider: PaymentProvider = {
 };
 
 const providers: Record<PaymentProviderId, PaymentProvider> = {
+  quickpay: quickpayProvider,
   stripe: stripeProvider,
   mobilepay: mobilePayProvider,
   betalingsservice: betalingsserviceProvider,
@@ -569,6 +691,7 @@ function getProvider(provider: string): PaymentProvider | undefined {
 
 function missingEnvironment(provider: PaymentProviderId): string[] {
   const names: Record<PaymentProviderId, string[]> = {
+    quickpay: ["QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY"],
     stripe: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
     mobilepay: [
       "MOBILEPAY_CLIENT_ID",
@@ -592,6 +715,29 @@ export function paymentProviderStatus(): Array<{
     configured: providers[id].configured,
     missingEnv: missingEnvironment(id),
   }));
+}
+
+export async function createPaymentProviderSetup(companyId: number, providerId: string) {
+  const provider = getProvider(providerId);
+  if (!provider) throw new Error("Ukendt betalingsudbyder.");
+  if (providerId !== "quickpay") throw new Error("Det automatiske opsætningsflow er kun aktiveret for QuickPay.");
+  const result = await provider.createSetupIntent({ companyId });
+  if (!result.ok || !result.providerRef) return result;
+  const existing = await storage.getPaymentMethods(companyId);
+  const duplicate = existing.find((method) => method.provider === providerId && method.providerRef === result.providerRef);
+  const method = duplicate ?? await storage.createPaymentMethod({
+    companyId,
+    provider: providerId,
+    providerRef: result.providerRef,
+    brand: "quickpay",
+    last4: null,
+    expMonth: null,
+    expYear: null,
+    isDefault: existing.filter((item) => item.status === "aktiv").length === 0 ? 1 : 0,
+    status: result.status === "gennemfoert" ? "aktiv" : "afventer",
+    createdAt: now(),
+  });
+  return { ...result, paymentMethodId: method.id };
 }
 
 async function writeAudit(
@@ -768,16 +914,18 @@ export async function chargeInvoice(
   }
 
   const previous = await storage.getPaymentsForInvoice(invoice.id);
-  const pendingBs = previous.find(
-    (payment) => payment.provider === "betalingsservice" && payment.status === "afventer",
+  const pendingProviderPayment = previous.find(
+    (payment) => ["betalingsservice", "quickpay"].includes(payment.provider) && payment.status === "afventer",
   );
-  if (pendingBs) {
+  if (pendingProviderPayment) {
     return {
       ok: true,
       pending: true,
       simulated: false,
-      payment: pendingBs,
-      message: "Betalingsservice-opkrævningen afventer stadig bankfilens retur.",
+      payment: pendingProviderPayment,
+      message: pendingProviderPayment.provider === "quickpay"
+        ? "QuickPay-opkrævningen afventer stadig en signeret callback."
+        : "Betalingsservice-opkrævningen afventer stadig bankfilens retur.",
     };
   }
 
@@ -1101,6 +1249,20 @@ async function detachPaymentMethod(provider: string, providerRef: string): Promi
   return detached;
 }
 
+async function activateQuickpayMethod(providerRef: string): Promise<number> {
+  const companies = await storage.getCompanies();
+  let activated = 0;
+  for (const company of companies) {
+    const methods = await storage.getPaymentMethods(company.id);
+    for (const method of methods) {
+      if (method.provider !== "quickpay" || method.providerRef !== providerRef) continue;
+      await storage.updatePaymentMethod(method.id, { status: "aktiv" });
+      activated += 1;
+    }
+  }
+  return activated;
+}
+
 function isSuccessEvent(eventType: string): boolean {
   return [
     "payment_intent.succeeded",
@@ -1191,7 +1353,12 @@ export async function handleWebhook(
     const reference = webhookProviderReference(verified.data);
     let action = "ignoreret";
 
-    if (isSuccessEvent(type)) {
+    if (type.toLowerCase() === "subscription.authorized") {
+      if (!reference) throw new Error("QuickPay-callbacken mangler abonnementsreferencen.");
+      const activated = await activateQuickpayMethod(reference);
+      if (activated === 0) throw new Error("Ingen intern QuickPay-aftale matcher callbacken.");
+      action = "betalingsmiddel_aktiveret";
+    } else if (isSuccessEvent(type)) {
       if (!reference) throw new Error("Webhookpen mangler en betalingsreference.");
       const payment = await storage.getPaymentByProviderRef(reference);
       if (!payment) throw new Error("Ingen intern betaling matcher webhookpens reference.");

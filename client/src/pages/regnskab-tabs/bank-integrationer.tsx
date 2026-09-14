@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, RefreshCw, Building2, Landmark, FileCheck, Mail, Globe } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Building2, Landmark, FileCheck, Mail, Globe, CreditCard, ShieldCheck } from "lucide-react";
 
 /* Bank/SKAT/NemHandel/Peppol/eIndkomst integrationsoversigt */
 
@@ -35,6 +35,18 @@ type BankIntegration = {
   config?: string | null;
   notes?: string | null;
   createdAt?: string | null;
+};
+
+type AiiaStatus = {
+  configured: boolean;
+  connected: boolean;
+  status: string;
+  lastSync: string | null;
+  message: string | null;
+};
+
+type PaymentStatus = {
+  providers: Array<{ id: string; label: string; configured: boolean; missingEnv: string[] }>;
 };
 
 const INTEGRATION_TYPES = [
@@ -96,6 +108,45 @@ export default function BankIntegrationer({ companyId }: { companyId: number }) 
   });
 
   const integrations = data ?? [];
+
+  const { data: aiia } = useQuery<AiiaStatus>({
+    queryKey: ["/api/bank/aiia/status", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/bank/aiia/status")).json(),
+  });
+
+  const { data: paymentStatus } = useQuery<PaymentStatus>({
+    queryKey: ["/api/payment/status", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/payment/status")).json(),
+  });
+  const quickpay = paymentStatus?.providers?.find((provider) => provider.id === "quickpay");
+
+  const aiiaConnectMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/bank/aiia/connect", {})).json(),
+    onSuccess: (result: { authorizationUrl?: string }) => {
+      if (!result.authorizationUrl) throw new Error("AiiA returnerede ikke et godkendelseslink.");
+      window.location.assign(result.authorizationUrl);
+    },
+    onError: (err: unknown) => toast({ title: "AiiA kunne ikke startes", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
+  });
+
+  const aiiaSyncMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/bank/aiia/sync", {})).json(),
+    onSuccess: (result: { imported?: number; skipped?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank/aiia/status"] });
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      toast({ title: "Bankdata synkroniseret", description: `${result.imported ?? 0} nye DKK-bankposter hentet via AiiA.` });
+    },
+    onError: (err: unknown) => toast({ title: "AiiA-synkronisering fejlede", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
+  });
+
+  const quickpaySetupMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/payment/setup/quickpay", {})).json(),
+    onSuccess: (result: { redirectUrl?: string }) => {
+      if (!result.redirectUrl) throw new Error("QuickPay returnerede ikke et betalingslink.");
+      window.location.assign(result.redirectUrl);
+    },
+    onError: (err: unknown) => toast({ title: "QuickPay kunne ikke startes", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
+  });
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -165,7 +216,45 @@ export default function BankIntegrationer({ companyId }: { companyId: number }) 
       </div>
 
       <div className="rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-        Klar til integration — Kræver API-aftale hos bank, SKAT, NemHandel. BETA.
+        AiiA og QuickPay lukker sikkert, indtil produktionsaftaler og nøgler er aktiveret. Bankdata deles kun efter bankbrugerens samtykke.
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="kpi-card space-y-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
+            <div>
+              <div className="font-medium">AiiA / Mastercard Open Banking</div>
+              <div className="text-xs text-muted-foreground">Automatisk indsamling af konti og bogførte bankposter</div>
+            </div>
+          </div>
+          <div className="text-sm">
+            Status: <span className="font-medium">{aiia?.connected ? (aiia.status === "fejl" ? "Kræver handling" : "Forbundet") : aiia?.configured ? "Klar til samtykke" : "Produktionsnøgler mangler"}</span>
+          </div>
+          {aiia?.lastSync && <div className="text-xs text-muted-foreground">Seneste synk: {new Date(aiia.lastSync).toLocaleString("da-DK")}</div>}
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!aiia?.configured || aiiaConnectMut.isPending} onClick={() => aiiaConnectMut.mutate()}>
+              {aiia?.connected ? "Forny banksamtykke" : "Forbind bank via AiiA"}
+            </Button>
+            <Button variant="outline" disabled={!aiia?.connected || aiiaSyncMut.isPending} onClick={() => aiiaSyncMut.mutate()}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Hent bankposter nu
+            </Button>
+          </div>
+        </div>
+
+        <div className="kpi-card space-y-3">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            <div>
+              <div className="font-medium">QuickPay</div>
+              <div className="text-xs text-muted-foreground">Abonnement, tilbagevendende betaling og signeret callback</div>
+            </div>
+          </div>
+          <div className="text-sm">Status: <span className="font-medium">{quickpay?.configured ? "Klar" : "Produktionsnøgler mangler"}</span></div>
+          <Button disabled={!quickpay?.configured || quickpaySetupMut.isPending} onClick={() => quickpaySetupMut.mutate()}>
+            Opret QuickPay-aftale
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

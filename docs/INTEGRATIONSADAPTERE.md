@@ -8,6 +8,7 @@
 | NemHandel/Peppol | OIOUBL 2.1, Peppol BIS 3, kvittering og inbound webhook | Access-point-URL/nøgle, validator og webhook-hemmelighed |
 | Simply.com | SMTP-mail via outbox og revisionsspor | SMTP-host, bruger, adgangskode og MAIL_FROM |
 | S3 | Krypteret ekstern backup, checksum og verifikation | Bucket, region og adgangsnøgler |
-| Stripe | Abonnementsbetaling og signeret webhook | Secret key og webhook secret |
+| AiiA / Mastercard Open Banking | OAuth 2.0-samtykke, konti og automatisk import af bogførte DKK-transaktioner | Client ID, client secret, redirect-URL og kundens banksamtykke |
+| QuickPay | Abonnementsaftale, tilbagevendende betaling, refundering og HMAC-kontrolleret callback | Begrænset API-nøgle og kontoens private key |
 
 Adapterstatus vises i Driftsklarhed. “Klar” betyder, at nødvendig lokal konfiguration er fundet; det erstatter ikke en end-to-end-test med leverandøren.

@@ -4,53 +4,24 @@ import { eq, and } from "drizzle-orm";
 import * as schema from "../shared/schema";
 import { tenantId, requireRole } from "./auth";
 import { queueAndSend, emailConfigured, invoiceEmail, reminderEmail } from "./messaging";
+import { createPaymentProviderSetup, paymentProviderStatus } from "./payments";
 
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
-const STRIPE_API_BASE = "https://api.stripe.com/v1";
-
-async function stripeRequest(
-  path: string,
-  fields: Record<string, string | number | boolean | undefined>,
-  idempotencyKey?: string,
-): Promise<{ ok: boolean; payload: any; error?: string }> {
-  const body = new URLSearchParams();
-  for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined) body.set(key, String(value));
-  }
-  try {
-    const response = await fetch(`${STRIPE_API_BASE}${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY!}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
-      },
-      body: body.toString(),
-    });
-    const payload = await response.json().catch(() => ({}));
-    return response.ok
-      ? { ok: true, payload }
-      : { ok: false, payload, error: payload?.error?.message ?? `Stripe svarede ${response.status}` };
-  } catch (error: any) {
-    return { ok: false, payload: {}, error: `Netværksfejl: ${error?.message ?? "ukendt"}` };
-  }
-}
-
-function stripeConfigured(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+function quickpayConfigured(): boolean {
+  return Boolean(process.env.QUICKPAY_API_KEY && process.env.QUICKPAY_PRIVATE_KEY);
 }
 
 export function registerExtendedRoutes9(app: Express) {
 
   // ════════════════════════════════════════
-  //  STRIPE CHECKOUT SESSION
+  //  QUICKPAY ABONNEMENTSLINK
   // ════════════════════════════════════════
   app.post("/api/billing/create-checkout-session", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    if (!stripeConfigured()) {
+    if (!quickpayConfigured()) {
       return res.status(503).json({
-        error: "Stripe er ikke konfigureret. Sæt STRIPE_SECRET_KEY og STRIPE_WEBHOOK_SECRET.",
+        error: "QuickPay er ikke konfigureret. Sæt QUICKPAY_API_KEY og QUICKPAY_PRIVATE_KEY.",
         configured: false,
       });
     }
@@ -59,70 +30,35 @@ export function registerExtendedRoutes9(app: Express) {
     const company = await storage_getCompany(cid);
     if (!company) return res.status(404).json({ error: "Virksomhed ikke fundet" });
 
-    const sub = await storage_getSubscription(cid);
-    const plan = sub ? await storage_getPlan(sub.planId) : null;
-    if (!plan) return res.status(400).json({ error: "Ingen pakke valgt" });
-
-    const baseUrl = process.env.APP_BASE_URL || `https://${req.headers.host}`;
-    const employeeCount = (await db.select().from(schema.employees).where(eq(schema.employees.companyId, cid)).all()).length;
-    const amount = Math.round((plan.monthlyPrice + plan.pricePerEmployee * employeeCount) * 100); // øre
-
-    const session = await stripeRequest("/checkout/sessions", {
-      mode: "payment",
-      "line_items[0][quantity]": 1,
-      "line_items[0][price_data][currency]": "dkk",
-      "line_items[0][price_data][unit_amount]": amount,
-      "line_items[0][price_data][product_data][name]": `${plan.name} — første måned`,
-      "line_items[0][price_data][product_data][description]": `Abonnement for ${employeeCount} ansatte`,
-      success_url: `${baseUrl}/#/abonnement?status=success`,
-      cancel_url: `${baseUrl}/#/abonnement?status=cancel`,
-      client_reference_id: String(cid),
-      customer_email: company.email || undefined,
-      "metadata[companyId]": String(cid),
-      "metadata[planId]": String(plan.id),
-      "metadata[type]": "subscription_payment",
-      locale: "da",
-    }, `checkout-${cid}-${Date.now()}`);
-
-    if (!session.ok) {
-      return res.status(400).json({ error: session.error ?? "Kunne ikke oprette checkout session" });
+    const setup = await createPaymentProviderSetup(cid, "quickpay");
+    if (!setup.ok || !setup.redirectUrl) {
+      return res.status(400).json({ error: setup.failureReason ?? "Kunne ikke oprette QuickPay-aftale" });
     }
-
-    res.json({ url: session.payload.url, sessionId: session.payload.id });
+    res.json({ url: setup.redirectUrl, sessionId: setup.providerRef, paymentMethodId: setup.paymentMethodId });
   }));
 
   // ════════════════════════════════════════
-  //  STRIPE CUSTOMER PORTAL
+  //  QUICKPAY AFTALESTATUS
   // ════════════════════════════════════════
   app.post("/api/billing/create-portal-session", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    if (!stripeConfigured()) {
-      return res.status(503).json({ error: "Stripe er ikke konfigureret", configured: false });
+    if (!quickpayConfigured()) {
+      return res.status(503).json({ error: "QuickPay er ikke konfigureret", configured: false });
     }
 
     const cid = tenantId(req);
     const company = await storage_getCompany(cid);
     if (!company) return res.status(404).json({ error: "Virksomhed ikke fundet" });
 
-    // Find Stripe customer ID from payment methods
+    // QuickPay har ikke en Stripe-lignende kundeportal. Brugeren kan se sin
+    // aftalestatus i SmartRegnskab og oprette en ny, hvis kortet skal skiftes.
     const paymentMethods = db.select().from(schema.paymentMethods)
       .where(eq(schema.paymentMethods.companyId, cid)).all();
-    const stripeCustomerRef = paymentMethods.find(pm => pm.provider === "stripe")?.providerRef;
+    const quickpayMethod = paymentMethods.find(pm => pm.provider === "quickpay" && pm.status === "aktiv");
 
-    if (!stripeCustomerRef) {
-      return res.status(400).json({ error: "Ingen Stripe-kunde fundet. Gennemfør først en betaling." });
+    if (!quickpayMethod) {
+      return res.status(400).json({ error: "Ingen aktiv QuickPay-aftale fundet. Opret først en betalingsaftale." });
     }
-
-    const baseUrl = process.env.APP_BASE_URL || `https://${req.headers.host}`;
-    const session = await stripeRequest("/billing_portal/sessions", {
-      customer: stripeCustomerRef,
-      return_url: `${baseUrl}/#/abonnement`,
-    }, `portal-${cid}-${Date.now()}`);
-
-    if (!session.ok) {
-      return res.status(400).json({ error: session.error ?? "Kunne ikke oprette portal session" });
-    }
-
-    res.json({ url: session.payload.url });
+    res.json({ provider: "quickpay", status: quickpayMethod.status, paymentMethodId: quickpayMethod.id });
   }));
 
   // ════════════════════════════════════════
@@ -136,7 +72,8 @@ export function registerExtendedRoutes9(app: Express) {
       .where(eq(schema.paymentMethods.companyId, cid)).all();
 
     res.json({
-      stripeConfigured: stripeConfigured(),
+      quickpayConfigured: quickpayConfigured(),
+      providers: paymentProviderStatus(),
       emailConfigured: emailConfigured(),
       subscription: sub ? {
         status: sub.status,
