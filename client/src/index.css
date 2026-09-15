@@ -20,34 +20,33 @@
   --card-foreground: 222 20% 14%;
   --card-border: 220 12% 89%;
 
-  /* Light modern sidebar — soft slate with blue accent */
+  /* SmartRegnskab: lys arbejdsflade med dyb grøn produktaccent */
   --sidebar: 220 20% 96%;
   --sidebar-foreground: 222 15% 35%;
   --sidebar-border: 220 14% 88%;
-  --sidebar-primary: 217 76% 52%;
+  --sidebar-primary: 158 48% 28%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 220 14% 90%;
   --sidebar-accent-foreground: 222 15% 25%;
-  --sidebar-ring: 217 76% 52%;
+  --sidebar-ring: 158 48% 28%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 222 20% 14%;
   --popover-border: 220 12% 87%;
 
-  /* Blue primary — modern, professional */
-  --primary: 217 76% 52%;
+  --primary: 158 48% 28%;
   --primary-foreground: 0 0% 100%;
   --secondary: 220 10% 93%;
   --secondary-foreground: 222 20% 14%;
   --muted: 220 8% 95%;
   --muted-foreground: 220 6% 42%;
-  --accent: 217 60% 95%;
-  --accent-foreground: 217 76% 40%;
+  --accent: 153 35% 94%;
+  --accent-foreground: 158 48% 24%;
   --destructive: 0 60% 50%;
   --destructive-foreground: 0 0% 98%;
   --input: 220 10% 82%;
-  --ring: 217 76% 52%;
-  --chart-1: 217 76% 52%;
+  --ring: 158 48% 28%;
+  --chart-1: 158 48% 28%;
   --chart-2: 142 50% 45%;
   --chart-3: 170 40% 42%;
   --chart-4: 43 65% 52%;
@@ -58,6 +57,7 @@
   --radius: 0.375rem;
   --tracking-normal: -0.011em;
   --spacing: 0.25rem;
+  --login-surface: 150 18% 98%;
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(
@@ -105,31 +105,32 @@
   --sidebar: 222 18% 10%;
   --sidebar-foreground: 220 10% 68%;
   --sidebar-border: 222 16% 16%;
-  --sidebar-primary: 217 76% 60%;
+  --sidebar-primary: 153 48% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 222 14% 16%;
   --sidebar-accent-foreground: 220 10% 90%;
-  --sidebar-ring: 217 76% 60%;
+  --sidebar-ring: 153 48% 52%;
   --popover: 222 15% 9%;
   --popover-foreground: 220 10% 90%;
   --popover-border: 222 12% 16%;
-  --primary: 217 76% 58%;
+  --primary: 153 48% 52%;
   --primary-foreground: 0 0% 100%;
   --secondary: 222 12% 14%;
   --secondary-foreground: 220 10% 90%;
   --muted: 222 12% 15%;
   --muted-foreground: 220 6% 56%;
-  --accent: 217 20% 16%;
-  --accent-foreground: 217 76% 68%;
+  --accent: 158 20% 16%;
+  --accent-foreground: 153 48% 68%;
   --destructive: 0 55% 48%;
   --destructive-foreground: 0 0% 98%;
   --input: 222 12% 24%;
-  --ring: 217 76% 58%;
-  --chart-1: 217 76% 60%;
+  --ring: 153 48% 52%;
+  --chart-1: 153 48% 52%;
   --chart-2: 142 50% 55%;
   --chart-3: 170 40% 55%;
   --chart-4: 43 65% 60%;
   --chart-5: 27 75% 60%;
+  --login-surface: 158 18% 7%;
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(
@@ -248,10 +249,10 @@
     transition: all 0.15s;
   }
   .btn-gradient:hover {
-    background: hsl(217 76% 46%);
+    background: hsl(158 48% 23%);
   }
   .btn-gradient:active {
-    background: hsl(217 76% 42%);
+    background: hsl(158 48% 20%);
   }
 
   /* Subtle content background */
@@ -314,12 +315,21 @@ nav.overflow-y-auto::-webkit-scrollbar-thumb:hover {
 }
 .login-brand {
   background: linear-gradient(135deg, hsl(222 28% 14%) 0%, hsl(217 60% 30%) 100%);
-  display: flex;
   flex-direction: column;
   justify-content: center;
   padding: 3rem;
   color: white;
 }
+.login-brand-regnskab {
+  background:
+    radial-gradient(circle at 15% 12%, hsl(151 42% 32% / 0.72), transparent 34%),
+    linear-gradient(145deg, hsl(158 52% 13%) 0%, hsl(164 48% 19%) 100%);
+}
 .dark .login-brand {
   background: linear-gradient(135deg, hsl(222 20% 6%) 0%, hsl(217 30% 16%) 100%);
+}
+.dark .login-brand-regnskab {
+  background:
+    radial-gradient(circle at 15% 12%, hsl(151 42% 25% / 0.55), transparent 34%),
+    linear-gradient(145deg, hsl(158 46% 8%) 0%, hsl(164 42% 13%) 100%);
 }

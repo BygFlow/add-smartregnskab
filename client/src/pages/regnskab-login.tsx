@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiUrl } from "@/lib/queryClient";
 import { AlertCircle, Clock3, FileText, Landmark, BarChart3, TriangleAlert, Calculator } from "lucide-react";
+import { SMARTREGNSKAB_BRAND, SmartRegnskabBrand } from "@/components/smartregnskab-brand";
 
 const DEMO_PASSWORD = "demo1234";
 
@@ -110,43 +111,50 @@ export default function RegnskabLogin() {
 
   return (
     <div className="login-split bg-background" data-testid="regnskab-login-page">
-      {/* Brand panel — emerald/teal theme for accounting */}
-      <aside className="login-brand hidden md:flex" style={{ background: "linear-gradient(135deg, hsl(165 60% 18%), hsl(175 55% 22%))" }}>
-        <div className="w-full max-w-md mx-auto">
-          <div className="bg-white/95 rounded-md p-2 w-fit mb-8 shadow-lg">
-            <Calculator className="h-10 w-10 text-emerald-700" />
+      <aside className="login-brand login-brand-regnskab hidden md:flex">
+        <div className="w-full max-w-md mx-auto flex min-h-[32rem] flex-col">
+          <SmartRegnskabBrand inverse />
+
+          <div className="my-auto py-12">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">ADD SmartDrift ApS</p>
+            <h2 className="mt-4 max-w-sm text-4xl font-semibold leading-tight tracking-tight">
+              {SMARTREGNSKAB_BRAND.familySlogan}
+            </h2>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-white/70">
+              Bogføring, bank, moms og økonomisk kontrol samlet i én sikker arbejdsflade.
+            </p>
+
+            <ul className="mt-9 space-y-3">
+              {FEATURES.map(({ icon: Icon, label }) => (
+                <li key={label} className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/10">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="text-sm font-medium text-white/90">{label}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <h2 className="text-lg font-bold mb-2">ADD SmartRegnskab</h2>
-          <p className="text-sm text-white/80 mb-10">
-            Selvstændig regnskabsplatform til alle virksomheder
-          </p>
-
-          <ul className="space-y-3">
-            {FEATURES.map(({ icon: Icon, label }) => (
-              <li key={label} className="flex items-center gap-3">
-                <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/15 shrink-0">
-                  <Icon className="w-5 h-5" />
-                </span>
-                <span className="text-sm font-medium">{label}</span>
-              </li>
-            ))}
-          </ul>
+          <p className="text-xs text-white/45">{SMARTREGNSKAB_BRAND.familySignature}</p>
         </div>
       </aside>
 
       {/* Login form */}
-      <section className="flex items-center justify-center p-4 sm:p-4">
+      <section className="flex items-center justify-center bg-[hsl(var(--login-surface))] p-5 sm:p-8">
         <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center mb-8">
-            <div className="bg-emerald-600 rounded-md p-2 mb-3">
-              <Calculator className="h-8 w-8 text-white" />
+          <div className="mb-8">
+            <SmartRegnskabBrand />
+            <div className="mt-7 md:hidden">
+              <p className="text-2xl font-semibold leading-tight text-foreground">{SMARTREGNSKAB_BRAND.familySlogan}</p>
             </div>
-            <h1 className="text-lg font-bold text-foreground">ADD SmartRegnskab</h1>
-            <p className="text-xs text-muted-foreground mt-1">Uafhængig regnskabsplatform</p>
+            <div className="mt-7">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Log ind</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Fortsæt til dit regnskab.</p>
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3 bg-card border border-card-border rounded-md p-4">
+          <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-card-border bg-card p-5 shadow-sm sm:p-6">
             {step === "credentials" ? (
               <>
                 <div className="space-y-1.5">
@@ -215,6 +223,10 @@ export default function RegnskabLogin() {
             <Link href="/glemt" data-testid="link-regnskab-forgot" className="font-medium text-primary hover:underline">Glemt adgangskode?</Link>
             <a href={apiUrl("/api/legal/privatliv")} target="_blank" rel="noreferrer" data-testid="link-regnskab-privacy" className="font-medium text-primary hover:underline">Privatlivspolitik</a>
           </div>
+
+          <p className="mt-8 text-center text-[11px] text-muted-foreground/70 md:hidden">
+            {SMARTREGNSKAB_BRAND.familySignature}
+          </p>
 
           {/* Demo users */}
             {import.meta.env.DEV && <details className="mt-4 rounded-lg bg-muted/50 border border-border group">

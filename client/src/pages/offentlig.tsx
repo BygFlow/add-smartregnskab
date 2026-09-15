@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AlertCircle, CheckCircle2, Users } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { SMARTREGNSKAB_BRAND } from "@/components/smartregnskab-brand";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -80,6 +81,7 @@ function PublicLayout({ children, title, description, testId = "card-public" }: 
             Tilbage til login
           </Link>
         </div>
+        <p className="mt-5 text-center text-[11px] text-muted-foreground/70">{SMARTREGNSKAB_BRAND.familySignature}</p>
       </div>
     </div>
   );

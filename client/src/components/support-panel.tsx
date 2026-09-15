@@ -37,7 +37,7 @@ export function SupportPanel() {
       </div>
 
       <div className="mt-auto p-4 border-t border-border">
-        <p className="text-[11px] text-muted-foreground text-center">ADD SmartRegnskab v1.0</p>
+        <p className="text-center text-[11px] text-muted-foreground">ADD SmartRegnskab · En del af ADD SmartDrift ApS</p>
       </div>
     </aside>
   );

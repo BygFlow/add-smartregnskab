@@ -5,6 +5,8 @@ import { useAuth } from "@/lib/auth";
 import Regnskabssystem from "@/pages/regnskabssystem";
 import { Button } from "@/components/ui/button";
 import { Calculator, LayoutDashboard, Building2, FileText, Receipt, Landmark, CalendarClock, FileBarChart, Sparkles, Settings, LogOut, Menu, X, Zap, Users, ClipboardCheck, Link2, Inbox, Building, TrendingUp, Briefcase, CreditCard, Calendar, ShieldCheck, Wallet, BrainCircuit, Archive, Globe, FileCheck, KeyRound, Upload, Download, Code, AlertCircle, DollarSign, Layers, Tags, RefreshCw, Workflow, Activity, RotateCw, GitBranch, Lock, Send, Truck, Package } from "lucide-react";
+import { Logo } from "@/components/logo";
+import { SMARTREGNSKAB_BRAND } from "@/components/smartregnskab-brand";
 
 const NAV_GROUPS = [
   {
@@ -149,14 +151,13 @@ export function RegnskabsPlatformShell({
     <>
       {/* Logo + branding — fully independent */}
       <div className="flex items-center gap-2.5 px-5 py-5 border-b border-sidebar-border">
-        <div className="bg-emerald-600 rounded-md p-1.5 shrink-0">
-          <Calculator className="h-5 w-5 text-white" />
-        </div>
+        <Logo className="h-8 w-8 shrink-0 text-sidebar-primary" />
         <div className="min-w-0">
           <span className="font-bold text-[15px] text-sidebar-foreground block">ADD SmartRegnskab</span>
           <span className="text-[11px] text-sidebar-foreground/60 truncate block">
             {role === "platform_admin" ? "Platform administrator" : companyName}
           </span>
+          <span className="mt-0.5 block truncate text-[9px] text-sidebar-foreground/40">{SMARTREGNSKAB_BRAND.familySignature}</span>
         </div>
       </div>
 
@@ -231,9 +232,7 @@ export function RegnskabsPlatformShell({
                 <Menu className="w-4 h-4" />
               </button>
               <div className="flex items-center gap-1.5">
-                <div className="bg-emerald-600 rounded p-0.5 md:hidden">
-                  <Calculator className="w-3.5 h-3.5 text-white" />
-                </div>
+                <Logo className="h-5 w-5 text-sidebar-primary md:hidden" />
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 hidden sm:block">ADD SmartRegnskab</span>
               </div>
             </div>
@@ -272,10 +271,11 @@ export function RegnskabsPlatformShell({
           >
             <div className="flex items-center justify-between px-3 py-4 border-b border-sidebar-border">
               <div className="flex items-center gap-2">
-                <div className="bg-emerald-600 rounded p-1">
-                  <Calculator className="w-4 h-4 text-white" />
+                <Logo className="h-7 w-7 text-sidebar-primary" />
+                <div>
+                  <span className="block text-sm font-bold text-sidebar-foreground">ADD SmartRegnskab</span>
+                  <span className="block text-[9px] text-sidebar-foreground/40">{SMARTREGNSKAB_BRAND.familySignature}</span>
                 </div>
-                <span className="font-bold text-sm text-sidebar-foreground">ADD SmartRegnskab</span>
               </div>
               <button onClick={() => setMobileNavOpen(false)} className="p-1 rounded hover:bg-sidebar-accent/60">
                 <X className="w-4 h-4 text-sidebar-foreground/60" />

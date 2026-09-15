@@ -1,5 +1,14 @@
 # Ændringslog
 
+## 3.9.0 — 2026-09-15
+
+- SmartRegnskab har fået et samlet produkt-brand med dyb grøn accent og det eksisterende ADD-symbol.
+- Login er opdateret til en responsiv, lys/mørk splitvisning med produktsloganet “Overblik der skaber vækst.”
+- Det fælles slogan “Mere tid til det, der skaber værdi.” og signaturen “En del af ADD SmartDrift ApS” er tilføjet de relevante produktflader.
+- Appskal, offentlige adgangssider, supportpanel, browsermetadata og PWA-manifest følger nu samme identitet.
+- Brandkravene er dækket af en automatisk regressionstest; login- og forretningslogik er uændret.
+- Android version 3.9.0 (versionCode 13).
+
 ## 3.8.0 — 2026-09-14
 
 - AiiA/Mastercard Open Banking OAuth 2.0-flow med engangs-state og udtrykkeligt banksamtykke.

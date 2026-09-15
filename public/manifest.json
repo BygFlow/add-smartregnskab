@@ -1,11 +1,11 @@
 {
   "name": "ADD SmartRegnskab",
   "short_name": "SmartRegnskab",
-  "description": "Dansk platform til bogføring, fakturering, bankafstemning, moms og økonomisk kontrol",
+  "description": "Overblik der skaber vækst. Dansk platform til bogføring, fakturering, bankafstemning, moms og økonomisk kontrol.",
   "start_url": "/#/smartregnskab/app",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#059669",
+  "theme_color": "#255c49",
   "orientation": "portrait-primary",
   "icons": [
     { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }

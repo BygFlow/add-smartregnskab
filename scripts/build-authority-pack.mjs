@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const version = "3.8.0";
+const version = "3.9.0";
 const destination = join("artifacts", `myndighedspakke-${version}`);
 const files = [
   "docs/REGISTRERINGS-CHECKLISTE.md", "docs/REGISTRERING-ERHVERVSSTYRELSEN.md", "docs/MYNDIGHEDSBILAG.md",
