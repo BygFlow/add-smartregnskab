@@ -14,6 +14,19 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
   const temp = await mkdtemp(join(tmpdir(), "smartregnskab-smoke-"));
   const files = join(temp, "files");
   await mkdir(files);
+  const databasePath = join(temp, "smartregnskab.db");
+  execFileSync(process.execPath, ["scripts/migrate-sqlite-prod.mjs"], {
+    cwd: process.cwd(),
+    env: { ...process.env, DATABASE_PATH: databasePath, BACKUP_DIR: join(temp, "migration-backups") },
+    stdio: "pipe",
+  });
+  const existingDb = new Database(databasePath);
+  try {
+    existingDb.prepare(`INSERT INTO companies (name, email, status, kind, created_at)
+      VALUES (?, ?, 'aktiv', 'platform', ?)`).run("Tidligere platform", "old-platform@example.test", new Date().toISOString());
+  } finally {
+    existingDb.close();
+  }
   const port = 5193;
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ["dist/index.cjs"], {
@@ -22,7 +35,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       ...process.env,
       NODE_ENV: "production",
       PORT: String(port),
-      DATABASE_PATH: join(temp, "smartregnskab.db"),
+      DATABASE_PATH: databasePath,
       FILE_STORAGE_DIR: files,
       DISABLE_JOBS: "1",
       ENCRYPTION_KEY: "test-only-key-material-that-is-at-least-thirty-two-characters",
@@ -88,6 +101,13 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const platformCompany = await platformCompanyResponse.json();
     assert.equal(platformCompany.name, "ADD SmartDrift ApS");
     assert.equal(platformCompany.cvr, "46761898");
+    assert.equal(platformCompany.email, "bootstrap@example.test");
+    const bootstrappedDb = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(bootstrappedDb.prepare("SELECT COUNT(*) AS count FROM companies WHERE kind = 'platform'").get().count, 1);
+    } finally {
+      bootstrappedDb.close();
+    }
     assert.equal(platformCompany.address, "Lynæs Søpark 49, 3390 Hundested");
 
     const plansResponse = await fetch(`${base}/api/plans`, { headers: { Authorization: `Bearer ${platformToken}` } });
@@ -325,7 +345,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.10.0");
+    assert.equal(operations.version, "3.10.1");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {

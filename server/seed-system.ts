@@ -40,13 +40,16 @@ export function seedSystemData(): void {
   if (db.select().from(users).all().some((user) => user.role === "platform_admin")) return;
 
   db.transaction((tx) => {
-    const company = tx.insert(companies).values({
-      ...platformIdentity,
-      email,
-      status: "aktiv",
-      kind: "platform",
-      createdAt: new Date().toISOString(),
-    }).returning().get();
+    const company = existingPlatform
+      ? tx.update(companies).set({ ...platformIdentity, email, status: "aktiv" })
+          .where(eq(companies.id, existingPlatform.id)).returning().get()
+      : tx.insert(companies).values({
+          ...platformIdentity,
+          email,
+          status: "aktiv",
+          kind: "platform",
+          createdAt: new Date().toISOString(),
+        }).returning().get();
     tx.insert(users).values({
       companyId: company.id,
       name: "Platform Administrator",

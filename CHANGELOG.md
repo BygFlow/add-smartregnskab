@@ -1,5 +1,12 @@
 # Ændringslog
 
+## 3.10.1 — 2026-09-16
+
+- Ejer-administratoren kan nu oprettes sikkert i en allerede eksisterende platformvirksomhed via Render-miljøvariabler.
+- Bootstrap-flowet genbruger platformens virksomhedspost og undgår dermed dubletter i produktionsdatabasen.
+- Demo-login er fortsat deaktiveret i produktion; kun en særskilt, stærk administratoradgang kan oprettes.
+- Android version 3.10.1 (versionCode 15).
+
 ## 3.10.0 — 2026-09-16
 
 - SmartRegnskabs produktidentitet er tilpasset den godkendte designpakke med underteksten “TIL DIN VIRKSOMHED”.
