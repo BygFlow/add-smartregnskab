@@ -2,19 +2,19 @@ import { Logo } from "@/components/logo";
 
 export const SMARTREGNSKAB_BRAND = {
   product: "ADD SmartRegnskab",
-  productSlogan: "Overblik der skaber vækst.",
-  familySlogan: "Mere tid til det, der skaber værdi.",
+  descriptor: "TIL DIN VIRKSOMHED",
+  productSlogan: "Mere tid til det, der skaber værdi",
   familySignature: "En del af ADD SmartDrift ApS",
 } as const;
 
 export function SmartRegnskabBrand({
   inverse = false,
   compact = false,
-  showSlogan = true,
+  showDescriptor = true,
 }: {
   inverse?: boolean;
   compact?: boolean;
-  showSlogan?: boolean;
+  showDescriptor?: boolean;
 }) {
   return (
     <div className={`flex items-center ${compact ? "gap-2" : "gap-3"}`}>
@@ -29,9 +29,9 @@ export function SmartRegnskabBrand({
         <div className={`${compact ? "text-sm" : "text-lg"} font-bold tracking-tight ${inverse ? "text-white" : "text-foreground"}`}>
           {SMARTREGNSKAB_BRAND.product}
         </div>
-        {showSlogan && (
-          <div className={`${compact ? "text-[10px]" : "text-xs"} ${inverse ? "text-white/70" : "text-muted-foreground"}`}>
-            {SMARTREGNSKAB_BRAND.productSlogan}
+        {showDescriptor && (
+          <div className={`${compact ? "text-[8px]" : "text-[10px]"} font-medium uppercase tracking-[0.2em] ${inverse ? "text-white/65" : "text-muted-foreground"}`}>
+            {SMARTREGNSKAB_BRAND.descriptor}
           </div>
         )}
       </div>

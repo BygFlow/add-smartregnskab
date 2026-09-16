@@ -8,13 +8,18 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   const brand = read("client/src/components/smartregnskab-brand.tsx");
   const login = read("client/src/pages/regnskab-login.tsx");
   const theme = read("client/src/index.css");
+  const favicon = read("public/favicon.svg");
+  const androidIcon = read("android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml");
 
   assert.match(brand, /ADD SmartRegnskab/);
-  assert.match(brand, /Overblik der skaber vækst\./);
-  assert.match(brand, /Mere tid til det, der skaber værdi\./);
+  assert.match(brand, /TIL DIN VIRKSOMHED/);
+  assert.match(brand, /Mere tid til det, der skaber værdi/);
   assert.match(brand, /En del af ADD SmartDrift ApS/);
+  assert.doesNotMatch(brand, /Overblik der skaber vækst/);
   assert.match(login, /login-brand-regnskab/);
   assert.match(theme, /--primary: 158 48% 28%/);
   assert.doesNotMatch(theme, /\.login-brand\s*\{[^}]*display:\s*flex/s);
-  assert.doesNotMatch(login, /ADD SmartDrift Clean|ADD SmartDrift Pro/);
+  assert.match(favicon, /#9CDD3F/);
+  assert.match(androidIcon, /#9CDD3F/);
+  assert.match(login, /platform@addsmartregnskab\.dk/);
 });

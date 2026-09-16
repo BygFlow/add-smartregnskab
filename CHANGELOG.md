@@ -1,5 +1,15 @@
 # Ændringslog
 
+## 3.10.0 — 2026-09-16
+
+- SmartRegnskabs produktidentitet er tilpasset den godkendte designpakke med underteksten “TIL DIN VIRKSOMHED”.
+- “Mere tid til det, der skaber værdi” er nu det entydige produktslogan på tværs af login og metadata.
+- Appikonet kombinerer ADD-familiens dybe grønne udtryk med dokument, beregning, økonomigraf og vækstpil.
+- Browser-, PWA- og Android-adaptive ikoner følger den samme regnskabsidentitet, og demo-login peger nu på de faktiske demokonti.
+- Login er fortsat lyst, responsivt og tydeligt afgrænset som sit eget produkt.
+- Eksisterende priser, loginflow, regnskabsfunktioner, database, backend og integrationer er bevaret.
+- Android version 3.10.0 (versionCode 14).
+
 ## 3.9.0 — 2026-09-15
 
 - SmartRegnskab har fået et samlet produkt-brand med dyb grøn accent og det eksisterende ADD-symbol.

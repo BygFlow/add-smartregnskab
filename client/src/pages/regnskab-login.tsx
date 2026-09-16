@@ -11,8 +11,8 @@ import { SMARTREGNSKAB_BRAND, SmartRegnskabBrand } from "@/components/smartregns
 const DEMO_PASSWORD = "demo1234";
 
 const DEMO_USERS = [
-  { email: "platform@smartregnskab.dk", role: "ADD SmartRegnskab platform" },
-  { email: "leder@smartregnskab.dk", role: "Leder" },
+  { email: "platform@addsmartregnskab.dk", role: "ADD SmartRegnskab platform" },
+  { email: "leder@addsmartregnskab.dk", role: "Leder" },
 ];
 
 type LoginStep = "credentials" | "twoFactor";
@@ -118,7 +118,7 @@ export default function RegnskabLogin() {
           <div className="my-auto py-12">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">ADD SmartDrift ApS</p>
             <h2 className="mt-4 max-w-sm text-4xl font-semibold leading-tight tracking-tight">
-              {SMARTREGNSKAB_BRAND.familySlogan}
+              {SMARTREGNSKAB_BRAND.productSlogan}
             </h2>
             <p className="mt-4 max-w-sm text-sm leading-6 text-white/70">
               Bogføring, bank, moms og økonomisk kontrol samlet i én sikker arbejdsflade.
@@ -146,7 +146,7 @@ export default function RegnskabLogin() {
           <div className="mb-8">
             <SmartRegnskabBrand />
             <div className="mt-7 md:hidden">
-              <p className="text-2xl font-semibold leading-tight text-foreground">{SMARTREGNSKAB_BRAND.familySlogan}</p>
+              <p className="text-2xl font-semibold leading-tight text-foreground">{SMARTREGNSKAB_BRAND.productSlogan}</p>
             </div>
             <div className="mt-7">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">Log ind</h1>
