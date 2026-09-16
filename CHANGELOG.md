@@ -1,5 +1,12 @@
 # Ændringslog
 
+## 3.10.2 — 2026-09-16
+
+- Reparerer automatisk ældre produktionsdatabaser med manglende additive migrationer før opstart.
+- Retter loginfejlen `sessions.active_company_id` uden at slette eller omskrive eksisterende kundedata.
+- Tilføjer regressionstest af ejer-login mod den oprindelige legacy-databasestruktur.
+- Android version 3.10.2 (versionCode 16).
+
 ## 3.10.1 — 2026-09-16
 
 - Ejer-administratoren kan nu oprettes sikkert i en allerede eksisterende platformvirksomhed via Render-miljøvariabler.

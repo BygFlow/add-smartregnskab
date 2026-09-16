@@ -78,6 +78,110 @@ if (!hasApplicationSchema) {
     ? resolve(process.env.MIGRATIONS_DIR)
     : resolve(process.cwd(), "migrations");
   migrate(db, { migrationsFolder });
+} else {
+  // Older standalone installations were created before the Drizzle migration
+  // journal was introduced. Running the full migration chain against those
+  // databases would try to recreate existing tables, so apply the later,
+  // additive changes idempotently instead. This keeps persistent production
+  // databases compatible without deleting or rewriting customer data.
+  const tableExists = (table: string) => Boolean(
+    sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+  );
+  const columnExists = (table: string, column: string) => (
+    tableExists(table)
+    && (sqlite.prepare(`PRAGMA table_info(\"${table}\")`).all() as Array<{ name: string }>).some((item) => item.name === column)
+  );
+  const addColumn = (table: string, column: string, definition: string) => {
+    if (tableExists(table) && !columnExists(table, column)) {
+      sqlite.exec(`ALTER TABLE \"${table}\" ADD COLUMN \"${column}\" ${definition}`);
+    }
+  };
+
+  sqlite.transaction(() => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS ai_decision_logs (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
+        action_type text NOT NULL, entity_type text, entity_id integer,
+        recommendation text NOT NULL, reasoning text NOT NULL, evidence text DEFAULT '[]' NOT NULL,
+        model text, confidence real DEFAULT 0 NOT NULL, risk_level text DEFAULT 'lav' NOT NULL,
+        requires_approval integer DEFAULT 0 NOT NULL, status text DEFAULT 'afventer_godkendelse' NOT NULL,
+        proposed_at text NOT NULL, decided_by integer, decided_at text, decision_note text
+      );
+      CREATE TABLE IF NOT EXISTS ai_governance_settings (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
+        enabled integer DEFAULT 1 NOT NULL, target_autonomy_percent integer DEFAULT 99 NOT NULL,
+        minimum_confidence real DEFAULT 0.98 NOT NULL, require_evidence integer DEFAULT 1 NOT NULL,
+        approval_actions text DEFAULT '[]' NOT NULL, created_at text NOT NULL, updated_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS regulatory_changes (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, source_id integer NOT NULL,
+        detected_at text NOT NULL, previous_hash text, new_hash text NOT NULL,
+        status text DEFAULT 'afventer_faglig_godkendelse' NOT NULL, summary text,
+        reviewed_by integer, reviewed_at text, notes text
+      );
+      CREATE TABLE IF NOT EXISTS regulatory_sources (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, source_key text NOT NULL,
+        name text NOT NULL, url text NOT NULL, jurisdiction text NOT NULL,
+        active integer DEFAULT 1 NOT NULL, last_checked_at text, last_http_status integer,
+        etag text, last_modified text, content_hash text, created_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS professional_approvals (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
+        requested_by integer NOT NULL, assigned_to integer, approval_type text NOT NULL,
+        resource_type text, resource_id text, title text NOT NULL, description text,
+        status text DEFAULT 'pending' NOT NULL, decision_note text, due_date text,
+        decided_by integer, decided_at text, created_at text NOT NULL, updated_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS professional_memberships (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, user_id integer NOT NULL,
+        company_id integer NOT NULL, professional_role text NOT NULL,
+        permissions text DEFAULT '[]' NOT NULL, status text DEFAULT 'active' NOT NULL,
+        requires_two_factor integer DEFAULT 1 NOT NULL, access_expires_at text,
+        created_by integer, created_at text NOT NULL, updated_at text NOT NULL
+      );
+    `);
+
+    addColumn("dimension_values", "company_id", "integer");
+    addColumn("file_versions", "company_id", "integer");
+    addColumn("integration_retry_queue", "company_id", "integer");
+    addColumn("integration_runs", "company_id", "integer");
+    addColumn("platform_sync_jobs", "company_id", "integer");
+    addColumn("platform_sync_mappings", "company_id", "integer");
+    addColumn("workflow_runs", "company_id", "integer");
+    addColumn("accounts", "standard_account_number", "text");
+    addColumn("einvoice_queue", "document_type", "text DEFAULT 'invoice' NOT NULL");
+    addColumn("einvoice_queue", "recipient_endpoint_id", "text");
+    addColumn("einvoice_queue", "endpoint_scheme", "text");
+    addColumn("einvoice_queue", "payload_xml", "text");
+    addColumn("einvoice_queue", "provider_message_id", "text");
+    addColumn("einvoice_queue", "response_type", "text");
+    addColumn("einvoice_queue", "received_at", "text");
+    addColumn("einvoice_queue", "sent_at", "text");
+    addColumn("einvoice_queue", "attempts", "integer DEFAULT 0 NOT NULL");
+    addColumn("einvoice_queue", "last_error", "text");
+    addColumn("sessions", "active_company_id", "integer");
+    addColumn("bank_transactions", "provider", "text");
+    addColumn("bank_transactions", "account_ref", "text");
+    addColumn("bank_transactions", "external_id", "text");
+  })();
+
+  // Index creation is safe and idempotent. If a historical database already
+  // contains duplicates, keep the service available and surface the condition
+  // in the logs instead of taking production offline during startup.
+  for (const statement of [
+    "CREATE UNIQUE INDEX IF NOT EXISTS ai_governance_settings_company_unique ON ai_governance_settings (company_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS regulatory_sources_source_key_unique ON regulatory_sources (source_key)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS professional_membership_user_company_unique ON professional_memberships (user_id, company_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS invoices_company_number_unique ON invoices (company_id, invoice_number)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS journal_entries_company_number_unique ON journal_entries (company_id, entry_number)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS quotes_company_number_unique ON quotes (company_id, quote_number)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS einvoice_company_provider_message_unique ON einvoice_queue (company_id, provider_message_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS bank_transactions_company_external_unique ON bank_transactions (company_id, external_id)",
+  ]) {
+    try { sqlite.exec(statement); } catch (error) {
+      console.warn("Legacy database index could not be created:", error instanceof Error ? error.message : error);
+    }
+  }
 }
 
 // Helper: filter by company

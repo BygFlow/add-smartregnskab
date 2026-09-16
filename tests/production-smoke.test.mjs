@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -345,7 +345,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.10.1");
+    assert.equal(operations.version, "3.10.2");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {
@@ -428,6 +428,83 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     });
     assert.equal(forgot.status, 200);
     assert.equal(Object.hasOwn(await forgot.json(), "demoToken"), false);
+  } finally {
+    if (child.exitCode === null) {
+      child.kill();
+      await new Promise((resolve) => child.once("exit", resolve));
+    }
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("legacy production database is upgraded in place before login", { timeout: 45_000 }, async () => {
+  const temp = await mkdtemp(join(tmpdir(), "smartregnskab-legacy-startup-"));
+  const files = join(temp, "files");
+  await mkdir(files);
+  const databasePath = join(temp, "legacy.db");
+  const initialSql = await readFile(join(process.cwd(), "migrations", "0000_initial.sql"), "utf8");
+  const legacyDb = new Database(databasePath);
+  try {
+    legacyDb.exec(initialSql.replaceAll("--> statement-breakpoint", ""));
+  } finally {
+    legacyDb.close();
+  }
+
+  const port = 5194;
+  const base = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ["dist/index.cjs"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      PORT: String(port),
+      DATABASE_PATH: databasePath,
+      FILE_STORAGE_DIR: files,
+      DISABLE_JOBS: "1",
+      ENCRYPTION_KEY: "test-only-key-material-that-is-at-least-thirty-two-characters",
+      PLATFORM_ADMIN_EMAIL: "legacy-admin@example.test",
+      PLATFORM_ADMIN_PASSWORD: "A-strong-legacy-password-2026",
+      PLATFORM_COMPANY_NAME: "ADD SmartDrift ApS",
+      PLATFORM_COMPANY_CVR: "46761898",
+      PLATFORM_COMPANY_ADDRESS: "Lynæs Søpark 49, 3390 Hundested",
+      APP_BASE_URL: base,
+      ALLOWED_ORIGINS: base,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.on("data", (chunk) => { output += chunk; });
+  child.stderr.on("data", (chunk) => { output += chunk; });
+
+  try {
+    let response;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (child.exitCode !== null) assert.fail(`legacy server exited early (${child.exitCode}):\n${output}`);
+      try {
+        response = await fetch(`${base}/healthz`);
+        if (response.ok) break;
+      } catch {}
+      await delay(250);
+    }
+    assert.ok(response?.ok, `legacy server did not become healthy:\n${output}`);
+
+    const login = await fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "legacy-admin@example.test", password: "A-strong-legacy-password-2026" }),
+    });
+    assert.equal(login.status, 200, await login.text());
+
+    const upgraded = new Database(databasePath, { readonly: true });
+    try {
+      const sessionColumns = upgraded.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name);
+      assert.ok(sessionColumns.includes("active_company_id"));
+      const bankColumns = upgraded.prepare("PRAGMA table_info(bank_transactions)").all().map((column) => column.name);
+      assert.ok(bankColumns.includes("external_id"));
+      assert.equal(upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'professional_memberships'").get()?.name, "professional_memberships");
+    } finally {
+      upgraded.close();
+    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
