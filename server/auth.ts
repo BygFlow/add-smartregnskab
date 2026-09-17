@@ -199,6 +199,46 @@ export function requirePlatformAdmin(req: Request, res: Response, next: NextFunc
   next();
 }
 
+/**
+ * Platformadministration er adskilt fra kundernes bogforing.
+ *
+ * En platformadministrator maa administrere abonnement, drift og teknisk
+ * metadata, men maa ikke bruge sin platformrolle som en universalnogle til
+ * kundernes bilag, bankdata, posteringer eller rapporter. Listen er bevidst
+ * fail-closed for kunde-API'er: nye kundeendpoints er spaerret, indtil de
+ * udtrykkeligt er vurderet som platformadministration.
+ */
+export function platformCustomerDataGuard(req: Request, res: Response, next: NextFunction) {
+  if (!req.auth?.isPlatformAdmin) return next();
+
+  const path = req.path;
+  const allowed =
+    path.startsWith("/auth/")
+    || path === "/company"
+    || path === "/plans"
+    || path.startsWith("/security")
+    || path.startsWith("/platform/")
+    || path === "/platform"
+    || path.startsWith("/operations/")
+    || path.startsWith("/support-cases")
+    || path.startsWith("/system/info");
+
+  // Dataeksport og datasletning indeholder eller paavirker kundens indhold og
+  // kraever derfor en senere, dokumenteret kundegodkendelsesproces.
+  const sensitivePlatformOperation =
+    /^\/platform\/companies\/\d+\/export-data$/.test(path)
+    || /^\/platform\/companies\/\d+\/data$/.test(path)
+    || path === "/platform/filer/migrer";
+
+  if (!allowed || sensitivePlatformOperation) {
+    return res.status(403).json({
+      error: "Platformadministratoren har ikke adgang til virksomhedens bogforingsdata. Kunden skal selv give en tidsbegraenset adgang.",
+      code: "platform_customer_data_blocked",
+    });
+  }
+  next();
+}
+
 const PROFESSIONAL_ROLES = ["bogholder", "revisor", "revisor_admin"];
 
 /** Fail-closed adgangsvagt for eksterne fagbrugere. */

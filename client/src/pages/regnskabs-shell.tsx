@@ -28,25 +28,7 @@ const PLATFORM_GROUPS: NavGroup[] = [
   { label: "Platform", items: [
     item("dashboard", "Platformoverblik", Activity),
     item("virksomheder", "Virksomheder", Building2),
-    item("fagportal", "Bogholder & Revisor", Briefcase),
-  ] },
-  { label: "Drift og kontrol", items: [
-    item("driftsklarhed", "Driftsklarhed", ShieldCheck),
-    item("kontrolcenter", "Kontrolcenter", ClipboardCheck),
-    item("systemovervaagning", "Systemovervågning", Activity),
-    item("sikkerhedsaudit", "Sikkerhed", Lock),
-    item("compliance_checks", "Compliance", FileCheck),
-    item("leveringslog", "Leveringslog", Send),
-  ] },
-  { label: "Virksomhedsregnskab", items: [
-    item("virksomheds_dashboard", "Virksomheds-dashboard", BookOpen),
-    item("kontoplan", "Bogføring", FileText),
-    item("bilag", "Bilag & udgifter", Receipt),
-    item("bank", "Bankafstemning", Landmark),
-    item("fakturering", "Fakturering", FileText),
-    item("moms", "Moms & skat", Calculator),
-    item("rapporter", "Rapporter", FileBarChart),
-    item("ai_styring", "AI-styring", BrainCircuit),
+    item("adgangspolitik", "Adgang og databeskyttelse", Lock),
   ] },
 ];
 
@@ -165,7 +147,7 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
       <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/45">{group.label}</p>
       <div className="space-y-0.5">{group.items.map((navItem) => renderItem(navItem, mobile))}</div>
     </section>)}
-    <section className="border-t border-sidebar-border pt-3">
+    {!isPlatformAdmin && <section className="border-t border-sidebar-border pt-3">
       <button type="button" onClick={() => setAdvancedOpen((open) => !open)}
         className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-medium text-sidebar-foreground/72 hover:bg-sidebar-accent/60"
         aria-expanded={advancedOpen} data-testid="button-advanced-navigation">
@@ -173,7 +155,7 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
         <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
       </button>
       {advancedOpen && <div className="mt-1 space-y-0.5">{ADVANCED_ITEMS.map((navItem) => renderItem(navItem, mobile))}</div>}
-    </section>
+    </section>}
   </div></nav>;
 
   const userFooter = <div className="border-t border-sidebar-border p-3">

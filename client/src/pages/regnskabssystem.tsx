@@ -79,6 +79,7 @@ import {
   Wallet,
   BrainCircuit,
   ClipboardCheck,
+  Lock,
 } from "lucide-react";
 
 // ── Nye SmartRegnskab tab komponenter ──
@@ -144,6 +145,27 @@ type CompanySummary = {
   name: string;
   accountCount?: number | null;
   entryCount?: number | null;
+};
+
+type PlatformCompanySummary = {
+  id: number;
+  name: string;
+  cvr?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
+  employeeCount?: number | null;
+  userCount?: number | null;
+  planName?: string | null;
+  subscriptionStatus?: string | null;
+  monthlyValue?: number | null;
+};
+
+type PlatformStats = {
+  companyCount: number;
+  activeCount: number;
+  trialCount: number;
+  blockedCount: number;
+  mrr: number;
 };
 
 type Account = {
@@ -774,7 +796,7 @@ function getTabFromHash(): string {
   return match ? match[1] : "dashboard";
 }
 
-export default function RegnskabssystemPage(props: any = {}) {
+function CompanyRegnskabssystemPage(props: any = {}) {
   const { user, isPlatformAdmin, companyId: authCompanyId } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -5828,4 +5850,92 @@ function parseBankCsv(
       balance: toNum(cols[3]),
     };
   });
+}
+
+function PlatformRegnskabssystemPage() {
+  const [activeTab, setActiveTab] = useState(getTabFromHash());
+  useEffect(() => {
+    const onHashChange = () => setActiveTab(getTabFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const statsQuery = useQuery<PlatformStats>({
+    queryKey: ["/api/platform/stats"],
+    queryFn: async () => (await apiRequest("GET", "/api/platform/stats")).json(),
+  });
+  const companiesQuery = useQuery<PlatformCompanySummary[]>({
+    queryKey: ["/api/platform/companies"],
+    queryFn: async () => (await apiRequest("GET", "/api/platform/companies")).json(),
+  });
+  const stats = statsQuery.data;
+  const companies = companiesQuery.data ?? [];
+  const tab = ["dashboard", "virksomheder", "adgangspolitik"].includes(activeTab) ? activeTab : "dashboard";
+
+  return <div className="space-y-5">
+    <PageHeader
+      title={tab === "virksomheder" ? "Virksomheder" : tab === "adgangspolitik" ? "Adgang og databeskyttelse" : "Platformoverblik"}
+      description={tab === "virksomheder"
+        ? "Administrér abonnement og teknisk kundestatus uden adgang til bogføringen."
+        : tab === "adgangspolitik"
+          ? "Platformrollen er teknisk adskilt fra kundernes regnskabsdata."
+          : "Drift, abonnementer og kundestatus – uden beløb, bilag, bankdata eller posteringer."}
+    />
+
+    {tab === "dashboard" && <>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="platform-kpis">
+        <KpiCard label="Virksomheder" value={num(stats?.companyCount ?? companies.length)} icon={<Building2 className="size-4" />} variant="blue" testId="kpi-platform-companies" />
+        <KpiCard label="Aktive abonnementer" value={num(stats?.activeCount ?? 0)} icon={<Check className="size-4" />} variant="green" testId="kpi-platform-active" />
+        <KpiCard label="Prøveperioder" value={num(stats?.trialCount ?? 0)} icon={<Clock className="size-4" />} variant="gray" testId="kpi-platform-trials" />
+        <KpiCard label="Systemstatus" value="Driftsklar" icon={<ShieldCheck className="size-4" />} variant="green" testId="kpi-platform-status" />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
+        <SectionCard title="Kundestatus" icon={<Building2 className="size-4" />} noPadding>
+          {companiesQuery.isLoading ? <div className="space-y-2 p-4"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
+            : companies.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen kundevirksomheder er oprettet.</p>
+            : <div className="divide-y">{companies.slice(0, 8).map((company) => <div key={company.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-4 w-4" /></div>
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{company.name}</p><p className="text-xs text-muted-foreground">{company.planName ?? "Ingen pakke"} · {num(company.userCount ?? 0)} brugere</p></div>
+              <StatusChip status={company.status ?? "ukendt"} />
+            </div>)}</div>}
+        </SectionCard>
+        <SectionCard title="Databeskyttelse" icon={<ShieldCheck className="size-4" />}>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"><p className="font-semibold">Kundedata er afskærmet</p><p className="mt-1 text-xs opacity-80">Platformadministratoren kan ikke åbne posteringer, bilag, bankdata eller økonomiske rapporter.</p></div>
+            <a href="#/smartregnskab/app/adgangspolitik" className="flex items-center justify-between rounded-lg border px-3 py-2.5 font-medium hover:bg-muted">Se adgangspolitik <ChevronRight className="h-4 w-4" /></a>
+          </div>
+        </SectionCard>
+      </div>
+    </>}
+
+    {tab === "virksomheder" && <SectionCard title="Kundevirksomheder" icon={<Building2 className="size-4" />} noPadding>
+      {companiesQuery.isLoading ? <div className="grid gap-3 p-4 sm:grid-cols-2"><Skeleton className="h-28 w-full" /><Skeleton className="h-28 w-full" /></div>
+        : companiesQuery.isError ? <p className="p-5 text-sm text-destructive">Kunne ikke hente kundestatus.</p>
+        : <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">{companies.map((company) => <div key={company.id} className="rounded-xl border bg-background p-4 shadow-sm">
+          <div className="mb-4 flex items-start justify-between"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><StatusChip status={company.status ?? "ukendt"} /></div>
+          <p className="truncate text-sm font-semibold">{company.name}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{company.cvr ? `CVR ${company.cvr} · ` : ""}{company.planName ?? "Ingen pakke"}</p>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Brugere</span><strong>{num(company.userCount ?? 0)}</strong></div><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Ansatte</span><strong>{num(company.employeeCount ?? 0)}</strong></div></div>
+          <p className="mt-3 flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> Regnskabsdata er ikke tilgængelige</p>
+        </div>)}</div>}
+    </SectionCard>}
+
+    {tab === "adgangspolitik" && <div className="grid gap-4 lg:grid-cols-2">
+      <SectionCard title="Platformadministrator" icon={<Lock className="size-4" />}>
+        <ul className="space-y-3 text-sm">
+          {["Kan administrere abonnement og kundestatus", "Kan se teknisk drift og antal brugere", "Kan ikke se bilag, posteringer, bankdata eller rapporter", "Kan ikke bogføre eller godkende på kundens vegne"].map((text) => <li key={text} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{text}</span></li>)}
+        </ul>
+      </SectionCard>
+      <SectionCard title="Bogholder og revisor" icon={<Briefcase className="size-4" />}>
+        <ul className="space-y-3 text-sm">
+          {["Adgang gives af virksomhedens egen administrator", "Tofaktorgodkendelse kræves", "Rettigheder kan være læseadgang eller skriveadgang", "Adgangen kan udløbe og alle handlinger logges"].map((text) => <li key={text} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{text}</span></li>)}
+        </ul>
+      </SectionCard>
+    </div>}
+  </div>;
+}
+
+export default function RegnskabssystemPage() {
+  const { isPlatformAdmin } = useAuth();
+  return isPlatformAdmin ? <PlatformRegnskabssystemPage /> : <CompanyRegnskabssystemPage />;
 }

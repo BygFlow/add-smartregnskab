@@ -125,6 +125,24 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const companyResult = await companyResponse.json();
     assert.ok(companyResult.company?.id);
 
+    const platformCompanyList = await fetch(`${base}/api/platform/companies`, {
+      headers: { Authorization: `Bearer ${platformToken}` },
+    });
+    assert.equal(platformCompanyList.status, 200);
+    const platformCompanyMetadata = (await platformCompanyList.json())[0];
+    assert.equal(platformCompanyMetadata.name, "Smoke Test ApS");
+    assert.equal(Object.hasOwn(platformCompanyMetadata, "bankAccount"), false, "platform metadata must not expose bank details");
+    assert.equal(Object.hasOwn(platformCompanyMetadata, "invoiceStandardText"), false, "platform metadata must not expose accounting settings");
+
+    const blockedAccounting = await fetch(`${base}/api/regnskabssystem/${companyResult.company.id}`, {
+      headers: { Authorization: `Bearer ${platformToken}` },
+    });
+    assert.equal(blockedAccounting.status, 403, "platform admin must not open a customer's ledger");
+    assert.equal((await blockedAccounting.json()).code, "platform_customer_data_blocked");
+    assert.equal((await fetch(`${base}/api/customers?companyId=${companyResult.company.id}`, {
+      headers: { Authorization: `Bearer ${platformToken}` },
+    })).status, 403, "platform admin must not list a customer's contacts");
+
     const leaderLogin = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -345,7 +363,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.0");
+    assert.equal(operations.version, "3.11.1");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {

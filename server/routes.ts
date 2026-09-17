@@ -59,7 +59,7 @@ type SafeParse<T> = {
 };
 import {
   hashPassword, verifyPassword, createSession, safeUser,
-  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, sessionStorageKey, professionalAccessGuard,
+  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, sessionStorageKey, professionalAccessGuard, platformCustomerDataGuard,
 } from "./auth";
 import {
   testConnection, syncPayroll, syncInvoices, credentialFields, API_PROVIDERS,
@@ -517,6 +517,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerPublicAiiaRoutes(app);
 
   app.use("/api", requireAuth);
+  app.use("/api", platformCustomerDataGuard);
   app.use("/api", professionalAccessGuard);
   const regnskabApiPrefixes = [
     "/auth", "/company", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
@@ -1934,9 +1935,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const employees = (await storage.getEmployees(c.id)).length;
       const monthly = plan ? plan.monthlyPrice + employees * plan.pricePerEmployee : 0;
       out.push({
-        ...c,
+        id: c.id,
+        name: c.name,
+        cvr: c.cvr,
+        status: c.status,
+        createdAt: c.createdAt,
         employeeCount: employees,
-        customerCount: (await storage.getCustomers(c.id)).length,
         userCount: (await storage.getUsers(c.id)).length,
         planName: plan?.name ?? "Ingen pakke",
         planId: plan?.id ?? null,
@@ -1956,14 +1960,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!company) return res.status(404).json({ error: "Virksomheden blev ikke fundet." });
     const sub = await storage.getSubscriptionByCompany(id);
     const plan = await storage.getCompanyPlan(id);
-    const users = (await storage.getUsers(id)).map(safeUser);
     const employees = await storage.getEmployees(id);
-    const customers = await storage.getCustomers(id);
-    const tasks = await storage.getTasks(id);
+    const users = await storage.getUsers(id);
     const invoices = await storage.getPlatformInvoices(id);
     const consents = await storage.getConsents(id);
     const dpaConsent = consents.find((cn: any) => cn.kind === "databehandling" && cn.granted);
-    const auditLogs = await storage.getAuditLogs(id, 20);
     const payments = await storage.getPayments(id, 20);
     const nextCharge = await previewBilling(id);
     // AI-insigt: virksomhedens sundhed
@@ -1972,16 +1973,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const monthlyValue = plan ? plan.monthlyPrice + employees.length * plan.pricePerEmployee : 0;
     const healthScore = company.status === "aktiv" ? 100 : company.status === "proeve" ? 70 : company.status === "i_restance" ? 40 : company.status === "spaerret" ? 15 : 5;
     res.json({
-      company,
+      company: {
+        id: company.id,
+        name: company.name,
+        cvr: company.cvr,
+        status: company.status,
+        createdAt: company.createdAt,
+      },
       subscription: sub,
       plan,
-      users,
+      userCount: users.length,
       employeeCount: employees.length,
-      customerCount: customers.length,
-      taskCount: tasks.length,
       invoices,
       payments,
-      auditLogs,
       nextCharge,
       dpa: {
         accepted: !!dpaConsent,
@@ -1993,7 +1997,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         unpaidCount: unpaidInvoices.length,
         healthScore,
         activeUsers: users.filter((u) => u.active).length,
-        employeeUtilization: employees.length > 0 ? Math.round((employees.filter((e) => e.status === "optaget").length / employees.length) * 100) : 0,
       },
     });
   }));
@@ -3484,9 +3487,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════════
 
   app.get("/api/platform/audit-logs", requirePlatformAdmin, h(async (_req, res) => {
-    const logs = await storage.getAuditLogs(undefined, 200);
-    const companies = new Map((await storage.getCompanies()).map((c) => [c.id, c.name]));
-    res.json(logs.map((l) => ({ ...l, companyName: l.companyId ? (companies.get(l.companyId) ?? "—") : "Platform" })));
+    const logs = await storage.getAuditLogs(undefined, 500);
+    // Platformrollen maa kun se platformhaendelser. Kundernes revisionsspor
+    // tilhoerer kunden og vises kun i virksomhedens egen adgangskontekst.
+    res.json(logs.filter((log) => log.companyId == null).slice(0, 200));
   }));
 
   app.get("/api/platform/gdpr", requirePlatformAdmin, h(async (_req, res) => {

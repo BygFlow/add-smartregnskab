@@ -1,5 +1,13 @@
 # Ændringslog
 
+## 3.11.1 — 2026-09-17
+
+- Adskilte platformadministration fra kundernes bogføringsdata med en fail-closed API-vagt.
+- Fjernede platformadministratorens adgang til bilag, posteringer, bankdata og økonomiske rapporter.
+- Begrænsede virksomhedsoversigten til abonnement, status og tekniske nøgletal.
+- Tilføjede synlig adgangs- og databeskyttelsespolitik i platformen.
+- Tilføjede produktionstest, der bekræfter, at platformrollen afvises ved forsøg på adgang til kunderegnskaber.
+
 ## 3.11.0 — 2026-09-17
 
 - Ny rolleopdelt navigation for platformadministration og virksomhedsregnskab.
