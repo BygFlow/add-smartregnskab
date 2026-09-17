@@ -24,7 +24,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -78,6 +78,7 @@ import {
   ShieldCheck,
   Wallet,
   BrainCircuit,
+  ClipboardCheck,
 } from "lucide-react";
 
 // ── Nye SmartRegnskab tab komponenter ──
@@ -804,7 +805,7 @@ export default function RegnskabssystemPage(props: any = {}) {
 
   // Vælg automatisk den første virksomhed (eller egen for ikke-admin)
   const effectiveCompanyId =
-    selectedCompanyId ?? (isPlatformAdmin ? companies[0]?.id ?? null : authCompanyId ?? null);
+    selectedCompanyId ?? (isPlatformAdmin ? companies[0]?.id ?? 0 : authCompanyId ?? 0);
 
   /* Virksomhedsdetaljer (Kontoplan & Bogføring) */
   const detailQuery = useQuery<CompanyDetail>({
@@ -2091,179 +2092,106 @@ export default function RegnskabssystemPage(props: any = {}) {
   const accounts = detail?.accounts ?? [];
   const entries = detail?.entries ?? [];
   const vatPeriods = detail?.vatPeriods ?? [];
+  const selectedCompany = companies.find((company) => company.id === effectiveCompanyId);
+  const platformOverview = isPlatformAdmin && activeTab === "dashboard";
+  const companiesOverview = isPlatformAdmin && activeTab === "virksomheder";
+  const showCompanyContext = isPlatformAdmin && ![
+    "dashboard", "virksomheder", "fagportal", "driftsklarhed", "kontrolcenter",
+    "systemovervaagning", "sikkerhedsaudit", "compliance_checks", "leveringslog",
+  ].includes(activeTab);
+
+  const openCompany = (companyId: number) => {
+    setSelectedCompanyId(companyId);
+    window.location.hash = "/smartregnskab/app/virksomheds_dashboard";
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
-        title="Regnskabssystem"
-        description="Dashboard, kontoplan, bogføring, bilag, bankafstemning, moms og AI Regnskab (beta)."
+        title={platformOverview ? "Platformoverblik" : companiesOverview ? "Virksomheder" : selectedCompany?.name ?? "Virksomhedsregnskab"}
+        description={
+          platformOverview
+            ? "Administrér kunder, fagbrugere, drift og sikkerhed fra ét samlet overblik."
+            : companiesOverview
+              ? "Vælg en virksomhed for at åbne dens regnskab og arbejdsområder."
+              : "Arbejd fokuseret med den valgte virksomheds økonomi, bilag og rapportering."
+        }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
-        {/* VENSTRE SIDEBAR — VIRKSOMHEDER */}
-        <aside className="space-y-2">
-          <SectionCard title="Virksomheder" icon={<Building2 className="size-4" />} noPadding>
-            {companiesQuery.isLoading ? (
-              <div className="p-2 space-y-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : companiesQuery.isError ? (
-              <p className="text-xs text-muted-foreground p-3">
-                Kunne ikke hente virksomheder.
-              </p>
-            ) : companies.length === 0 ? (
-              <p className="text-xs text-muted-foreground p-3">
-                Ingen virksomheder fundet.
-              </p>
-            ) : (
-              <ScrollArea className="max-h-[420px]">
-                <ul className="divide-y divide-border" data-testid="list-companies">
-                  {companies.map((c) => {
-                    const active = c.id === effectiveCompanyId;
-                    return (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          data-testid={`btn-company-${c.id}`}
-                          onClick={() => setSelectedCompanyId(c.id)}
-                          className={`w-full text-left px-3 py-2.5 flex items-center gap-2 hover:bg-muted/50 transition-colors ${
-                            active ? "bg-muted" : ""
-                          }`}
-                        >
-                          <Building2 className="size-4 text-muted-foreground shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium truncate">{c.name}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {(c.accountCount ?? 0)} konti · {(c.entryCount ?? 0)} poster
-                            </p>
-                          </div>
-                          {active && <ChevronRight className="size-3.5 text-muted-foreground" />}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </ScrollArea>
-            )}
-          </SectionCard>
-        </aside>
+      {showCompanyContext && (
+        <div className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between" data-testid="company-context-bar">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
+            <div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Aktiv virksomhed</p><p className="truncate text-sm font-semibold">{selectedCompany?.name ?? "Vælg virksomhed"}</p></div>
+          </div>
+          <Select value={effectiveCompanyId ? String(effectiveCompanyId) : undefined} onValueChange={(value) => setSelectedCompanyId(Number(value))}>
+            <SelectTrigger className="w-full sm:w-[280px]" data-testid="select-active-company"><SelectValue placeholder="Vælg virksomhed" /></SelectTrigger>
+            <SelectContent>{companies.map((company) => <SelectItem key={company.id} value={String(company.id)}>{company.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      )}
 
-        {/* HØJRE — FANEOPD ELT INDHOLD */}
-        <div className="space-y-4">
-          {!effectiveCompanyId ? (
+      <div className="space-y-4">
+          {!effectiveCompanyId && !(platformOverview || companiesOverview) ? (
             <SectionCard>
-              <p className="text-xs text-muted-foreground py-4">
-                Vælg en virksomhed til venstre for at se regnskabsdata.
-              </p>
+              <div className="py-8 text-center"><Building2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="text-sm font-medium">Vælg en virksomhed</p><p className="mt-1 text-xs text-muted-foreground">Åbn Virksomheder i menuen for at fortsætte.</p></div>
             </SectionCard>
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="flex flex-wrap h-auto" data-testid="tabs-regnskabssystem">
-                <TabsTrigger value="dashboard" data-testid="tab-dashboard">
-                  <LayoutDashboard className="size-3.5 mr-1.5" />
-                  Dashboard
-                </TabsTrigger>
-                <TabsTrigger value="kontoplan" data-testid="tab-kontoplan">
-                  <BookOpen className="size-3.5 mr-1.5" />
-                  Kontoplan & Bogføring
-                </TabsTrigger>
-                <TabsTrigger value="bilag" data-testid="tab-bilag">
-                  <Receipt className="size-3.5 mr-1.5" />
-                  Bilag & Udgifter
-                </TabsTrigger>
-                <TabsTrigger value="bank" data-testid="tab-bank">
-                  <Landmark className="size-3.5 mr-1.5" />
-                  Bankafstemning
-                </TabsTrigger>
-                <TabsTrigger value="moms" data-testid="tab-moms">
-                  <Calculator className="size-3.5 mr-1.5" />
-                  Moms & Skat
-                </TabsTrigger>
-                <TabsTrigger value="rapporter" data-testid="tab-rapporter">
-                  <FileBarChart className="size-3.5 mr-1.5" />
-                  Rapporter
-                </TabsTrigger>
-                <TabsTrigger value="ai" data-testid="tab-ai">
-                  <Sparkles className="size-3.5 mr-1.5" />
-                  AI Regnskab (beta)
-                </TabsTrigger>
-                <TabsTrigger value="automatisering" data-testid="tab-automatisering">
-                  <Zap className="size-3.5 mr-1.5" />
-                  Automatisering
-                </TabsTrigger>
-                <TabsTrigger value="debitor" data-testid="tab-debitor">
-                  <ArrowLeftRight className="size-3.5 mr-1.5" />
-                  Debitor/Kreditor
-                </TabsTrigger>
-                <TabsTrigger value="periode" data-testid="tab-periode">
-                  <CalendarCheck className="size-3.5 mr-1.5" />
-                  Periodeafslutning
-                </TabsTrigger>
-                <TabsTrigger value="regler" data-testid="tab-regler">
-                  <ListChecks className="size-3.5 mr-1.5" />
-                  Regnskabsregler
-                </TabsTrigger>
-                <TabsTrigger value="integrationer" data-testid="tab-integrationer">
-                  <Plug className="size-3.5 mr-1.5" />
-                  Integrationer
-                </TabsTrigger>
-                <TabsTrigger value="bilagsindbakke" data-testid="tab-bilagsindbakke">
-                  <Inbox className="size-3.5 mr-1.5" />
-                  Bilagsindbakke
-                </TabsTrigger>
-                <TabsTrigger value="lon" data-testid="tab-lon">
-                  <Users className="size-3.5 mr-1.5" />
-                  Lønbogføring
-                </TabsTrigger>
-                <TabsTrigger value="anlaeg" data-testid="tab-anlaeg">
-                  <Building className="size-3.5 mr-1.5" />
-                  Anlægsregister
-                </TabsTrigger>
-                <TabsTrigger value="budget" data-testid="tab-budget">
-                  <TrendingUp className="size-3.5 mr-1.5" />
-                  Budget & Prognoser
-                </TabsTrigger>
-                <TabsTrigger value="omkostning" data-testid="tab-omkostning">
-                  <Briefcase className="size-3.5 mr-1.5" />
-                  Omkostningssteder
-                </TabsTrigger>
-                <TabsTrigger value="betaling" data-testid="tab-betaling">
-                  <CreditCard className="size-3.5 mr-1.5" />
-                  Betalingskørsler
-                </TabsTrigger>
-                <TabsTrigger value="aarafslutning" data-testid="tab-aarafslutning">
-                  <Calendar className="size-3.5 mr-1.5" />
-                  Årsafslutning
-                </TabsTrigger>
-                <TabsTrigger value="revision" data-testid="tab-revision">
-                  <ShieldCheck className="size-3.5 mr-1.5" />
-                  Revisionsspor
-                </TabsTrigger>
-                <TabsTrigger value="momsafstemning" data-testid="tab-momsafstemning">
-                  <Calculator className="size-3.5 mr-1.5" />
-                  Moms-afstemning
-                </TabsTrigger>
-                <TabsTrigger value="cashflow" data-testid="tab-cashflow">
-                  <Wallet className="size-3.5 mr-1.5" />
-                  Likviditet & Cashflow
-                </TabsTrigger>
-                <TabsTrigger value="ai_chef" data-testid="tab-ai-chef">
-                  <BrainCircuit className="size-3.5 mr-1.5" />
-                  AI Regnskabschef (beta)
-                </TabsTrigger>
-                <TabsTrigger value="skattekonto" data-testid="tab-skattekonto">
-                  <Landmark className="size-3.5 mr-1.5" />
-                  Skattekonto
-                </TabsTrigger>
-              </TabsList>
-
               {/* ---------- DASHBOARD ---------- */}
+              {isPlatformAdmin && (
+                <TabsContent value="dashboard" className="space-y-5">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="platform-kpis">
+                    <KpiCard label="Virksomheder" value={num(companies.length)} icon={<Building2 className="size-4" />} variant="blue" testId="kpi-platform-companies" />
+                    <KpiCard label="Konti i alt" value={num(companies.reduce((sum, company) => sum + Number(company.accountCount ?? 0), 0))} icon={<BookOpen className="size-4" />} variant="green" testId="kpi-platform-accounts" />
+                    <KpiCard label="Bogføringsposter" value={num(companies.reduce((sum, company) => sum + Number(company.entryCount ?? 0), 0))} icon={<FileText className="size-4" />} variant="gray" testId="kpi-platform-entries" />
+                    <KpiCard label="Systemstatus" value="Driftsklar" icon={<ShieldCheck className="size-4" />} variant="green" testId="kpi-platform-status" />
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
+                    <SectionCard title="Virksomheder" icon={<Building2 className="size-4" />} noPadding>
+                      {companiesQuery.isLoading ? <div className="space-y-2 p-4"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
+                        : companies.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen virksomheder er oprettet endnu.</p>
+                        : <div className="divide-y" data-testid="platform-company-list">{companies.slice(0, 6).map((company) => <button key={company.id} type="button" onClick={() => openCompany(company.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-4 w-4" /></div>
+                          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{company.name}</p><p className="text-xs text-muted-foreground">{num(company.accountCount ?? 0)} konti · {num(company.entryCount ?? 0)} poster</p></div>
+                          <span className="hidden text-xs font-medium text-primary sm:inline">Åbn regnskab</span><ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </button>)}</div>}
+                    </SectionCard>
+
+                    <SectionCard title="Hurtige handlinger" icon={<Zap className="size-4" />}>
+                      <div className="grid gap-2">
+                        {[
+                          ["Virksomheder", "#/smartregnskab/app/virksomheder", Building2],
+                          ["Bogholder & Revisor", "#/smartregnskab/app/fagportal", Briefcase],
+                          ["Driftsklarhed", "#/smartregnskab/app/driftsklarhed", ShieldCheck],
+                          ["Kontrolcenter", "#/smartregnskab/app/kontrolcenter", ClipboardCheck],
+                        ].map(([label, href, Icon]: any) => <a key={label} href={href} className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-primary/5"><Icon className="h-4 w-4 text-primary" /><span className="flex-1">{label}</span><ChevronRight className="h-4 w-4 text-muted-foreground" /></a>)}
+                      </div>
+                    </SectionCard>
+                  </div>
+                </TabsContent>
+              )}
+
+              {isPlatformAdmin && (
+                <TabsContent value="virksomheder" className="space-y-4">
+                  <SectionCard title="Alle virksomheder" icon={<Building2 className="size-4" />} noPadding>
+                    {companiesQuery.isLoading ? <div className="grid gap-3 p-4 sm:grid-cols-2"><Skeleton className="h-28 w-full" /><Skeleton className="h-28 w-full" /></div>
+                      : companiesQuery.isError ? <p className="p-5 text-sm text-destructive">Kunne ikke hente virksomheder.</p>
+                      : companies.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen virksomheder fundet.</p>
+                      : <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="list-companies">{companies.map((company) => <button key={company.id} type="button" data-testid={`btn-company-${company.id}`} onClick={() => openCompany(company.id)} className="group rounded-xl border bg-background p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                        <div className="mb-4 flex items-start justify-between"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div>
+                        <p className="truncate text-sm font-semibold">{company.name}</p><p className="mt-1 text-xs text-muted-foreground">{num(company.accountCount ?? 0)} konti · {num(company.entryCount ?? 0)} poster</p>
+                      </button>)}</div>}
+                  </SectionCard>
+                </TabsContent>
+              )}
+
               <TabsContent value="driftsklarhed" className="space-y-4">
                 <Driftsklarhed />
               </TabsContent>
 
-              <TabsContent value="dashboard" className="space-y-4">
+              <TabsContent value={isPlatformAdmin ? "virksomheds_dashboard" : "dashboard"} className="space-y-4">
                 <SectionCard
                   title="Dashboard"
                   icon={<LayoutDashboard className="size-4" />}
@@ -5765,7 +5693,6 @@ export default function RegnskabssystemPage(props: any = {}) {
             </Tabs>
           )}
         </div>
-      </div>
 
       {user && (
         <p className="text-[11px] text-muted-foreground">

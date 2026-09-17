@@ -1,5 +1,13 @@
 # Ændringslog
 
+## 3.11.0 — 2026-09-17
+
+- Ny rolleopdelt navigation for platformadministration og virksomhedsregnskab.
+- Nyt platformoverblik med virksomheder, systemstatus og hurtige handlinger.
+- Virksomhedsvalg er flyttet til en tydelig kontekstlinje og en separat oversigtsside.
+- Den dobbelte, overfyldte modulrække er fjernet; specialfunktioner er samlet under "Flere funktioner".
+- Forbedret responsivt layout og mobilmenu til små skærme.
+
 ## 3.10.2 — 2026-09-16
 
 - Reparerer automatisk ældre produktionsdatabaser med manglende additive migrationer før opstart.
