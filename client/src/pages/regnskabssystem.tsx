@@ -5864,6 +5864,8 @@ function PlatformRegnskabssystemPage() {
   const [activeTab, setActiveTab] = useState(getTabFromHash());
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<any | null>(null);
+  const [selectedSupportCase, setSelectedSupportCase] = useState<any | null>(null);
+  const [supportReply, setSupportReply] = useState("");
   const [companyForm, setCompanyForm] = useState({
     name: "", cvr: "", email: "", address: "", phone: "",
     adminName: "", adminEmail: "", adminPassword: "", planId: "", billingCycle: "maanedlig", trialDays: "14",
@@ -5889,6 +5891,10 @@ function PlatformRegnskabssystemPage() {
   const backupsQuery = useQuery<any[]>({ queryKey: ["/api/platform/backups"], enabled: activeTab === "backup_platform", queryFn: async () => (await apiRequest("GET", "/api/platform/backups")).json() });
   const operationsQuery = useQuery<any>({ queryKey: ["/api/operations/status"], enabled: activeTab === "platform_drift" || activeTab === "backup_platform", queryFn: async () => (await apiRequest("GET", "/api/operations/status")).json() });
   const supportQuery = useQuery<any[]>({ queryKey: ["/api/support-cases"], enabled: activeTab === "platform_support", queryFn: async () => (await apiRequest("GET", "/api/support-cases")).json() });
+  const jobsQuery = useQuery<any>({ queryKey: ["/api/platform/jobs"], enabled: activeTab === "platform_drift", queryFn: async () => (await apiRequest("GET", "/api/platform/jobs")).json() });
+  const professionalsQuery = useQuery<any[]>({ queryKey: ["/api/platform/professionals"], enabled: activeTab === "fagbrugere", queryFn: async () => (await apiRequest("GET", "/api/platform/professionals")).json() });
+  const gdprQuery = useQuery<any>({ queryKey: ["/api/platform/gdpr"], enabled: activeTab === "adgangspolitik", queryFn: async () => (await apiRequest("GET", "/api/platform/gdpr")).json() });
+  const platformAuditQuery = useQuery<any[]>({ queryKey: ["/api/platform/audit-logs"], enabled: activeTab === "adgangspolitik", queryFn: async () => (await apiRequest("GET", "/api/platform/audit-logs")).json() });
   const stats = statsQuery.data;
   const companies = companiesQuery.data ?? [];
   const refreshPlatform = async (...keys: string[]) => {
@@ -5929,6 +5935,21 @@ function PlatformRegnskabssystemPage() {
   const invoiceActionMutation = useMutation({
     mutationFn: async ({ invoiceId, action }: { invoiceId: number; action: "send" | "remind" | "paid" }) => (await apiRequest("POST", `/api/platform/invoices/${invoiceId}/${action}`)).json(),
     onSuccess: async (_data, variables) => { await refreshPlatform("/api/platform/invoices", "/api/platform/payments", "/api/platform/stats"); toast({ title: variables.action === "paid" ? "Faktura markeret som betalt" : variables.action === "remind" ? "Rykker lagt i mailkø" : "Faktura lagt i mailkø" }); },
+    onError: mutationError,
+  });
+  const runJobMutation = useMutation({
+    mutationFn: async (jobId: string) => (await apiRequest("POST", `/api/platform/jobs/${jobId}`)).json(),
+    onSuccess: async (result) => { await refreshPlatform("/api/platform/jobs", "/api/operations/status", "/api/platform/backups"); toast({ title: "Driftsjobbet er afsluttet", description: result?.detail ?? "Kørslen er registreret." }); },
+    onError: mutationError,
+  });
+  const supportAiMutation = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/support-cases/${id}/ai-reply`)).json(),
+    onSuccess: (updated) => { setSelectedSupportCase(updated); setSupportReply(updated.reply ?? ""); toast({ title: "Svarudkast er oprettet", description: "Kontrollér altid teksten før afsendelse." }); },
+    onError: mutationError,
+  });
+  const supportSaveMutation = useMutation({
+    mutationFn: async ({ send, close }: { send: boolean; close?: boolean }) => (await apiRequest(send ? "POST" : "PATCH", send ? `/api/support-cases/${selectedSupportCase.id}/send-reply` : `/api/support-cases/${selectedSupportCase.id}`, send ? { reply: supportReply, close: Boolean(close) } : { reply: supportReply, replyStatus: "kladde", status: "under_behandling" })).json(),
+    onSuccess: async (updated, variables) => { await refreshPlatform("/api/support-cases", "/api/platform/audit-logs"); setSelectedSupportCase(updated); setSupportReply(updated.reply ?? ""); toast({ title: variables.send ? "Svaret er sendt" : "Svarudkastet er gemt" }); },
     onError: mutationError,
   });
   const openPlanEditor = (plan: any) => {
@@ -6030,14 +6051,22 @@ function PlatformRegnskabssystemPage() {
       </SectionCard>
     </div>}
 
-    {tab === "platform_drift" && <SectionCard title="Tjenester" icon={<Activity className="size-4" />}>
-      {operationsQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{(operationsQuery.data?.services ?? []).map((service: any) => <div key={service.id} className="rounded-xl border bg-background p-4"><div className="flex items-center justify-between"><p className="font-semibold">{service.name ?? service.id}</p><StatusChip status={service.status ?? "ukendt"}/></div><p className="mt-2 text-xs text-muted-foreground">{service.message ?? "Tjenesten svarer normalt."}</p></div>)}</div>}
-    </SectionCard>}
+    {tab === "platform_drift" && <div className="space-y-4">
+      <SectionCard title="Tjenester" icon={<Activity className="size-4" />}>
+        <div className="mb-3 flex justify-end"><Button size="sm" variant="outline" onClick={() => { operationsQuery.refetch(); jobsQuery.refetch(); }}><RefreshCw className="mr-2 h-3.5 w-3.5"/>Opdatér status</Button></div>
+        {operationsQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{(operationsQuery.data?.services ?? []).map((service: any) => <div key={service.id} className="rounded-xl border bg-background p-4"><div className="flex items-center justify-between"><p className="font-semibold">{service.name ?? service.id}</p><StatusChip status={service.status ?? "ukendt"}/></div><p className="mt-2 text-xs text-muted-foreground">{service.message ?? "Tjenesten svarer normalt."}</p></div>)}</div>}
+      </SectionCard>
+      <SectionCard title="Automatiske driftsjob" icon={<RefreshCw className="size-4" />} noPadding>
+        {jobsQuery.isLoading ? <div className="p-4"><Skeleton className="h-24 w-full"/></div> : <div className="divide-y">{(jobsQuery.data?.jobs ?? []).map((job: any) => { const latest = (jobsQuery.data?.runs ?? []).find((run: any) => run.job === job.id); return <div key={job.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{job.label}</p><p className="text-xs text-muted-foreground">Hver {job.everyMinutes >= 1440 ? `${Math.round(job.everyMinutes / 1440)} dag` : `${job.everyMinutes} min.`} · Senest: {latest?.createdAt ?? latest?.startedAt ?? "ikke registreret"}</p></div><StatusChip status={latest?.status ?? "planlagt"}/><Button size="sm" variant="outline" disabled={runJobMutation.isPending} onClick={() => { if (window.confirm(`Kør “${job.label}” nu?`)) runJobMutation.mutate(job.id); }}>{runJobMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin"/>}Kør nu</Button></div>; })}</div>}
+      </SectionCard>
+    </div>}
 
-    {tab === "fagbrugere" && <div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Virksomhedsstyret adgang" icon={<Briefcase className="size-4" />}><p className="text-sm text-muted-foreground">Bogholdere og revisorer inviteres fra den enkelte virksomheds egen konto. Platformadministratoren kan ikke åbne klientens regnskab.</p></SectionCard><SectionCard title="Sikkerhedskrav" icon={<ShieldCheck className="size-4" />}><ul className="space-y-2 text-sm">{["Tofaktorgodkendelse", "Tidsbegrænset adgang", "Læs eller skriv-rettigheder", "Fuld logning af handlinger"].map((text) => <li key={text} className="flex gap-2"><Check className="h-4 w-4 text-emerald-600"/>{text}</li>)}</ul></SectionCard></div>}
+    {tab === "fagbrugere" && <div className="space-y-4"><div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Virksomhedsstyret adgang" icon={<Briefcase className="size-4" />}><p className="text-sm text-muted-foreground">Bogholdere og revisorer inviteres fra den enkelte virksomheds egen konto. Platformen kan kontrollere kontostatus og 2FA, men kan ikke tildele sig selv adgang til klientens regnskab.</p></SectionCard><SectionCard title="Sikkerhedskrav" icon={<ShieldCheck className="size-4" />}><ul className="space-y-2 text-sm">{["Tofaktorgodkendelse før klientadgang", "Tidsbegrænset adgang", "Læs- eller skriverettigheder pr. klient", "Fuld logning af handlinger"].map((text) => <li key={text} className="flex gap-2"><Check className="h-4 w-4 text-emerald-600"/>{text}</li>)}</ul></SectionCard></div>
+      <SectionCard title="Registrerede fagbrugere" icon={<Users className="size-4" />} noPadding>{professionalsQuery.isLoading ? <div className="p-4"><Skeleton className="h-24 w-full"/></div> : (professionalsQuery.data ?? []).length === 0 ? <div className="p-5"><p className="text-sm font-medium">Ingen fagbrugere registreret endnu</p><p className="mt-1 text-xs text-muted-foreground">En virksomheds administrator inviterer den første bogholder eller revisor fra sin egen konto.</p></div> : <div className="divide-y">{(professionalsQuery.data ?? []).map((professional) => <div key={professional.id} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Briefcase className="h-4 w-4"/></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{professional.name}</p><p className="truncate text-xs text-muted-foreground">{professional.email} · {professional.clientCount} aktive klientadgange</p></div><StatusChip status={professional.active ? "aktiv" : "inaktiv"}/><StatusChip status={professional.twoFactorEnabled ? "2FA aktiv" : "2FA mangler"}/></div>)}</div>}</SectionCard>
+    </div>}
 
     {tab === "platform_support" && <SectionCard title="Modtagne supportsager" icon={<AlertTriangle className="size-4" />} noPadding>
-      {supportQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (supportQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen åbne supportsager.</p> : <div className="divide-y">{(supportQuery.data ?? []).slice(0, 30).map((supportCase) => <div key={supportCase.id} className="flex items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{supportCase.subject ?? `Sag ${supportCase.id}`}</p><p className="text-xs text-muted-foreground">{supportCase.createdAt ?? "—"} · Virksomhed {supportCase.companyId}</p></div><StatusChip status={supportCase.status ?? "aaben"}/></div>)}</div>}
+      {supportQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (supportQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen åbne supportsager.</p> : <div className="divide-y">{(supportQuery.data ?? []).slice(0, 30).map((supportCase) => <button type="button" key={supportCase.id} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50" onClick={() => { setSelectedSupportCase(supportCase); setSupportReply(supportCase.reply ?? ""); }}><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{supportCase.subject ?? `Sag ${supportCase.id}`}</p><p className="text-xs text-muted-foreground">{supportCase.createdAt ?? "—"} · {supportCase.companyName ?? `Virksomhed ${supportCase.companyId}`} · {supportCase.createdBy ?? "ukendt afsender"}</p></div><StatusChip status={supportCase.priority ?? "normal"}/><StatusChip status={supportCase.status ?? "aaben"}/><ChevronRight className="h-4 w-4 text-muted-foreground"/></button>)}</div>}
     </SectionCard>}
 
     {tab === "adgangspolitik" && <div className="grid gap-4 lg:grid-cols-2">
@@ -6051,7 +6080,21 @@ function PlatformRegnskabssystemPage() {
           {["Adgang gives af virksomhedens egen administrator", "Tofaktorgodkendelse kræves", "Rettigheder kan være læseadgang eller skriveadgang", "Adgangen kan udløbe og alle handlinger logges"].map((text) => <li key={text} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{text}</span></li>)}
         </ul>
       </SectionCard>
+      <SectionCard title="Databehandleraftaler" icon={<FileCheck2 className="size-4" />}><div className="grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-muted p-3"><strong className="block text-xl">{gdprQuery.data?.companyCount ?? 0}</strong><span className="text-xs text-muted-foreground">Virksomheder</span></div><div className="rounded-lg bg-muted p-3"><strong className="block text-xl text-emerald-600">{gdprQuery.data?.dpaAccepted ?? 0}</strong><span className="text-xs text-muted-foreground">Accepteret</span></div><div className="rounded-lg bg-muted p-3"><strong className="block text-xl text-amber-600">{gdprQuery.data?.dpaPending ?? 0}</strong><span className="text-xs text-muted-foreground">Mangler</span></div></div></SectionCard>
+      <SectionCard title="Seneste platformhandlinger" icon={<ListChecks className="size-4" />} noPadding>{platformAuditQuery.isLoading ? <div className="p-4"><Skeleton className="h-24 w-full"/></div> : (platformAuditQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen platformhandlinger registreret.</p> : <div className="divide-y">{(platformAuditQuery.data ?? []).slice(0, 8).map((entry) => <div key={entry.id} className="px-4 py-3"><p className="text-sm font-medium">{entry.action} · {entry.target}</p><p className="text-xs text-muted-foreground">{entry.createdAt ?? "—"} · {entry.userEmail ?? "system"}</p></div>)}</div>}</SectionCard>
     </div>}
+
+    <Dialog open={Boolean(selectedSupportCase)} onOpenChange={(open) => { if (!open) setSelectedSupportCase(null); }}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader><DialogTitle>{selectedSupportCase?.subject ?? "Supportsag"}</DialogTitle></DialogHeader>
+        {selectedSupportCase && <div className="space-y-4">
+          <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs sm:grid-cols-2"><p><span className="text-muted-foreground">Virksomhed:</span> {selectedSupportCase.companyName ?? selectedSupportCase.companyId}</p><p><span className="text-muted-foreground">Afsender:</span> {selectedSupportCase.createdBy ?? "—"}</p><p><span className="text-muted-foreground">Prioritet:</span> {selectedSupportCase.priority ?? "normal"}</p><p><span className="text-muted-foreground">Status:</span> {selectedSupportCase.status ?? "aaben"}</p></div>
+          <div><Label>Henvendelse</Label><div className="mt-2 whitespace-pre-wrap rounded-lg border p-3 text-sm">{selectedSupportCase.message}</div></div>
+          <div className="space-y-2"><div className="flex items-center justify-between"><Label htmlFor="support-reply">Svar</Label><Button size="sm" variant="outline" disabled={supportAiMutation.isPending} onClick={() => supportAiMutation.mutate(selectedSupportCase.id)}><Sparkles className="mr-2 h-3.5 w-3.5"/>{supportAiMutation.isPending ? "Opretter…" : "Lav AI-udkast"}</Button></div><Textarea id="support-reply" className="min-h-44" value={supportReply} onChange={(event) => setSupportReply(event.target.value)}/><p className="text-[11px] text-muted-foreground">AI laver kun et udkast. Intet sendes, før du trykker “Send svar”.</p></div>
+        </div>}
+        <DialogFooter className="flex-col gap-2 sm:flex-row"><Button variant="outline" onClick={() => setSelectedSupportCase(null)}>Luk</Button><Button variant="outline" disabled={supportSaveMutation.isPending || !supportReply.trim()} onClick={() => supportSaveMutation.mutate({ send: false })}>Gem kladde</Button><Button disabled={supportSaveMutation.isPending || !supportReply.trim()} onClick={() => { if (window.confirm(`Send svaret til ${selectedSupportCase?.createdBy}?`)) supportSaveMutation.mutate({ send: true }); }}>{supportSaveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Send svar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Dialog open={companyDialogOpen} onOpenChange={setCompanyDialogOpen}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">

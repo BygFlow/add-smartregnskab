@@ -1,5 +1,12 @@
 # Ændringslog
 
+## 3.11.4 — 2026-09-17
+
+- Gjort Systemdrift operationel med statusopdatering, jobhistorik og kontrolleret manuel kørsel.
+- Tilføjet sikkert platformsoverblik over fagbrugere, 2FA og antal klientadgange uden adgang til klienternes regnskaber.
+- Gjort supportsager handlingsklare med AI-udkast, redigering, kladde og faktisk e-mailafsendelse.
+- Tilføjet overblik over databehandleraftaler og platformens eget revisionsspor på adgangssiden.
+
 ## 3.11.3 — 2026-09-17
 
 - Gjort platformens virksomhedsside operationel med oprettelse af kunde, lederkonto og prøveabonnement.

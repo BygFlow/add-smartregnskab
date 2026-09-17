@@ -371,8 +371,21 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.3");
+    assert.equal(operations.version, "3.11.4");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
+    assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
+    assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
+    assert.equal((await fetch(`${base}/api/platform/gdpr`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
+
+    const supportCaseResponse = await fetch(`${base}/api/support-cases`, {
+      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ subject: "Hjælp til faktura", message: "Hvordan sender jeg en faktura?", priority: "normal" }),
+    });
+    assert.equal(supportCaseResponse.status, 200);
+    const supportCase = await supportCaseResponse.json();
+    const supportAiResponse = await fetch(`${base}/api/support-cases/${supportCase.id}/ai-reply`, { method: "POST", headers: { Authorization: `Bearer ${platformToken}` } });
+    assert.equal(supportAiResponse.status, 200);
+    assert.match((await supportAiResponse.json()).reply, /faktura/i);
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {
       method: "POST", headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },

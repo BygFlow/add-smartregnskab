@@ -3536,6 +3536,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   }));
 
+  app.get("/api/platform/professionals", requirePlatformAdmin, h(async (_req, res) => {
+    const memberships = await db.select().from(professionalMemberships).all();
+    const byUser = new Map<number, typeof memberships>();
+    for (const membership of memberships) {
+      const rows = byUser.get(membership.userId) ?? [];
+      rows.push(membership);
+      byUser.set(membership.userId, rows);
+    }
+    const professionals: any[] = [];
+    for (const [userId, rows] of Array.from(byUser.entries())) {
+      const user = await storage.getUser(userId);
+      if (!user) continue;
+      professionals.push({
+        id: user.id, name: user.name, email: user.email, role: user.role,
+        active: user.active, twoFactorEnabled: user.twoFactorEnabled,
+        clientCount: rows.filter((row: any) => row.status === "active").length,
+        accessCount: rows.length, lastLoginAt: user.lastLoginAt,
+      });
+    }
+    res.json(professionals.sort((a, b) => String(a.name).localeCompare(String(b.name), "da")));
+  }));
+
   app.post("/api/platform/companies/:id/export-data", requirePlatformAdmin, h(async (req, res) => {
     const id = Number(req.params.id);
     const company = await storage.getCompany(id);
@@ -3897,7 +3919,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
   app.get("/api/support-cases", requireAuth, h(async (req, res) => {
     if (req.auth?.user?.role === "platform_admin") {
-      res.json(await storage.all("support_cases", undefined));
+      const companies = new Map((await storage.getCompanies()).map((company) => [company.id, company.name]));
+      const rows = await storage.all("support_cases", undefined);
+      res.json(rows.map((row: any) => ({ ...row, companyName: companies.get(row.companyId) ?? `Virksomhed ${row.companyId}` })));
     } else {
       const rows = await storage.all("support_cases", tenantId(req));
       res.json(req.auth?.role === "kunde" ? rows.filter((row: any) => row.createdBy === req.auth?.user?.email) : rows);
@@ -4081,6 +4105,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const updated = await storage.update("support_cases", id, { reply, replyStatus: "kladde" }, undefined);
     await audit(req, "ai_svar", "support_case", id, sc.subject);
+    res.json(updated);
+  }));
+
+  app.post("/api/support-cases/:id/send-reply", requirePlatformAdmin, h(async (req, res) => {
+    const id = Number(req.params.id);
+    const supportCase = await storage.get("support_cases", id, undefined) as any;
+    if (!supportCase) return res.status(404).json({ error: "Supportsagen blev ikke fundet." });
+    const reply = String(req.body?.reply ?? supportCase.reply ?? "").trim();
+    if (!reply) return res.status(400).json({ error: "Skriv et svar før afsendelse." });
+    if (!String(supportCase.createdBy ?? "").includes("@")) return res.status(400).json({ error: "Supportsagen mangler en gyldig modtager." });
+    await queueAndSend({
+      companyId: supportCase.companyId,
+      channel: "email",
+      recipient: supportCase.createdBy,
+      subject: `Svar fra ADD SmartRegnskab: ${supportCase.subject}`,
+      body: reply,
+      relatedType: "support_case",
+      relatedId: id,
+    });
+    const updated = await storage.update("support_cases", id, {
+      reply, replyStatus: "sendt",
+      status: req.body?.close ? "lukket" : "under_behandling",
+      updatedAt: new Date().toISOString(),
+    }, undefined);
+    await audit(req, "send_svar", "support_case", id, supportCase.subject);
     res.json(updated);
   }));
 
