@@ -1,5 +1,13 @@
 # Ændringslog
 
+## 3.11.3 — 2026-09-17
+
+- Gjort platformens virksomhedsside operationel med oprettelse af kunde, lederkonto og prøveabonnement.
+- Tilføjet sikker styring af kundestatus og oprettelse af ADD SmartRegnskabs abonnementsfakturaer uden adgang til kundens bogføring.
+- Gjort pakkeløsninger redigerbare og rettet visningen af pakkegrænser.
+- Tilføjet afsendelse, rykker, PDF og manuel betalingsmarkering for abonnementsfakturaer.
+- Backup-siden skelner nu tydeligt mellem vedvarende lager og en verificeret ekstern backup og viser ikke falsk backupstatus.
+
 ## 3.11.2 — 2026-09-17
 
 - Bevarer login sikkert efter sideopdatering med en HttpOnly-sessioncookie.

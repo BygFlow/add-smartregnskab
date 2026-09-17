@@ -1,6 +1,6 @@
 import { lazy, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@//lib/queryClient";
+import { apiRequest, openAuthedFile, queryClient } from "@//lib/queryClient";
 import { useAuth } from "@//lib/auth";
 import { useToast } from "@//hooks/use-toast";
 import { PageHeader, SectionCard, StatusChip } from "@/components/premium";
@@ -159,7 +159,11 @@ type PlatformCompanySummary = {
   employeeCount?: number | null;
   userCount?: number | null;
   planName?: string | null;
+  planId?: number | null;
   subscriptionStatus?: string | null;
+  billingCycle?: string | null;
+  trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
   monthlyValue?: number | null;
 };
 
@@ -5856,7 +5860,15 @@ function parseBankCsv(
 }
 
 function PlatformRegnskabssystemPage() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(getTabFromHash());
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<any | null>(null);
+  const [companyForm, setCompanyForm] = useState({
+    name: "", cvr: "", email: "", address: "", phone: "",
+    adminName: "", adminEmail: "", adminPassword: "", planId: "", billingCycle: "maanedlig", trialDays: "14",
+  });
+  const [planForm, setPlanForm] = useState({ name: "", description: "", monthlyPrice: "", pricePerEmployee: "", maxEmployees: "", maxCustomers: "", active: true });
   useEffect(() => {
     const onHashChange = () => setActiveTab(getTabFromHash());
     window.addEventListener("hashchange", onHashChange);
@@ -5871,14 +5883,58 @@ function PlatformRegnskabssystemPage() {
     queryKey: ["/api/platform/companies"],
     queryFn: async () => (await apiRequest("GET", "/api/platform/companies")).json(),
   });
-  const plansQuery = useQuery<any[]>({ queryKey: ["/api/platform/plans"], enabled: activeTab === "pakker", queryFn: async () => (await apiRequest("GET", "/api/platform/plans")).json() });
+  const plansQuery = useQuery<any[]>({ queryKey: ["/api/platform/plans"], enabled: activeTab === "pakker" || activeTab === "virksomheder", queryFn: async () => (await apiRequest("GET", "/api/platform/plans")).json() });
   const paymentsQuery = useQuery<any>({ queryKey: ["/api/platform/payments"], enabled: activeTab === "betalinger", queryFn: async () => (await apiRequest("GET", "/api/platform/payments")).json() });
   const platformInvoicesQuery = useQuery<any[]>({ queryKey: ["/api/platform/invoices"], enabled: activeTab === "betalinger", queryFn: async () => (await apiRequest("GET", "/api/platform/invoices")).json() });
   const backupsQuery = useQuery<any[]>({ queryKey: ["/api/platform/backups"], enabled: activeTab === "backup_platform", queryFn: async () => (await apiRequest("GET", "/api/platform/backups")).json() });
-  const operationsQuery = useQuery<any>({ queryKey: ["/api/operations/status"], enabled: activeTab === "platform_drift", queryFn: async () => (await apiRequest("GET", "/api/operations/status")).json() });
+  const operationsQuery = useQuery<any>({ queryKey: ["/api/operations/status"], enabled: activeTab === "platform_drift" || activeTab === "backup_platform", queryFn: async () => (await apiRequest("GET", "/api/operations/status")).json() });
   const supportQuery = useQuery<any[]>({ queryKey: ["/api/support-cases"], enabled: activeTab === "platform_support", queryFn: async () => (await apiRequest("GET", "/api/support-cases")).json() });
   const stats = statsQuery.data;
   const companies = companiesQuery.data ?? [];
+  const refreshPlatform = async (...keys: string[]) => {
+    await Promise.all(keys.map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+  };
+  const mutationError = (error: unknown) => toast({ title: "Handlingen mislykkedes", description: error instanceof Error ? error.message : "Prøv igen.", variant: "destructive" });
+  const createCompanyMutation = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/platform/companies", {
+      ...companyForm,
+      cvr: companyForm.cvr || null, email: companyForm.email || null, address: companyForm.address || null, phone: companyForm.phone || null,
+      planId: Number(companyForm.planId), trialDays: Number(companyForm.trialDays),
+    })).json(),
+    onSuccess: async () => {
+      await refreshPlatform("/api/platform/companies", "/api/platform/stats");
+      setCompanyDialogOpen(false);
+      setCompanyForm({ name: "", cvr: "", email: "", address: "", phone: "", adminName: "", adminEmail: "", adminPassword: "", planId: "", billingCycle: "maanedlig", trialDays: "14" });
+      toast({ title: "Virksomheden er oprettet", description: "Lederkonto og prøveabonnement er klar." });
+    },
+    onError: mutationError,
+  });
+  const companyActionMutation = useMutation({
+    mutationFn: async ({ companyId, action }: { companyId: number; action: "invoice" | "suspend" | "reactivate" }) => (await apiRequest("POST", `/api/platform/companies/${companyId}/${action}`, action === "suspend" ? { reason: "Spærret af platformadministrator" } : undefined)).json(),
+    onSuccess: async (_data, variables) => {
+      await refreshPlatform("/api/platform/companies", "/api/platform/stats", "/api/platform/invoices");
+      toast({ title: variables.action === "invoice" ? "Abonnementsfaktura oprettet" : variables.action === "suspend" ? "Virksomheden er spærret" : "Virksomheden er genåbnet" });
+    },
+    onError: mutationError,
+  });
+  const savePlanMutation = useMutation({
+    mutationFn: async () => (await apiRequest("PATCH", `/api/platform/plans/${editingPlan.id}`, {
+      name: planForm.name, description: planForm.description || null,
+      monthlyPrice: Number(planForm.monthlyPrice), pricePerEmployee: Number(planForm.pricePerEmployee),
+      maxEmployees: Number(planForm.maxEmployees), maxCustomers: Number(planForm.maxCustomers), active: planForm.active ? 1 : 0,
+    })).json(),
+    onSuccess: async () => { await refreshPlatform("/api/platform/plans", "/api/platform/companies", "/api/platform/stats"); setEditingPlan(null); toast({ title: "Pakken er opdateret" }); },
+    onError: mutationError,
+  });
+  const invoiceActionMutation = useMutation({
+    mutationFn: async ({ invoiceId, action }: { invoiceId: number; action: "send" | "remind" | "paid" }) => (await apiRequest("POST", `/api/platform/invoices/${invoiceId}/${action}`)).json(),
+    onSuccess: async (_data, variables) => { await refreshPlatform("/api/platform/invoices", "/api/platform/payments", "/api/platform/stats"); toast({ title: variables.action === "paid" ? "Faktura markeret som betalt" : variables.action === "remind" ? "Rykker lagt i mailkø" : "Faktura lagt i mailkø" }); },
+    onError: mutationError,
+  });
+  const openPlanEditor = (plan: any) => {
+    setPlanForm({ name: plan.name ?? "", description: plan.description ?? "", monthlyPrice: String(plan.monthlyPrice ?? 0), pricePerEmployee: String(plan.pricePerEmployee ?? 0), maxEmployees: String(plan.maxEmployees ?? -1), maxCustomers: String(plan.maxCustomers ?? -1), active: Boolean(plan.active) });
+    setEditingPlan(plan);
+  };
   const allowedTabs = ["dashboard", "virksomheder", "pakker", "betalinger", "backup_platform", "platform_drift", "fagbrugere", "platform_support", "adgangspolitik"];
   const tab = allowedTabs.includes(activeTab) ? activeTab : "dashboard";
   const headings: Record<string, [string, string]> = {
@@ -5926,13 +5982,22 @@ function PlatformRegnskabssystemPage() {
     </>}
 
     {tab === "virksomheder" && <SectionCard title="Kundevirksomheder" icon={<Building2 className="size-4" />} noPadding>
-      {companiesQuery.isLoading ? <div className="grid gap-3 p-4 sm:grid-cols-2"><Skeleton className="h-28 w-full" /><Skeleton className="h-28 w-full" /></div>
+      <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div><p className="text-sm font-medium">Kunder og abonnementer</p><p className="text-xs text-muted-foreground">Opret adgang, udsted abonnementsfaktura og administrér teknisk status.</p></div>
+        <Button onClick={() => setCompanyDialogOpen(true)}><Plus className="mr-2 h-4 w-4" />Opret virksomhed</Button>
+      </div>
+      {companiesQuery.isLoading ? <div className="grid gap-3 p-4 sm:grid-cols-2"><Skeleton className="h-40 w-full" /><Skeleton className="h-40 w-full" /></div>
         : companiesQuery.isError ? <p className="p-5 text-sm text-destructive">Kunne ikke hente kundestatus.</p>
+        : companies.length === 0 ? <div className="p-8 text-center"><Building2 className="mx-auto mb-3 h-9 w-9 text-muted-foreground"/><p className="text-sm font-medium">Ingen kundevirksomheder endnu</p><p className="mt-1 text-xs text-muted-foreground">Brug “Opret virksomhed” for at oprette den første kunde og lederkonto.</p></div>
         : <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">{companies.map((company) => <div key={company.id} className="rounded-xl border bg-background p-4 shadow-sm">
           <div className="mb-4 flex items-start justify-between"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><StatusChip status={company.status ?? "ukendt"} /></div>
           <p className="truncate text-sm font-semibold">{company.name}</p>
           <p className="mt-1 text-xs text-muted-foreground">{company.cvr ? `CVR ${company.cvr} · ` : ""}{company.planName ?? "Ingen pakke"}</p>
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Brugere</span><strong>{num(company.userCount ?? 0)}</strong></div><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Ansatte</span><strong>{num(company.employeeCount ?? 0)}</strong></div></div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Brugere</span><strong>{num(company.userCount ?? 0)}</strong></div><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Næste periode</span><strong>{company.currentPeriodEnd ?? "—"}</strong></div></div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => companyActionMutation.mutate({ companyId: company.id, action: "invoice" })}><FileText className="mr-1.5 h-3.5 w-3.5"/>Opret faktura</Button>
+            {company.status === "spaerret" ? <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => companyActionMutation.mutate({ companyId: company.id, action: "reactivate" })}><Power className="mr-1.5 h-3.5 w-3.5"/>Genåbn</Button> : <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => { if (window.confirm(`Spær adgangen for ${company.name}?`)) companyActionMutation.mutate({ companyId: company.id, action: "suspend" }); }}><Lock className="mr-1.5 h-3.5 w-3.5"/>Spær</Button>}
+          </div>
           <p className="mt-3 flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> Regnskabsdata er ikke tilgængelige</p>
         </div>)}</div>}
     </SectionCard>}
@@ -5941,7 +6006,9 @@ function PlatformRegnskabssystemPage() {
       {plansQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{(plansQuery.data ?? []).map((plan) => <div key={plan.id} className="rounded-xl border bg-background p-4">
         <div className="flex items-start justify-between"><div><p className="font-semibold">{plan.name}</p><p className="text-xs text-muted-foreground">{plan.slug}</p></div><StatusChip status={plan.active ? "aktiv" : "inaktiv"} /></div>
         <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md.</span></p>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Brugere<br/><strong>{plan.maxUsers === -1 ? "Ubegrænset" : plan.maxUsers}</strong></div><div className="rounded-lg bg-muted p-2">Ansatte<br/><strong>{plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees}</strong></div></div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Kunder<br/><strong>{plan.maxCustomers === -1 ? "Ubegrænset" : plan.maxCustomers}</strong></div><div className="rounded-lg bg-muted p-2">Ansatte<br/><strong>{plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees}</strong></div></div>
+        <p className="mt-3 min-h-8 text-xs text-muted-foreground">{plan.description || "Ingen beskrivelse"}</p>
+        <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => openPlanEditor(plan)}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger pakke</Button>
       </div>)}</div>}
     </SectionCard>}
 
@@ -5950,13 +6017,18 @@ function PlatformRegnskabssystemPage() {
         {paymentsQuery.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="space-y-3"><div className="flex items-center justify-between rounded-lg border p-3"><div><p className="font-semibold">QuickPay</p><p className="text-xs text-muted-foreground">Betalingsudbyder</p></div><StatusChip status={paymentsQuery.data?.providers?.find((provider: any) => provider.id === "quickpay")?.configured ? "konfigureret" : "mangler opsætning"} /></div><p className="text-xs text-muted-foreground">Denne side viser kun betalinger til ADD SmartRegnskab – ikke virksomhedernes egne fakturaer.</p></div>}
       </SectionCard>
       <SectionCard title="Abonnementsfakturaer" icon={<FileText className="size-4" />} noPadding>
-        {platformInvoicesQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (platformInvoicesQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen abonnementsfakturaer endnu.</p> : <div className="divide-y">{(platformInvoicesQuery.data ?? []).slice(0, 20).map((invoice) => <div key={invoice.id} className="flex items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{invoice.invoiceNumber ?? `Faktura ${invoice.id}`}</p><p className="text-xs text-muted-foreground">{invoice.issueDate ?? "—"} · {invoice.companyName ?? `Virksomhed ${invoice.companyId}`}</p></div><strong className="text-sm">{money(invoice.totalAmount)}</strong><StatusChip status={invoice.status ?? "ukendt"} /></div>)}</div>}
+        {platformInvoicesQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (platformInvoicesQuery.data ?? []).length === 0 ? <div className="p-5"><p className="text-sm font-medium">Ingen abonnementsfakturaer endnu</p><p className="mt-1 text-xs text-muted-foreground">Opret den første fra siden Virksomheder. Fakturaerne her er kun ADD SmartRegnskabs egne abonnementsfakturaer.</p></div> : <div className="divide-y">{(platformInvoicesQuery.data ?? []).slice(0, 20).map((invoice) => <div key={invoice.id} className="px-4 py-3"><div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{invoice.invoiceNumber ?? `Faktura ${invoice.id}`}</p><p className="text-xs text-muted-foreground">{invoice.issueDate ?? "—"} · {invoice.companyName ?? `Virksomhed ${invoice.companyId}`}</p></div><strong className="text-sm">{money(invoice.totalAmount)}</strong><StatusChip status={invoice.status ?? "ukendt"} /></div><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="ghost" onClick={() => openAuthedFile(`/api/platform/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? "faktura"}.pdf`)}>PDF</Button>{invoice.status !== "betalt" && <><Button size="sm" variant="outline" disabled={invoiceActionMutation.isPending} onClick={() => invoiceActionMutation.mutate({ invoiceId: invoice.id, action: "send" })}>Send</Button><Button size="sm" variant="outline" disabled={invoiceActionMutation.isPending} onClick={() => invoiceActionMutation.mutate({ invoiceId: invoice.id, action: "remind" })}>Send rykker</Button><Button size="sm" variant="outline" disabled={invoiceActionMutation.isPending} onClick={() => { if (window.confirm("Marker fakturaen som betalt?")) invoiceActionMutation.mutate({ invoiceId: invoice.id, action: "paid" }); }}>Markér betalt</Button></>}</div></div>)}</div>}
       </SectionCard>
     </div>}
 
-    {tab === "backup_platform" && <SectionCard title="Platform-backup" icon={<Archive className="size-4" />} noPadding>
-      {backupsQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (backupsQuery.data ?? []).length === 0 ? <div className="p-5"><p className="text-sm font-medium">Ingen interne backupkørsler registreret</p><p className="mt-1 text-xs text-muted-foreground">Produktionsdatabasen er placeret på vedvarende lager. Ekstern EU/EØS-backup skal fortsat dokumenteres særskilt.</p></div> : <div className="divide-y">{(backupsQuery.data ?? []).map((backup) => <div key={backup.id} className="flex items-center gap-3 px-4 py-3"><Archive className="h-4 w-4 text-primary"/><div className="min-w-0 flex-1"><p className="text-sm font-medium">{backup.scope ?? "Platform"} · {backup.destination ?? "backup"}</p><p className="text-xs text-muted-foreground">{backup.createdAt ?? "—"} · {backup.size ?? "størrelse ukendt"}</p></div><StatusChip status={backup.status ?? "ukendt"}/></div>)}</div>}
-    </SectionCard>}
+    {tab === "backup_platform" && <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]">
+      <SectionCard title="Backupberedskab" icon={<ShieldCheck className="size-4" />}>
+        {operationsQuery.isLoading ? <Skeleton className="h-24 w-full" /> : (() => { const backupService = (operationsQuery.data?.services ?? []).find((service: any) => service.id === "backup"); return <div className="space-y-3"><div className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-sm font-semibold">Ekstern, adskilt backup</p><p className="mt-1 text-xs text-muted-foreground">{backupService?.message ?? "Status kan ikke hentes."}</p></div><StatusChip status={backupService?.status ?? "ukendt"}/></div><div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"><strong>Vigtigt:</strong> Vedvarende serverlager er ikke i sig selv en backup. Siden viser derfor ikke “sikret”, før den eksterne S3-backup faktisk er konfigureret.</div></div>; })()}
+      </SectionCard>
+      <SectionCard title="Dokumenterede backupkørsler" icon={<Archive className="size-4" />} noPadding>
+        {backupsQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (backupsQuery.data ?? []).length === 0 ? <div className="p-5"><p className="text-sm font-medium">Ingen verificerede backupkørsler registreret</p><p className="mt-1 text-xs text-muted-foreground">Der oprettes ikke falske backupkvitteringer. Når ekstern backup er koblet på, vises kørsler, tidspunkt, destination og resultat her.</p></div> : <div className="divide-y">{(backupsQuery.data ?? []).map((backup) => <div key={backup.id} className="flex items-center gap-3 px-4 py-3"><Archive className="h-4 w-4 text-primary"/><div className="min-w-0 flex-1"><p className="text-sm font-medium">{backup.scope ?? "Platform"} · {backup.destination ?? "backup"}</p><p className="text-xs text-muted-foreground">{backup.createdAt ?? "—"} · {backup.size ?? "størrelse ukendt"}</p></div><StatusChip status={backup.status ?? "ukendt"}/></div>)}</div>}
+      </SectionCard>
+    </div>}
 
     {tab === "platform_drift" && <SectionCard title="Tjenester" icon={<Activity className="size-4" />}>
       {operationsQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{(operationsQuery.data?.services ?? []).map((service: any) => <div key={service.id} className="rounded-xl border bg-background p-4"><div className="flex items-center justify-between"><p className="font-semibold">{service.name ?? service.id}</p><StatusChip status={service.status ?? "ukendt"}/></div><p className="mt-2 text-xs text-muted-foreground">{service.message ?? "Tjenesten svarer normalt."}</p></div>)}</div>}
@@ -5980,6 +6052,42 @@ function PlatformRegnskabssystemPage() {
         </ul>
       </SectionCard>
     </div>}
+
+    <Dialog open={companyDialogOpen} onOpenChange={setCompanyDialogOpen}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader><DialogTitle>Opret kundevirksomhed</DialogTitle></DialogHeader>
+        <div className="grid gap-4 py-2 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="platform-company-name">Virksomhedsnavn *</Label><Input id="platform-company-name" value={companyForm.name} onChange={(event) => setCompanyForm((form) => ({ ...form, name: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="platform-company-cvr">CVR</Label><Input id="platform-company-cvr" inputMode="numeric" value={companyForm.cvr} onChange={(event) => setCompanyForm((form) => ({ ...form, cvr: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="platform-company-email">Virksomhedens e-mail</Label><Input id="platform-company-email" type="email" value={companyForm.email} onChange={(event) => setCompanyForm((form) => ({ ...form, email: event.target.value }))}/></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="platform-company-address">Adresse</Label><Input id="platform-company-address" value={companyForm.address} onChange={(event) => setCompanyForm((form) => ({ ...form, address: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="platform-admin-name">Lederens navn</Label><Input id="platform-admin-name" value={companyForm.adminName} onChange={(event) => setCompanyForm((form) => ({ ...form, adminName: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="platform-admin-email">Lederens e-mail *</Label><Input id="platform-admin-email" type="email" value={companyForm.adminEmail} onChange={(event) => setCompanyForm((form) => ({ ...form, adminEmail: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="platform-admin-password">Midlertidig adgangskode *</Label><Input id="platform-admin-password" type="password" autoComplete="new-password" value={companyForm.adminPassword} onChange={(event) => setCompanyForm((form) => ({ ...form, adminPassword: event.target.value }))}/><p className="text-[11px] text-muted-foreground">Mindst 8 tegn. Send den til lederen via en separat, sikker kanal.</p></div>
+          <div className="space-y-2"><Label>Pakke *</Label><Select value={companyForm.planId} onValueChange={(value) => setCompanyForm((form) => ({ ...form, planId: value }))}><SelectTrigger><SelectValue placeholder="Vælg pakke"/></SelectTrigger><SelectContent>{(plansQuery.data ?? []).filter((plan) => plan.active).map((plan) => <SelectItem key={plan.id} value={String(plan.id)}>{plan.name} · {money(plan.monthlyPrice)}/md.</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>Fakturering</Label><Select value={companyForm.billingCycle} onValueChange={(value) => setCompanyForm((form) => ({ ...form, billingCycle: value }))}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="maanedlig">Månedlig</SelectItem><SelectItem value="aarlig">Årlig</SelectItem></SelectContent></Select></div>
+          <div className="space-y-2"><Label htmlFor="platform-trial-days">Prøveperiode (dage)</Label><Input id="platform-trial-days" type="number" min="0" max="90" value={companyForm.trialDays} onChange={(event) => setCompanyForm((form) => ({ ...form, trialDays: event.target.value }))}/></div>
+        </div>
+        <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground"><Lock className="mr-1 inline h-3.5 w-3.5"/>Oprettelsen giver platformen adgang til abonnement og teknisk status, ikke til virksomhedens regnskabsdata.</div>
+        <DialogFooter><Button variant="outline" onClick={() => setCompanyDialogOpen(false)}>Annuller</Button><Button disabled={createCompanyMutation.isPending || !companyForm.name || !companyForm.adminEmail || companyForm.adminPassword.length < 8 || !companyForm.planId} onClick={() => createCompanyMutation.mutate()}>{createCompanyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Opret virksomhed</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={Boolean(editingPlan)} onOpenChange={(open) => { if (!open) setEditingPlan(null); }}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>Rediger pakkeløsning</DialogTitle></DialogHeader>
+        <div className="grid gap-4 py-2 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="plan-name">Navn</Label><Input id="plan-name" value={planForm.name} onChange={(event) => setPlanForm((form) => ({ ...form, name: event.target.value }))}/></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="plan-description">Beskrivelse</Label><Textarea id="plan-description" value={planForm.description} onChange={(event) => setPlanForm((form) => ({ ...form, description: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-price">Pris pr. måned, kr.</Label><Input id="plan-price" type="number" min="0" step="0.01" value={planForm.monthlyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, monthlyPrice: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-employee-price">Pris pr. ansat, kr.</Label><Input id="plan-employee-price" type="number" min="0" step="0.01" value={planForm.pricePerEmployee} onChange={(event) => setPlanForm((form) => ({ ...form, pricePerEmployee: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-employees">Maks. ansatte (-1 = fri)</Label><Input id="plan-employees" type="number" min="-1" value={planForm.maxEmployees} onChange={(event) => setPlanForm((form) => ({ ...form, maxEmployees: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-customers">Maks. kunder (-1 = fri)</Label><Input id="plan-customers" type="number" min="-1" value={planForm.maxCustomers} onChange={(event) => setPlanForm((form) => ({ ...form, maxCustomers: event.target.value }))}/></div>
+          <div className="flex items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><p className="text-sm font-medium">Pakken kan vælges</p><p className="text-xs text-muted-foreground">Deaktivering ændrer ikke eksisterende abonnementer.</p></div><Switch checked={planForm.active} onCheckedChange={(checked) => setPlanForm((form) => ({ ...form, active: checked }))}/></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setEditingPlan(null)}>Annuller</Button><Button disabled={savePlanMutation.isPending || !planForm.name || Number(planForm.monthlyPrice) < 0} onClick={() => savePlanMutation.mutate()}>{savePlanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Gem ændringer</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>;
 }
 

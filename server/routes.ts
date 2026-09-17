@@ -2252,7 +2252,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const start = today();
     const company = await storage.createCompany(validate(insertCompanySchema, {
       name, cvr: cvr ?? null, address: address ?? null,
-      phone: phone ?? null, email: email ?? null,
+      phone: phone ?? null, email: email || normEmail,
       status: trial > 0 ? "proeve" : "aktiv",
       createdAt: nowIso(), notes: null,
     }));
