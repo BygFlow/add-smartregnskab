@@ -94,8 +94,16 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       body: JSON.stringify({ email: "bootstrap@example.test", password: "A-strong-bootstrap-password-2026" }),
     });
     assert.equal(adminLogin.status, 200);
+    const sessionCookie = adminLogin.headers.get("set-cookie");
+    assert.match(sessionCookie ?? "", /add_sr_session=/);
+    assert.match(sessionCookie ?? "", /HttpOnly/i);
     const platformToken = (await adminLogin.json()).token;
     assert.ok(platformToken);
+    const restoredSession = await fetch(`${base}/api/auth/me`, {
+      headers: { Cookie: sessionCookie.split(";")[0] },
+    });
+    assert.equal(restoredSession.status, 200, "HttpOnly cookie must restore login after a page refresh");
+    assert.equal((await restoredSession.json()).user.email, "bootstrap@example.test");
     const platformCompanyResponse = await fetch(`${base}/api/company`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(platformCompanyResponse.status, 200);
     const platformCompany = await platformCompanyResponse.json();
@@ -363,7 +371,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.1");
+    assert.equal(operations.version, "3.11.2");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
 
     const companyTwoResponse = await fetch(`${base}/api/platform/companies`, {

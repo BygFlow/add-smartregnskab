@@ -1,5 +1,11 @@
 # Ændringslog
 
+## 3.11.2 — 2026-09-17
+
+- Bevarer login sikkert efter sideopdatering med en HttpOnly-sessioncookie.
+- Genindsætter sikre platformmenuer til pakker, QuickPay, abonnementsfakturaer, backup, drift, fagbrugere og support.
+- Holder fortsat kundernes bilag, posteringer, bankdata og rapporter afskærmet fra platformadministratoren.
+
 ## 3.11.1 — 2026-09-17
 
 - Adskilte platformadministration fra kundernes bogføringsdata med en fail-closed API-vagt.

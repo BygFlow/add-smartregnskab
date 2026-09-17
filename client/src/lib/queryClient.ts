@@ -9,9 +9,9 @@ export function apiUrl(path: string): string {
 }
 
 /**
- * Sessionstokenet lever KUN i hukommelsen. localStorage/sessionStorage/cookies er
- * blokeret i den sandboxede iframe, så det kan ikke gemmes på tværs af genindlæsninger.
- * Modulniveau-variabel (ikke React state), så apiRequest kan læse den uden hooks.
+ * Webudgaven bruger desuden en HttpOnly-sessioncookie, så login overlever en
+ * genindlæsning uden at tokenet bliver tilgængeligt for JavaScript. Variablen
+ * bruges fortsat af native-klienter og umiddelbart efter login.
  */
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
@@ -74,6 +74,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(`${API_BASE}${url}`, {
     method,
+    credentials: "include",
     headers: {
       ...authHeaders(),
       ...(data ? { "Content-Type": "application/json" } : {}),
@@ -85,7 +86,7 @@ export async function apiRequest(
 
 /** Hent en fil (PDF/CSV) med authorization og åbn den i en ny fane. */
 export async function openAuthedFile(url: string, filename?: string) {
-  const res = await fetch(`${API_BASE}${url}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}${url}`, { headers: authHeaders(), credentials: "include" });
   if (!res.ok) throw await toError(res);
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -116,6 +117,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(`${API_BASE}${queryKey.join("/")}`, {
       headers: authHeaders(),
+      credentials: "include",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

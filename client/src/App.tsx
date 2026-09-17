@@ -17,7 +17,11 @@ function useRouteLocation(): [string, (to: string, options?: { replace?: boolean
 }
 
 function Root() {
-  const { user, company, companyId } = useAuth();
+  const { user, company, companyId, initializing } = useAuth();
+
+  if (initializing) {
+    return <main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser sikker session…</p></main>;
+  }
 
   if (!user) {
     return (

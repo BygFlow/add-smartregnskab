@@ -250,6 +250,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const token = await createSession(user.id);
     const plan = await storage.getCompanyPlan(user.companyId);
     const subscription = await storage.getSubscriptionByCompany(user.companyId);
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    res.setHeader("Set-Cookie", `add_sr_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}${secure}`);
     res.json({
       token, user: safeUser(user), company, plan, subscription,
       emailVerified: user.emailVerified === 1,
@@ -590,6 +592,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/logout", h(async (req, res) => {
     if (req.auth?.token) await storage.deleteSession(sessionStorageKey(req.auth.token));
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    res.setHeader("Set-Cookie", `add_sr_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
     res.status(204).send();
   }));
 

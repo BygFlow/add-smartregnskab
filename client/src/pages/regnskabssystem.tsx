@@ -80,6 +80,9 @@ import {
   BrainCircuit,
   ClipboardCheck,
   Lock,
+  Package,
+  Archive,
+  Activity,
 } from "lucide-react";
 
 // ── Nye SmartRegnskab tab komponenter ──
@@ -5868,18 +5871,32 @@ function PlatformRegnskabssystemPage() {
     queryKey: ["/api/platform/companies"],
     queryFn: async () => (await apiRequest("GET", "/api/platform/companies")).json(),
   });
+  const plansQuery = useQuery<any[]>({ queryKey: ["/api/platform/plans"], enabled: activeTab === "pakker", queryFn: async () => (await apiRequest("GET", "/api/platform/plans")).json() });
+  const paymentsQuery = useQuery<any>({ queryKey: ["/api/platform/payments"], enabled: activeTab === "betalinger", queryFn: async () => (await apiRequest("GET", "/api/platform/payments")).json() });
+  const platformInvoicesQuery = useQuery<any[]>({ queryKey: ["/api/platform/invoices"], enabled: activeTab === "betalinger", queryFn: async () => (await apiRequest("GET", "/api/platform/invoices")).json() });
+  const backupsQuery = useQuery<any[]>({ queryKey: ["/api/platform/backups"], enabled: activeTab === "backup_platform", queryFn: async () => (await apiRequest("GET", "/api/platform/backups")).json() });
+  const operationsQuery = useQuery<any>({ queryKey: ["/api/operations/status"], enabled: activeTab === "platform_drift", queryFn: async () => (await apiRequest("GET", "/api/operations/status")).json() });
+  const supportQuery = useQuery<any[]>({ queryKey: ["/api/support-cases"], enabled: activeTab === "platform_support", queryFn: async () => (await apiRequest("GET", "/api/support-cases")).json() });
   const stats = statsQuery.data;
   const companies = companiesQuery.data ?? [];
-  const tab = ["dashboard", "virksomheder", "adgangspolitik"].includes(activeTab) ? activeTab : "dashboard";
+  const allowedTabs = ["dashboard", "virksomheder", "pakker", "betalinger", "backup_platform", "platform_drift", "fagbrugere", "platform_support", "adgangspolitik"];
+  const tab = allowedTabs.includes(activeTab) ? activeTab : "dashboard";
+  const headings: Record<string, [string, string]> = {
+    dashboard: ["Platformoverblik", "Drift, abonnementer og kundestatus – uden beløb, bilag, bankdata eller posteringer."],
+    virksomheder: ["Virksomheder", "Administrér abonnement og teknisk kundestatus uden adgang til bogføringen."],
+    pakker: ["Pakkeløsninger", "Administrér de abonnementspakker, virksomhederne kan vælge."],
+    betalinger: ["Fakturaer & QuickPay", "Overblik over ADD SmartRegnskabs abonnementsbetalinger og betalingsudbyder."],
+    backup_platform: ["Backup-system", "Teknisk backupstatus for platformen uden visning af kundernes indhold."],
+    platform_drift: ["Systemdrift", "Sundhed, integrationer og baggrundstjenester for ADD SmartRegnskab."],
+    fagbrugere: ["Bogholder & Revisor", "Virksomheden styrer selv invitation, rettigheder og udløb for fagbrugere."],
+    platform_support: ["Support", "Supportsager, som virksomhederne selv har sendt til ADD SmartRegnskab."],
+    adgangspolitik: ["Adgang og databeskyttelse", "Platformrollen er teknisk adskilt fra kundernes regnskabsdata."],
+  };
 
   return <div className="space-y-5">
     <PageHeader
-      title={tab === "virksomheder" ? "Virksomheder" : tab === "adgangspolitik" ? "Adgang og databeskyttelse" : "Platformoverblik"}
-      description={tab === "virksomheder"
-        ? "Administrér abonnement og teknisk kundestatus uden adgang til bogføringen."
-        : tab === "adgangspolitik"
-          ? "Platformrollen er teknisk adskilt fra kundernes regnskabsdata."
-          : "Drift, abonnementer og kundestatus – uden beløb, bilag, bankdata eller posteringer."}
+      title={headings[tab][0]}
+      description={headings[tab][1]}
     />
 
     {tab === "dashboard" && <>
@@ -5918,6 +5935,37 @@ function PlatformRegnskabssystemPage() {
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Brugere</span><strong>{num(company.userCount ?? 0)}</strong></div><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Ansatte</span><strong>{num(company.employeeCount ?? 0)}</strong></div></div>
           <p className="mt-3 flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> Regnskabsdata er ikke tilgængelige</p>
         </div>)}</div>}
+    </SectionCard>}
+
+    {tab === "pakker" && <SectionCard title="Aktive pakkeløsninger" icon={<Package className="size-4" />}>
+      {plansQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{(plansQuery.data ?? []).map((plan) => <div key={plan.id} className="rounded-xl border bg-background p-4">
+        <div className="flex items-start justify-between"><div><p className="font-semibold">{plan.name}</p><p className="text-xs text-muted-foreground">{plan.slug}</p></div><StatusChip status={plan.active ? "aktiv" : "inaktiv"} /></div>
+        <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md.</span></p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Brugere<br/><strong>{plan.maxUsers === -1 ? "Ubegrænset" : plan.maxUsers}</strong></div><div className="rounded-lg bg-muted p-2">Ansatte<br/><strong>{plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees}</strong></div></div>
+      </div>)}</div>}
+    </SectionCard>}
+
+    {tab === "betalinger" && <div className="grid gap-4 xl:grid-cols-[.7fr_1.3fr]">
+      <SectionCard title="QuickPay-status" icon={<CreditCard className="size-4" />}>
+        {paymentsQuery.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="space-y-3"><div className="flex items-center justify-between rounded-lg border p-3"><div><p className="font-semibold">QuickPay</p><p className="text-xs text-muted-foreground">Betalingsudbyder</p></div><StatusChip status={paymentsQuery.data?.providers?.find((provider: any) => provider.id === "quickpay")?.configured ? "konfigureret" : "mangler opsætning"} /></div><p className="text-xs text-muted-foreground">Denne side viser kun betalinger til ADD SmartRegnskab – ikke virksomhedernes egne fakturaer.</p></div>}
+      </SectionCard>
+      <SectionCard title="Abonnementsfakturaer" icon={<FileText className="size-4" />} noPadding>
+        {platformInvoicesQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (platformInvoicesQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen abonnementsfakturaer endnu.</p> : <div className="divide-y">{(platformInvoicesQuery.data ?? []).slice(0, 20).map((invoice) => <div key={invoice.id} className="flex items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{invoice.invoiceNumber ?? `Faktura ${invoice.id}`}</p><p className="text-xs text-muted-foreground">{invoice.issueDate ?? "—"} · {invoice.companyName ?? `Virksomhed ${invoice.companyId}`}</p></div><strong className="text-sm">{money(invoice.totalAmount)}</strong><StatusChip status={invoice.status ?? "ukendt"} /></div>)}</div>}
+      </SectionCard>
+    </div>}
+
+    {tab === "backup_platform" && <SectionCard title="Platform-backup" icon={<Archive className="size-4" />} noPadding>
+      {backupsQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (backupsQuery.data ?? []).length === 0 ? <div className="p-5"><p className="text-sm font-medium">Ingen interne backupkørsler registreret</p><p className="mt-1 text-xs text-muted-foreground">Produktionsdatabasen er placeret på vedvarende lager. Ekstern EU/EØS-backup skal fortsat dokumenteres særskilt.</p></div> : <div className="divide-y">{(backupsQuery.data ?? []).map((backup) => <div key={backup.id} className="flex items-center gap-3 px-4 py-3"><Archive className="h-4 w-4 text-primary"/><div className="min-w-0 flex-1"><p className="text-sm font-medium">{backup.scope ?? "Platform"} · {backup.destination ?? "backup"}</p><p className="text-xs text-muted-foreground">{backup.createdAt ?? "—"} · {backup.size ?? "størrelse ukendt"}</p></div><StatusChip status={backup.status ?? "ukendt"}/></div>)}</div>}
+    </SectionCard>}
+
+    {tab === "platform_drift" && <SectionCard title="Tjenester" icon={<Activity className="size-4" />}>
+      {operationsQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{(operationsQuery.data?.services ?? []).map((service: any) => <div key={service.id} className="rounded-xl border bg-background p-4"><div className="flex items-center justify-between"><p className="font-semibold">{service.name ?? service.id}</p><StatusChip status={service.status ?? "ukendt"}/></div><p className="mt-2 text-xs text-muted-foreground">{service.message ?? "Tjenesten svarer normalt."}</p></div>)}</div>}
+    </SectionCard>}
+
+    {tab === "fagbrugere" && <div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Virksomhedsstyret adgang" icon={<Briefcase className="size-4" />}><p className="text-sm text-muted-foreground">Bogholdere og revisorer inviteres fra den enkelte virksomheds egen konto. Platformadministratoren kan ikke åbne klientens regnskab.</p></SectionCard><SectionCard title="Sikkerhedskrav" icon={<ShieldCheck className="size-4" />}><ul className="space-y-2 text-sm">{["Tofaktorgodkendelse", "Tidsbegrænset adgang", "Læs eller skriv-rettigheder", "Fuld logning af handlinger"].map((text) => <li key={text} className="flex gap-2"><Check className="h-4 w-4 text-emerald-600"/>{text}</li>)}</ul></SectionCard></div>}
+
+    {tab === "platform_support" && <SectionCard title="Modtagne supportsager" icon={<AlertTriangle className="size-4" />} noPadding>
+      {supportQuery.isLoading ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : (supportQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen åbne supportsager.</p> : <div className="divide-y">{(supportQuery.data ?? []).slice(0, 30).map((supportCase) => <div key={supportCase.id} className="flex items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{supportCase.subject ?? `Sag ${supportCase.id}`}</p><p className="text-xs text-muted-foreground">{supportCase.createdAt ?? "—"} · Virksomhed {supportCase.companyId}</p></div><StatusChip status={supportCase.status ?? "aaben"}/></div>)}</div>}
     </SectionCard>}
 
     {tab === "adgangspolitik" && <div className="grid gap-4 lg:grid-cols-2">

@@ -28,6 +28,18 @@ const PLATFORM_GROUPS: NavGroup[] = [
   { label: "Platform", items: [
     item("dashboard", "Platformoverblik", Activity),
     item("virksomheder", "Virksomheder", Building2),
+  ] },
+  { label: "Abonnement og betaling", items: [
+    item("pakker", "Pakkeløsninger", Package),
+    item("betalinger", "Fakturaer & QuickPay", CreditCard),
+  ] },
+  { label: "Drift", items: [
+    item("backup_platform", "Backup-system", Archive),
+    item("platform_drift", "Systemdrift", Activity),
+  ] },
+  { label: "Adgang og hjælp", items: [
+    item("fagbrugere", "Bogholder & Revisor", Briefcase),
+    item("platform_support", "Support", AlertCircle),
     item("adgangspolitik", "Adgang og databeskyttelse", Lock),
   ] },
 ];

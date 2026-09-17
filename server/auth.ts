@@ -87,6 +87,11 @@ declare global {
 function bearer(req: Request): string | null {
   const header = req.headers.authorization;
   if (header?.startsWith("Bearer ")) return header.slice(7).trim();
+  const cookieHeader = req.headers.cookie ?? "";
+  const cookie = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith("add_sr_session="));
+  if (cookie) {
+    try { return decodeURIComponent(cookie.slice("add_sr_session=".length)); } catch { return null; }
+  }
   return null;
 }
 

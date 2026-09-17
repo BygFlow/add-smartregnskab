@@ -24,6 +24,7 @@ type AuthState = {
 };
 
 type AuthContextValue = AuthState & {
+  initializing: boolean;
   features: string[];
   hasFeature: (feature: string) => boolean;
   hasAI: boolean;
@@ -42,6 +43,7 @@ const EMPTY: AuthState = { user: null, company: null, plan: null, subscription: 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(EMPTY);
+  const [initializing, setInitializing] = useState(true);
   const [viewCompanyId, setViewCompanyId] = useState<number | null>(null);
 
   const clear = useCallback(() => {
@@ -56,6 +58,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(clear);
     return () => setUnauthorizedHandler(null);
   }, [clear]);
+
+  // Genopret websessionen fra den sikre HttpOnly-cookie efter en opdatering.
+  useEffect(() => {
+    let active = true;
+    apiRequest("GET", "/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        setState({ user: data.user, company: data.company ?? null, plan: data.plan ?? null, subscription: data.subscription ?? null });
+      })
+      .catch((err) => {
+        if (!(err instanceof ApiError) || err.status !== 401) console.error("Kunne ikke genoprette session", err);
+      })
+      .finally(() => { if (active) setInitializing(false); });
+    return () => { active = false; };
+  }, []);
 
   const login = useCallback(async (email: string, password: string, code?: string) => {
     // Uden token endnu — apiRequest sender blot ingen Authorization-header.
@@ -125,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => ({
     ...state,
+    initializing,
     features,
     hasAI,
     // Platformadmins har adgang til alt.
@@ -135,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     refresh,
-  }), [state, features, isPlatformAdmin, viewCompanyId, switchCompany, login, logout, refresh]);
+  }), [state, features, isPlatformAdmin, initializing, viewCompanyId, switchCompany, login, logout, refresh]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
