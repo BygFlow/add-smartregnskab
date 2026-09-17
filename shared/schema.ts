@@ -444,6 +444,7 @@ export const plans = sqliteTable("plans", {
   description: text("description"),
   monthlyPrice: real("monthly_price").notNull(), // DKK ekskl. moms pr. måned
   pricePerEmployee: real("price_per_employee").notNull().default(0), // DKK pr. ansat pr. måned
+  maxUsers: integer("max_users").notNull().default(1), // -1 = ubegrænset
   maxEmployees: integer("max_employees").notNull().default(10), // -1 = ubegrænset
   maxCustomers: integer("max_customers").notNull().default(25),
   features: text("features").notNull().default("[]"), // JSON: ["api_integration", "vagtplan", ...]

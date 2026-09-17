@@ -5918,7 +5918,7 @@ function PlatformRegnskabssystemPage() {
   });
   const [planForm, setPlanForm] = useState({
     name: "", slug: "", description: "", monthlyPrice: "", pricePerEmployee: "",
-    maxEmployees: "", maxCustomers: "", features: [] as string[], sortOrder: "1", active: true,
+    maxUsers: "", maxEmployees: "", features: [] as string[], sortOrder: "1", active: true,
   });
   useEffect(() => {
     const onHashChange = () => setActiveTab(getTabFromHash());
@@ -5976,7 +5976,7 @@ function PlatformRegnskabssystemPage() {
     mutationFn: async () => (await apiRequest(editingPlan?.id ? "PATCH" : "POST", editingPlan?.id ? `/api/platform/plans/${editingPlan.id}` : "/api/platform/plans", {
       name: planForm.name, slug: planForm.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), description: planForm.description || null,
       monthlyPrice: Number(planForm.monthlyPrice), pricePerEmployee: Number(planForm.pricePerEmployee),
-      maxEmployees: Number(planForm.maxEmployees), maxCustomers: Number(planForm.maxCustomers),
+      maxUsers: Number(planForm.maxUsers), maxEmployees: Number(planForm.maxEmployees), maxCustomers: -1,
       features: JSON.stringify(planForm.features), sortOrder: Number(planForm.sortOrder), active: planForm.active ? 1 : 0,
     })).json(),
     onSuccess: async () => { const created = !editingPlan?.id; await refreshPlatform("/api/platform/plans", "/api/platform/companies", "/api/platform/stats"); setEditingPlan(null); toast({ title: created ? "Pakken er oprettet" : "Pakken er opdateret" }); },
@@ -6006,13 +6006,13 @@ function PlatformRegnskabssystemPage() {
     setPlanForm({
       name: plan.name ?? "", slug: plan.slug ?? "", description: plan.description ?? "",
       monthlyPrice: String(plan.monthlyPrice ?? 0), pricePerEmployee: String(plan.pricePerEmployee ?? 0),
-      maxEmployees: String(plan.maxEmployees ?? -1), maxCustomers: String(plan.maxCustomers ?? -1),
+      maxUsers: String(plan.maxUsers ?? 1), maxEmployees: String(plan.maxEmployees ?? 0),
       features: parsePlanFeatures(plan.features), sortOrder: String(plan.sortOrder ?? 1), active: Boolean(plan.active),
     });
     setEditingPlan(plan);
   };
   const openNewPlan = () => {
-    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxEmployees: "3", maxCustomers: "100", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
+    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxUsers: "1", maxEmployees: "0", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
     setEditingPlan({ id: null });
   };
   const togglePlanFeature = (feature: string, checked: boolean) => setPlanForm((form) => ({
@@ -6097,7 +6097,8 @@ function PlatformRegnskabssystemPage() {
           <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{plan.name}</p><p className="text-[11px] text-muted-foreground">{plan.slug}</p></div><StatusChip status={plan.active ? "aktiv" : "inaktiv"} /></div>
           <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md. ekskl. moms</span></p>
           <p className="mt-1 text-[11px] text-muted-foreground">{money(Number(plan.monthlyPrice) * 10)} / år · 2 måneder inkluderet</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Kunder<br/><strong>{plan.maxCustomers === -1 ? "Ubegrænset" : plan.maxCustomers}</strong></div><div className="rounded-lg bg-muted p-2">Brugere/ansatte<br/><strong>{plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees}</strong></div></div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Brugere<br/><strong>{plan.maxUsers === -1 ? "Ubegrænset" : plan.maxUsers}</strong></div><div className="rounded-lg bg-muted p-2">{features.includes("loen") ? "Lønansatte" : "Lønmodul"}<br/><strong>{features.includes("loen") ? (plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees) : "Ikke inkluderet"}</strong></div></div>
+          <p className="mt-2 text-[11px] text-muted-foreground">Ubegrænset antal kunder og leverandører</p>
           <p className="mt-3 min-h-12 text-xs text-muted-foreground">{plan.description || "Ingen beskrivelse"}</p>
           <div className="mt-3 flex-1 border-t pt-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{features.length} funktioner inkluderet</p><ul className="space-y-1.5">{features.map((feature) => <li key={feature} className="flex gap-2 text-xs"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{PLAN_FEATURE_LABELS[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>{features.length === 0 && <p className="text-xs text-amber-700">Pakken mangler funktioner.</p>}</div>
           <Button className="mt-4 w-full" size="sm" variant="outline" onClick={() => openPlanEditor(plan)}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger pakke</Button>
@@ -6197,8 +6198,9 @@ function PlatformRegnskabssystemPage() {
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="plan-description">Beskrivelse</Label><Textarea id="plan-description" value={planForm.description} onChange={(event) => setPlanForm((form) => ({ ...form, description: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-price">Pris pr. måned, kr.</Label><Input id="plan-price" type="number" min="0" step="0.01" value={planForm.monthlyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, monthlyPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-employee-price">Pris pr. ansat, kr.</Label><Input id="plan-employee-price" type="number" min="0" step="0.01" value={planForm.pricePerEmployee} onChange={(event) => setPlanForm((form) => ({ ...form, pricePerEmployee: event.target.value }))}/></div>
-          <div className="space-y-2"><Label htmlFor="plan-employees">Maks. brugere/ansatte (-1 = fri)</Label><Input id="plan-employees" type="number" min="-1" value={planForm.maxEmployees} onChange={(event) => setPlanForm((form) => ({ ...form, maxEmployees: event.target.value }))}/></div>
-          <div className="space-y-2"><Label htmlFor="plan-customers">Maks. kunder (-1 = fri)</Label><Input id="plan-customers" type="number" min="-1" value={planForm.maxCustomers} onChange={(event) => setPlanForm((form) => ({ ...form, maxCustomers: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-users">Maks. brugere (-1 = fri)</Label><Input id="plan-users" type="number" min="-1" value={planForm.maxUsers} onChange={(event) => setPlanForm((form) => ({ ...form, maxUsers: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-employees">Maks. lønansatte (-1 = fri, 0 = intet lønmodul)</Label><Input id="plan-employees" type="number" min="-1" value={planForm.maxEmployees} onChange={(event) => setPlanForm((form) => ({ ...form, maxEmployees: event.target.value }))}/></div>
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs sm:col-span-2"><strong>Kunder og leverandører er ubegrænset i alle pakker.</strong><p className="mt-1 text-muted-foreground">Det er regnskabsdata – ikke medarbejderlicenser – og begrænses derfor ikke.</p></div>
           <div className="space-y-2"><Label htmlFor="plan-order">Placering</Label><Input id="plan-order" type="number" min="1" value={planForm.sortOrder} onChange={(event) => setPlanForm((form) => ({ ...form, sortOrder: event.target.value }))}/></div>
           <div className="rounded-lg border bg-muted/30 p-3 text-xs"><span className="text-muted-foreground">Årspris</span><strong className="mt-1 block text-base">{money((Number(planForm.monthlyPrice) || 0) * 10)} ekskl. moms</strong><span className="text-muted-foreground">10 måneders pris</span></div>
           <div className="space-y-3 sm:col-span-2"><div><Label>Inkluderede funktioner *</Label><p className="text-xs text-muted-foreground">Vælg præcis hvad kunden får adgang til i pakken.</p></div><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{PLAN_FEATURES.map(([key, label]) => <label key={key} className="flex cursor-pointer items-start gap-2 rounded-lg p-2 hover:bg-muted"><Checkbox checked={planForm.features.includes(key)} onCheckedChange={(checked) => togglePlanFeature(key, checked === true)} /><span className="text-sm leading-4">{label}</span></label>)}</div></div>

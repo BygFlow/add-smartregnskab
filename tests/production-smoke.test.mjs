@@ -142,8 +142,15 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const plans = await plansResponse.json();
     assert.ok(plans[0]?.id);
     assert.equal(plans.length, 4);
-    const startFeatures = JSON.parse(plans.find((plan) => plan.slug === "start").features);
-    const enterpriseFeatures = JSON.parse(plans.find((plan) => plan.slug === "enterprise").features);
+    const startPlan = plans.find((plan) => plan.slug === "start");
+    const businessPlan = plans.find((plan) => ["virksomhed", "drift"].includes(plan.slug));
+    const professionalPlan = plans.find((plan) => plan.slug === "professionel");
+    const enterprisePlan = plans.find((plan) => plan.slug === "enterprise");
+    const startFeatures = JSON.parse(startPlan.features);
+    const enterpriseFeatures = JSON.parse(enterprisePlan.features);
+    assert.deepEqual([startPlan.monthlyPrice, businessPlan.monthlyPrice, professionalPlan.monthlyPrice, enterprisePlan.monthlyPrice], [0, 199, 399, 699]);
+    assert.deepEqual([startPlan.maxUsers, businessPlan.maxUsers, professionalPlan.maxUsers, enterprisePlan.maxUsers], [1, 3, 10, -1]);
+    assert.ok(plans.every((plan) => plan.maxCustomers === -1));
     assert.ok(startFeatures.includes("fakturering"));
     assert.ok(startFeatures.includes("revisoradgang"));
     assert.ok(enterpriseFeatures.includes("konsolidering"));
@@ -154,7 +161,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Testpakke", slug: "testpakke", description: "Test af redigerbare pakker",
-        monthlyPrice: 299, pricePerEmployee: 0, maxEmployees: 5, maxCustomers: 50,
+        monthlyPrice: 299, pricePerEmployee: 0, maxUsers: 5, maxEmployees: 5, maxCustomers: -1,
         features: JSON.stringify(["regnskab", "bilag", "fakturering"]), sortOrder: 9, active: 1,
       }),
     });
@@ -165,7 +172,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Smoke Test ApS", adminName: "Testleder", adminEmail: "leader@example.test",
-        adminPassword: "A-strong-leader-password-2026", planId: plans[0].id, trialDays: 14,
+        adminPassword: "A-strong-leader-password-2026", planId: businessPlan.id, trialDays: 14,
       }),
     });
     assert.equal(companyResponse.status, 201);
@@ -410,7 +417,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.9");
+    assert.equal(operations.version, "3.12.0");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
     assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);

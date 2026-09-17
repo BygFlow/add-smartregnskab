@@ -1,5 +1,12 @@
 # Ændringslog
 
+## 3.12.0 — 2026-09-17
+
+- Indfører en tydelig og konkurrencedygtig prisliste: 0 / 199 / 399 / 699 kr. pr. måned ekskl. moms.
+- Gør kunder og leverandører ubegrænsede i alle pakker og adskiller brugerlicenser fra lønansatte.
+- Håndhæver bruger- og lønlofter ved oprettelse, invitation og nedgradering uden at blande dem sammen.
+- Opgraderer urørte standardpakker automatisk, mens administratorens egne priser fortsat bevares.
+
 ## 3.11.9 — 2026-09-17
 
 - Gør adskillelsen mellem ADD SmartRegnskab og ADD SmartDrift permanent ved opstart.

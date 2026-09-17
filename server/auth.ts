@@ -307,21 +307,23 @@ export function requireFeature(feature: string) {
   };
 }
 
-/** Håndhæver loftet på antal ansatte/kunder, før der oprettes flere. */
+/** Håndhæver pakkens loft, før der oprettes flere brugere, lønansatte eller kunder. */
 export async function checkLimit(
   companyId: number,
-  kind: "employees" | "customers",
+  kind: "users" | "employees" | "customers",
 ): Promise<{ ok: true } | { ok: false; message: string; limit: number; planName: string }> {
   const plan = await storage.getCompanyPlan(companyId);
   if (!plan) return { ok: true };
-  const limit = kind === "employees" ? plan.maxEmployees : plan.maxCustomers;
+  const limit = kind === "users" ? plan.maxUsers : kind === "employees" ? plan.maxEmployees : plan.maxCustomers;
   if (limit < 0) return { ok: true };
   const current =
-    kind === "employees"
+    kind === "users"
+      ? (await storage.getUsers(companyId)).filter((user) => user.active === 1).length
+      : kind === "employees"
       ? (await storage.getEmployees(companyId)).length
       : (await storage.getCustomers(companyId)).length;
   if (current >= limit) {
-    const label = kind === "employees" ? "ansatte" : "kunder";
+    const label = kind === "users" ? "aktive brugere" : kind === "employees" ? "lønansatte" : "kunder";
     return {
       ok: false,
       limit,

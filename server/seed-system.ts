@@ -6,15 +6,15 @@ import { eq } from "drizzle-orm";
 const DEFAULT_PLANS = [
   {
     name: "Start", slug: "start",
-    description: "Komplet grundpakke til selvstændige og små virksomheder.",
-    monthlyPrice: 199, pricePerEmployee: 0, maxEmployees: 3, maxCustomers: 100,
+    description: "Gratis grundpakke til selvstændige, der vil i gang med digital bogføring.",
+    monthlyPrice: 0, pricePerEmployee: 0, maxUsers: 1, maxEmployees: 0, maxCustomers: -1,
     features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang"],
     sortOrder: 1,
   },
   {
     name: "Virksomhed", slug: "virksomhed",
     description: "Automatiseret bogføring, bank, betalinger og økonomistyring til virksomheder i vækst.",
-    monthlyPrice: 499, pricePerEmployee: 0, maxEmployees: 15, maxCustomers: -1,
+    monthlyPrice: 199, pricePerEmployee: 0, maxUsers: 3, maxEmployees: 10, maxCustomers: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -25,7 +25,7 @@ const DEFAULT_PLANS = [
   {
     name: "Professionel", slug: "professionel",
     description: "Fuld økonomifunktion med avanceret kontrol, revision, integrationer og sikker backup.",
-    monthlyPrice: 999, pricePerEmployee: 0, maxEmployees: -1, maxCustomers: -1,
+    monthlyPrice: 399, pricePerEmployee: 0, maxUsers: 10, maxEmployees: 50, maxCustomers: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -37,7 +37,7 @@ const DEFAULT_PLANS = [
   {
     name: "Enterprise", slug: "enterprise",
     description: "Alle funktioner, koncernregnskab, udvidet API, kontrolspor og prioriteret SLA.",
-    monthlyPrice: 1999, pricePerEmployee: 0, maxEmployees: -1, maxCustomers: -1,
+    monthlyPrice: 699, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -81,6 +81,14 @@ const LEGACY_PLAN_FEATURES: Record<string, string[][]> = {
   ],
 };
 
+const LEGACY_PLAN_PRICES: Record<string, number[]> = {
+  start: [199],
+  virksomhed: [499],
+  drift: [499],
+  professionel: [999],
+  enterprise: [1999],
+};
+
 function sameFeatureSet(raw: string, expected: string[]): boolean {
   try {
     const parsed = JSON.parse(raw);
@@ -112,11 +120,20 @@ export function seedSystemData(): void {
         const targetSlug = current.slug === "drift" ? "virksomhed" : current.slug;
         const plan = DEFAULT_PLANS.find((item) => item.slug === targetSlug);
         const legacyVariants = LEGACY_PLAN_FEATURES[current.slug];
-        if (!plan || !legacyVariants?.some((legacy) => sameFeatureSet(current.features, legacy))) continue;
+        const usesLegacyFeatures = legacyVariants?.some((legacy) => sameFeatureSet(current.features, legacy)) ?? false;
+        const usesLegacyPrice = LEGACY_PLAN_PRICES[current.slug]?.includes(Number(current.monthlyPrice)) ?? false;
+        if (!plan || (!usesLegacyFeatures && !usesLegacyPrice)) continue;
         tx.update(plans).set({
           name: plan.name,
           description: plan.description,
-          features: JSON.stringify(plan.features),
+          ...(usesLegacyFeatures ? { features: JSON.stringify(plan.features) } : {}),
+          ...(usesLegacyPrice ? {
+            monthlyPrice: plan.monthlyPrice,
+            pricePerEmployee: plan.pricePerEmployee,
+            maxUsers: plan.maxUsers,
+            maxEmployees: plan.maxEmployees,
+            maxCustomers: plan.maxCustomers,
+          } : {}),
           sortOrder: plan.sortOrder,
         }).where(eq(plans.id, current.id)).run();
       }

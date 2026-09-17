@@ -640,6 +640,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
   app.post("/api/users", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
+    const limit = await checkLimit(cid, "users");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
     const raw = { ...req.body, companyId: cid };
     const permittedRoles = req.auth!.isPlatformAdmin
       ? ["leder", "holdleder", "assistent", "kunde", "platform_admin"]
@@ -1870,6 +1872,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const sub = await storage.getSubscriptionByCompany(cid);
     const plan = await storage.getCompanyPlan(cid);
+    const userCount = (await storage.getUsers(cid)).filter((user) => user.active === 1).length;
     const employeeCount = (await storage.getEmployees(cid)).length;
     const customerCount = (await storage.getCustomers(cid)).length;
     const invoices = (await storage.getPlatformInvoices(cid));
@@ -1877,6 +1880,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       subscription: sub ?? null,
       plan: plan ?? null,
       usage: {
+        users: userCount,
+        maxUsers: plan?.maxUsers ?? -1,
         employees: employeeCount,
         maxEmployees: plan?.maxEmployees ?? -1,
         customers: customerCount,
@@ -1906,11 +1911,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const sub = await storage.getSubscriptionByCompany(cid);
     if (!sub) return res.status(400).json({ error: "Virksomheden har ikke et abonnement." });
 
-    // Nedgradering må ikke efterlade flere ansatte end pakken tillader
+    // Nedgradering må ikke efterlade flere aktive brugere eller lønansatte end pakken tillader.
+    const userCount = (await storage.getUsers(cid)).filter((user) => user.active === 1).length;
+    if (plan.maxUsers !== -1 && userCount > plan.maxUsers) {
+      return res.status(409).json({
+        error: `${plan.name} tillader ${plan.maxUsers} aktive brugere, og I har ${userCount}. Deaktivér brugere først, eller vælg en større pakke.`,
+      });
+    }
     const employeeCount = (await storage.getEmployees(cid)).length;
     if (plan.maxEmployees !== -1 && employeeCount > plan.maxEmployees) {
       return res.status(409).json({
-        error: `${plan.name} tillader ${plan.maxEmployees} ansatte, og I har ${employeeCount}. Fjern ansatte først, eller vælg en større pakke.`,
+        error: `${plan.name} tillader ${plan.maxEmployees} lønansatte, og I har ${employeeCount}. Fjern lønansatte først, eller vælg en større pakke.`,
       });
     }
     const updated = await storage.updateSubscription(sub.id, { planId: plan.id });
@@ -2331,6 +2342,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!sub) return res.status(404).json({ error: "Virksomheden har ikke et abonnement." });
     const plan = await storage.getPlan(Number(req.body?.planId));
     if (!plan) return res.status(400).json({ error: "Vælg en gyldig pakke." });
+    const userCount = (await storage.getUsers(id)).filter((user) => user.active === 1).length;
+    const employeeCount = (await storage.getEmployees(id)).length;
+    if (plan.maxUsers !== -1 && userCount > plan.maxUsers) {
+      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxUsers} aktive brugere, og virksomheden har ${userCount}.` });
+    }
+    if (plan.maxEmployees !== -1 && employeeCount > plan.maxEmployees) {
+      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxEmployees} lønansatte, og virksomheden har ${employeeCount}.` });
+    }
     const updated = await storage.updateSubscription(sub.id, {
       planId: plan.id,
       billingCycle: req.body?.billingCycle === "aarlig" ? "aarlig"
@@ -3142,7 +3161,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!["leder", "holdleder", "assistent", "kunde"].includes(invitedRole)) {
       return res.status(400).json({ error: "Ugyldig rolle. Brug fagportalen til bogholder- og revisoradgang." });
     }
-    const limit = await checkLimit(cid, "employees");
+    const limit = await checkLimit(cid, "users");
     if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
 
     const company = await storage.getCompany(cid);
