@@ -11,3 +11,14 @@ De aktive priser hentes fra plan-tabellen og vises i produktet. Planernes funkti
 - Prisændringer versionsstyres og varsles efter de gældende aftaler.
 
 Produktet kan oprette prøveabonnement uden betalingsadapter. Automatisk kortbetaling er kun tilgængelig, når QuickPay API-nøglen og den signaturkontrollerede callback er konfigureret.
+
+## Kapacitetsgrænser
+
+Pakkerne begrænses ikke efter antal kunder eller leverandører. De relevante kapacitetsgrænser er:
+
+- bilag pr. kalendermåned;
+- posteringer pr. kalendermåned;
+- virksomheder i abonnementet;
+- aktive integrationer.
+
+Start har 500 bilag, 5.000 posteringer, 1 virksomhed og 2 integrationer. Virksomhed har 2.500 bilag, 25.000 posteringer, 1 virksomhed og 5 integrationer. Professionel har 10.000 bilag, 100.000 posteringer, 3 virksomheder og 15 integrationer. Enterprise er ubegrænset. Oprettelse af bilag, posteringer og integrationer afvises server-side, når den relevante grænse er nået.

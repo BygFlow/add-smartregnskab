@@ -7,14 +7,16 @@ const DEFAULT_PLANS = [
   {
     name: "Start", slug: "start",
     description: "En enkel grundpakke til selvstændige, der vil i gang med digital bogføring.",
-    monthlyPrice: 199, pricePerEmployee: 0, maxUsers: 1, maxEmployees: 0, maxCustomers: -1,
+    monthlyPrice: 199, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
+    maxDocuments: 500, maxEntries: 5000, maxCompanies: 1, maxIntegrations: 2,
     features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang"],
     sortOrder: 1,
   },
   {
     name: "Virksomhed", slug: "virksomhed",
     description: "Automatiseret bogføring, bank, betalinger og økonomistyring til virksomheder i vækst.",
-    monthlyPrice: 349, pricePerEmployee: 0, maxUsers: 3, maxEmployees: 10, maxCustomers: -1,
+    monthlyPrice: 349, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
+    maxDocuments: 2500, maxEntries: 25000, maxCompanies: 1, maxIntegrations: 5,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -25,7 +27,8 @@ const DEFAULT_PLANS = [
   {
     name: "Professionel", slug: "professionel",
     description: "Fuld økonomifunktion med avanceret kontrol, revision, integrationer og sikker backup.",
-    monthlyPrice: 549, pricePerEmployee: 0, maxUsers: 10, maxEmployees: 50, maxCustomers: -1,
+    monthlyPrice: 549, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
+    maxDocuments: 10000, maxEntries: 100000, maxCompanies: 3, maxIntegrations: 15,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -38,6 +41,7 @@ const DEFAULT_PLANS = [
     name: "Enterprise", slug: "enterprise",
     description: "Alle funktioner, koncernregnskab, udvidet API, kontrolspor og prioriteret SLA.",
     monthlyPrice: 749, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
+    maxDocuments: -1, maxEntries: -1, maxCompanies: -1, maxIntegrations: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -133,6 +137,10 @@ export function seedSystemData(): void {
             maxUsers: plan.maxUsers,
             maxEmployees: plan.maxEmployees,
             maxCustomers: plan.maxCustomers,
+            maxDocuments: plan.maxDocuments,
+            maxEntries: plan.maxEntries,
+            maxCompanies: plan.maxCompanies,
+            maxIntegrations: plan.maxIntegrations,
           } : {}),
           sortOrder: plan.sortOrder,
         }).where(eq(plans.id, current.id)).run();

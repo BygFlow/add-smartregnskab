@@ -71,6 +71,9 @@ const COMPANY_GROUPS: NavGroup[] = [
     item("automatisering", "Automatisering", Zap),
     item("integrationer", "Integrationer", Link2),
   ] },
+  { label: "Konto", items: [
+    item("abonnement", "Abonnement & betaling", CreditCard),
+  ] },
 ];
 
 const ADVANCED_ITEMS: NavItem[] = [

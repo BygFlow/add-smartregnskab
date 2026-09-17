@@ -447,6 +447,10 @@ export const plans = sqliteTable("plans", {
   maxUsers: integer("max_users").notNull().default(1), // -1 = ubegrænset
   maxEmployees: integer("max_employees").notNull().default(10), // -1 = ubegrænset
   maxCustomers: integer("max_customers").notNull().default(25),
+  maxDocuments: integer("max_documents").notNull().default(500), // bilag pr. måned, -1 = ubegrænset
+  maxEntries: integer("max_entries").notNull().default(5000), // posteringer pr. måned, -1 = ubegrænset
+  maxCompanies: integer("max_companies").notNull().default(1), // selskaber i samme abonnement
+  maxIntegrations: integer("max_integrations").notNull().default(2), // aktive integrationer
   features: text("features").notNull().default("[]"), // JSON: ["api_integration", "vagtplan", ...]
   sortOrder: integer("sort_order").notNull().default(0),
   active: integer("active").notNull().default(1),

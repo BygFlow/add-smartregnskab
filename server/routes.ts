@@ -59,7 +59,7 @@ type SafeParse<T> = {
 };
 import {
   hashPassword, verifyPassword, createSession, safeUser,
-  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, sessionStorageKey, professionalAccessGuard, platformCustomerDataGuard,
+  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, checkAccountingLimit, sessionStorageKey, professionalAccessGuard, platformCustomerDataGuard,
 } from "./auth";
 import {
   testConnection, syncPayroll, syncInvoices, credentialFields, API_PROVIDERS,
@@ -1752,7 +1752,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })));
   }));
   app.post("/api/integrations", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const data = validate(insertIntegrationSchema, { ...req.body, companyId: tenantId(req) });
+    const cid = tenantId(req);
+    const limit = await checkAccountingLimit(cid, "integrations");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
+    const data = validate(insertIntegrationSchema, { ...req.body, companyId: cid });
     res.status(201).json(await storage.createIntegration(data));
   }));
   app.patch("/api/integrations/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
@@ -1886,6 +1889,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         maxEmployees: plan?.maxEmployees ?? -1,
         customers: customerCount,
         maxCustomers: plan?.maxCustomers ?? -1,
+        documents: (await storage.all("vouchers", cid)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(nowIso().slice(0, 7))).length,
+        maxDocuments: plan?.maxDocuments ?? -1,
+        entries: (await storage.all("journal_entries", cid)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(nowIso().slice(0, 7))).length,
+        maxEntries: plan?.maxEntries ?? -1,
+        companies: 1,
+        maxCompanies: plan?.maxCompanies ?? -1,
+        integrations: [...(await storage.getIntegrations(cid)), ...(await storage.all("accounting_integrations", cid))].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length,
+        maxIntegrations: plan?.maxIntegrations ?? -1,
       },
       nextCharge: await previewBilling(cid),
       invoices,
@@ -1911,18 +1922,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const sub = await storage.getSubscriptionByCompany(cid);
     if (!sub) return res.status(400).json({ error: "Virksomheden har ikke et abonnement." });
 
-    // Nedgradering må ikke efterlade flere aktive brugere eller lønansatte end pakken tillader.
-    const userCount = (await storage.getUsers(cid)).filter((user) => user.active === 1).length;
-    if (plan.maxUsers !== -1 && userCount > plan.maxUsers) {
-      return res.status(409).json({
-        error: `${plan.name} tillader ${plan.maxUsers} aktive brugere, og I har ${userCount}. Deaktivér brugere først, eller vælg en større pakke.`,
-      });
-    }
-    const employeeCount = (await storage.getEmployees(cid)).length;
-    if (plan.maxEmployees !== -1 && employeeCount > plan.maxEmployees) {
-      return res.status(409).json({
-        error: `${plan.name} tillader ${plan.maxEmployees} lønansatte, og I har ${employeeCount}. Fjern lønansatte først, eller vælg en større pakke.`,
-      });
+    // Nedgradering må ikke efterlade et forbrug over de regnskabsfaglige pakkegrænser.
+    const month = nowIso().slice(0, 7);
+    const documentCount = (await storage.all("vouchers", cid)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
+    const entryCount = (await storage.all("journal_entries", cid)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
+    const integrationCount = [...(await storage.getIntegrations(cid)), ...(await storage.all("accounting_integrations", cid))].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
+    for (const [count, limit, label] of [[documentCount, plan.maxDocuments, "bilag denne måned"], [entryCount, plan.maxEntries, "posteringer denne måned"], [integrationCount, plan.maxIntegrations, "aktive integrationer"]] as const) {
+      if (limit !== -1 && count > limit) return res.status(409).json({ error: `${plan.name} tillader ${limit} ${label}, og I bruger allerede ${count}. Vælg en større pakke.` });
     }
     const updated = await storage.updateSubscription(sub.id, { planId: plan.id });
     await audit(req, "skift_pakke", "subscription", sub.id, plan.name);
@@ -2342,13 +2348,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!sub) return res.status(404).json({ error: "Virksomheden har ikke et abonnement." });
     const plan = await storage.getPlan(Number(req.body?.planId));
     if (!plan) return res.status(400).json({ error: "Vælg en gyldig pakke." });
-    const userCount = (await storage.getUsers(id)).filter((user) => user.active === 1).length;
-    const employeeCount = (await storage.getEmployees(id)).length;
-    if (plan.maxUsers !== -1 && userCount > plan.maxUsers) {
-      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxUsers} aktive brugere, og virksomheden har ${userCount}.` });
-    }
-    if (plan.maxEmployees !== -1 && employeeCount > plan.maxEmployees) {
-      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxEmployees} lønansatte, og virksomheden har ${employeeCount}.` });
+    const month = nowIso().slice(0, 7);
+    const documentCount = (await storage.all("vouchers", id)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
+    const entryCount = (await storage.all("journal_entries", id)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
+    const integrationCount = [...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id))].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
+    for (const [count, limit, label] of [[documentCount, plan.maxDocuments, "bilag denne måned"], [entryCount, plan.maxEntries, "posteringer denne måned"], [integrationCount, plan.maxIntegrations, "aktive integrationer"]] as const) {
+      if (limit !== -1 && count > limit) return res.status(409).json({ error: `${plan.name} tillader ${limit} ${label}, og virksomheden bruger allerede ${count}.` });
     }
     const updated = await storage.updateSubscription(sub.id, {
       planId: plan.id,
@@ -4177,6 +4182,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.all("journal_entries", tenantId(req)));
   }));
   app.post("/api/journal-entries", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const limit = await checkAccountingLimit(tenantId(req), "entries");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
     const data = validate(insertJournalEntrySchema, { ...req.body, companyId: tenantId(req) });
     const lines = (req.body as any)?.lines || [];
     if (["bogført", "bogfort", "afstemt"].includes(String(data.status || "kladde"))) {
@@ -4918,6 +4925,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/vouchers", h(async (req, res) => {
     const cid = tenantId(req);
+    const limit = await checkAccountingLimit(cid, "documents");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
     const data = validate(insertVoucherSchema, { ...req.body, companyId: cid, createdAt: nowIso() });
     res.status(201).json(await storage.insert("vouchers", data));
   }));
@@ -5224,7 +5233,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.post("/api/accounting-integrations", h(async (req, res) => {
-    const data = validate(insertAccountingIntegrationSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
+    const cid = tenantId(req);
+    const limit = await checkAccountingLimit(cid, "integrations");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
+    const data = validate(insertAccountingIntegrationSchema, { ...req.body, companyId: cid, createdAt: nowIso() });
     res.status(201).json(await storage.insert("accounting_integrations", data));
   }));
 

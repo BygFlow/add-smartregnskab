@@ -401,6 +401,10 @@ export const plans = pgTable("plans", {
   maxUsers: integer("max_users").notNull().default(1), // -1 = ubegrænset
   maxEmployees: integer("max_employees").notNull().default(10), // -1 = ubegrænset
   maxCustomers: integer("max_customers").notNull().default(25),
+  maxDocuments: integer("max_documents").notNull().default(500),
+  maxEntries: integer("max_entries").notNull().default(5000),
+  maxCompanies: integer("max_companies").notNull().default(1),
+  maxIntegrations: integer("max_integrations").notNull().default(2),
   features: text("features").notNull().default("[]"), // JSON: ["api_integration", "vagtplan", ...]
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),

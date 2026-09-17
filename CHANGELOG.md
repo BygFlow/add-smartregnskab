@@ -1,5 +1,13 @@
 # Ændringslog
 
+## 3.13.0 — 2026-09-17
+
+- Tilføjer virksomhedens egen side til abonnement, pakkevalg, QuickPay og abonnementsfakturaer.
+- Kræver administratorens udtrykkelige godkendelse før pakkeskift og viser priser ekskl. moms tydeligt.
+- Viser sikker betalingsstatus uden at gemme eller udstille kortoplysninger i ADD SmartRegnskab.
+- Erstatter bruger- og kundelofter med relevante grænser for bilag, posteringer, virksomheder og integrationer.
+- Håndhæver bilags-, posterings- og integrationsgrænser server-side og forhindrer ugyldig nedgradering.
+
 ## 3.12.1 — 2026-09-17
 
 - Fastlægger pakkepriserne til 199 / 349 / 549 / 749 kr. pr. måned ekskl. moms.

@@ -333,3 +333,32 @@ export async function checkLimit(
   }
   return { ok: true };
 }
+
+/** Håndhæver de regnskabsfaglige pakkegrænser. Bilag og posteringer tælles pr. kalendermåned. */
+export async function checkAccountingLimit(
+  companyId: number,
+  kind: "documents" | "entries" | "integrations",
+): Promise<{ ok: true } | { ok: false; message: string; limit: number; planName: string }> {
+  const plan = await storage.getCompanyPlan(companyId);
+  if (!plan) return { ok: true };
+  const limit = kind === "documents" ? plan.maxDocuments : kind === "entries" ? plan.maxEntries : plan.maxIntegrations;
+  if (limit < 0) return { ok: true };
+
+  const month = new Date().toISOString().slice(0, 7);
+  let current = 0;
+  if (kind === "documents") {
+    current = (await storage.all("vouchers", companyId)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
+  } else if (kind === "entries") {
+    current = (await storage.all("journal_entries", companyId)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
+  } else {
+    const primary = await storage.getIntegrations(companyId);
+    const accounting = await storage.all("accounting_integrations", companyId);
+    current = [...primary, ...accounting].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
+  }
+
+  if (current >= limit) {
+    const label = kind === "documents" ? "bilag pr. måned" : kind === "entries" ? "posteringer pr. måned" : "aktive integrationer";
+    return { ok: false, limit, planName: plan.name, message: `Pakken ${plan.name} tillader højst ${limit} ${label}. Opgradér pakken for at fortsætte.` };
+  }
+  return { ok: true };
+}

@@ -164,6 +164,10 @@ if (!hasApplicationSchema) {
     addColumn("bank_transactions", "account_ref", "text");
     addColumn("bank_transactions", "external_id", "text");
     addColumn("plans", "max_users", "integer DEFAULT 1 NOT NULL");
+    addColumn("plans", "max_documents", "integer DEFAULT 500 NOT NULL");
+    addColumn("plans", "max_entries", "integer DEFAULT 5000 NOT NULL");
+    addColumn("plans", "max_companies", "integer DEFAULT 1 NOT NULL");
+    addColumn("plans", "max_integrations", "integer DEFAULT 2 NOT NULL");
   })();
 
   // Index creation is safe and idempotent. If a historical database already
