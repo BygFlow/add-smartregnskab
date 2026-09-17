@@ -121,6 +121,25 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const plansResponse = await fetch(`${base}/api/plans`, { headers: { Authorization: `Bearer ${platformToken}` } });
     const plans = await plansResponse.json();
     assert.ok(plans[0]?.id);
+    assert.equal(plans.length, 4);
+    const startFeatures = JSON.parse(plans.find((plan) => plan.slug === "start").features);
+    const enterpriseFeatures = JSON.parse(plans.find((plan) => plan.slug === "enterprise").features);
+    assert.ok(startFeatures.includes("fakturering"));
+    assert.ok(startFeatures.includes("revisoradgang"));
+    assert.ok(enterpriseFeatures.includes("konsolidering"));
+    assert.ok(enterpriseFeatures.includes("support_sla"));
+
+    const customPlanResponse = await fetch(`${base}/api/platform/plans`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Testpakke", slug: "testpakke", description: "Test af redigerbare pakker",
+        monthlyPrice: 299, pricePerEmployee: 0, maxEmployees: 5, maxCustomers: 50,
+        features: JSON.stringify(["regnskab", "bilag", "fakturering"]), sortOrder: 9, active: 1,
+      }),
+    });
+    assert.equal(customPlanResponse.status, 201);
+    assert.deepEqual(JSON.parse((await customPlanResponse.json()).features), ["regnskab", "bilag", "fakturering"]);
     const companyResponse = await fetch(`${base}/api/platform/companies`, {
       method: "POST",
       headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
@@ -371,7 +390,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.6");
+    assert.equal(operations.version, "3.11.7");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
     assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);

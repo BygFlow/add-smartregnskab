@@ -4,17 +4,91 @@ import { hashPassword } from "./auth";
 import { eq } from "drizzle-orm";
 
 const DEFAULT_PLANS = [
-  { name: "Start", slug: "start", description: "Bogføring, kontoplan, bilag og fakturering.", monthlyPrice: 199, pricePerEmployee: 0, maxEmployees: 3, maxCustomers: 100, features: ["regnskab", "fakturering", "bilag", "moms"], sortOrder: 1 },
-  { name: "Virksomhed", slug: "virksomhed", description: "Bankafstemning, budget, løn og automatisering.", monthlyPrice: 499, pricePerEmployee: 0, maxEmployees: 15, maxCustomers: -1, features: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation"], sortOrder: 2 },
-  { name: "Professionel", slug: "professionel", description: "Komplet regnskab, revision, integrationer og backup.", monthlyPrice: 999, pricePerEmployee: 0, maxEmployees: -1, maxCustomers: -1, features: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer"], sortOrder: 3 },
-  { name: "Enterprise", slug: "enterprise", description: "Alle funktioner, koncern, API, kontrolspor og SLA.", monthlyPrice: 1999, pricePerEmployee: 0, maxEmployees: -1, maxCustomers: -1, features: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer", "konsolidering", "support_sla"], sortOrder: 4 },
+  {
+    name: "Start", slug: "start",
+    description: "Komplet grundpakke til selvstændige og små virksomheder.",
+    monthlyPrice: 199, pricePerEmployee: 0, maxEmployees: 3, maxCustomers: 100,
+    features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang"],
+    sortOrder: 1,
+  },
+  {
+    name: "Virksomhed", slug: "virksomhed",
+    description: "Automatiseret bogføring, bank, betalinger og økonomistyring til virksomheder i vækst.",
+    monthlyPrice: 499, pricePerEmployee: 0, maxEmployees: 15, maxCustomers: -1,
+    features: [
+      "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
+      "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
+      "nemhandel", "betalinger", "loen",
+    ],
+    sortOrder: 2,
+  },
+  {
+    name: "Professionel", slug: "professionel",
+    description: "Fuld økonomifunktion med avanceret kontrol, revision, integrationer og sikker backup.",
+    monthlyPrice: 999, pricePerEmployee: 0, maxEmployees: -1, maxCustomers: -1,
+    features: [
+      "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
+      "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
+      "nemhandel", "betalinger", "loen", "revision", "periodeafslutning", "aarsrapport", "saft",
+      "api_integration", "backup", "gdpr_vaerktoejer", "dimensioner",
+    ],
+    sortOrder: 3,
+  },
+  {
+    name: "Enterprise", slug: "enterprise",
+    description: "Alle funktioner, koncernregnskab, udvidet API, kontrolspor og prioriteret SLA.",
+    monthlyPrice: 1999, pricePerEmployee: 0, maxEmployees: -1, maxCustomers: -1,
+    features: [
+      "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
+      "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
+      "nemhandel", "betalinger", "loen", "revision", "periodeafslutning", "aarsrapport", "saft",
+      "api_integration", "backup", "gdpr_vaerktoejer", "dimensioner", "konsolidering", "workflow_builder",
+      "dedikeret_onboarding", "support_sla",
+    ],
+    sortOrder: 4,
+  },
 ] as const;
 
+const LEGACY_PLAN_FEATURES: Record<string, string[]> = {
+  start: ["regnskab", "fakturering", "bilag", "moms"],
+  virksomhed: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation"],
+  professionel: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer"],
+  enterprise: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer", "konsolidering", "support_sla"],
+};
+
+function sameFeatureSet(raw: string, expected: string[]): boolean {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      && parsed.length === expected.length
+      && expected.every((feature) => parsed.includes(feature));
+  } catch {
+    return false;
+  }
+}
+
 export function seedSystemData(): void {
-  if (db.select().from(plans).all().length === 0) {
+  const existingPlans = db.select().from(plans).all();
+  if (existingPlans.length === 0) {
     db.transaction((tx) => {
       for (const plan of DEFAULT_PLANS) {
         tx.insert(plans).values({ ...plan, features: JSON.stringify(plan.features), active: 1 }).run();
+      }
+    });
+  } else {
+    // Opgradér kun de tidligere standardpakker. Pakker som en administrator
+    // selv har ændret, bliver bevidst ikke overskrevet.
+    db.transaction((tx) => {
+      for (const plan of DEFAULT_PLANS) {
+        const current = existingPlans.find((item) => item.slug === plan.slug);
+        const legacy = LEGACY_PLAN_FEATURES[plan.slug];
+        if (!current || !legacy || !sameFeatureSet(current.features, legacy)) continue;
+        tx.update(plans).set({
+          name: plan.name,
+          description: plan.description,
+          features: JSON.stringify(plan.features),
+          sortOrder: plan.sortOrder,
+        }).where(eq(plans.id, current.id)).run();
       }
     });
   }

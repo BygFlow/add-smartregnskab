@@ -1,5 +1,12 @@
 # Ændringslog
 
+## 3.11.7 — 2026-09-17
+
+- Udfylder pakkeløsningerne med konkrete regnskabsfunktioner for Start, Virksomhed, Professionel og Enterprise.
+- Viser alle inkluderede funktioner, årsbesparelse og brugsgrænser direkte på pakkesiden.
+- Tilføjer oprettelse af nye pakker og fuld redigering af funktioner, pris, grænser, rækkefølge og aktiv status.
+- Opgraderer kun urørte standardpakker automatisk og bevarer administratorens egne pakketilpasninger.
+
 ## 3.11.6 — 2026-09-17
 
 - Krypterer database, bilag og manifest lokalt med AES-256-GCM før upload til Hetzner Object Storage.

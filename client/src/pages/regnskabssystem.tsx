@@ -5859,6 +5859,52 @@ function parseBankCsv(
   });
 }
 
+const PLAN_FEATURES = [
+  ["regnskab", "Bogføring og kontoplan"],
+  ["kontoplan", "Dansk standardkontoplan"],
+  ["bilag", "Bilag og udgifter"],
+  ["fakturering", "Fakturering og kreditnotaer"],
+  ["moms", "Moms og skat"],
+  ["rapporter", "Resultat, balance og rapporter"],
+  ["bank_csv", "Bankimport via CSV"],
+  ["revisoradgang", "Bogholder- og revisoradgang"],
+  ["bank", "Automatisk bankintegration"],
+  ["ai_bogforing", "AI-bogføringsforslag"],
+  ["automation", "Automatisering og regler"],
+  ["faste_fakturaer", "Faste fakturaer"],
+  ["debitorstyring", "Rykkerflow og debitorstyring"],
+  ["budget", "Budget og prognoser"],
+  ["cashflow", "Likviditet og cashflow"],
+  ["nemhandel", "OIOUBL og NemHandel"],
+  ["betalinger", "Betalingskørsler"],
+  ["loen", "Lønbogføring"],
+  ["revision", "Revisionsspor og kontrol"],
+  ["periodeafslutning", "Periode- og årsafslutning"],
+  ["aarsrapport", "Årsrapport"],
+  ["saft", "SAF-T eksport"],
+  ["api_integration", "API og integrationer"],
+  ["backup", "Krypteret ekstern backup"],
+  ["gdpr_vaerktoejer", "GDPR-værktøjer"],
+  ["dimensioner", "Dimensioner og omkostningssteder"],
+  ["konsolidering", "Koncern og konsolidering"],
+  ["workflow_builder", "Workflow Builder"],
+  ["dedikeret_onboarding", "Dedikeret onboarding"],
+  ["support_sla", "Prioriteret support og SLA"],
+] as const;
+
+const PLAN_FEATURE_LABELS = Object.fromEntries(PLAN_FEATURES);
+
+function parsePlanFeatures(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((feature): feature is string => typeof feature === "string");
+  if (typeof raw !== "string") return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((feature): feature is string => typeof feature === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function PlatformRegnskabssystemPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(getTabFromHash());
@@ -5870,7 +5916,10 @@ function PlatformRegnskabssystemPage() {
     name: "", cvr: "", email: "", address: "", phone: "",
     adminName: "", adminEmail: "", adminPassword: "", planId: "", billingCycle: "maanedlig", trialDays: "14",
   });
-  const [planForm, setPlanForm] = useState({ name: "", description: "", monthlyPrice: "", pricePerEmployee: "", maxEmployees: "", maxCustomers: "", active: true });
+  const [planForm, setPlanForm] = useState({
+    name: "", slug: "", description: "", monthlyPrice: "", pricePerEmployee: "",
+    maxEmployees: "", maxCustomers: "", features: [] as string[], sortOrder: "1", active: true,
+  });
   useEffect(() => {
     const onHashChange = () => setActiveTab(getTabFromHash());
     window.addEventListener("hashchange", onHashChange);
@@ -5924,12 +5973,13 @@ function PlatformRegnskabssystemPage() {
     onError: mutationError,
   });
   const savePlanMutation = useMutation({
-    mutationFn: async () => (await apiRequest("PATCH", `/api/platform/plans/${editingPlan.id}`, {
-      name: planForm.name, description: planForm.description || null,
+    mutationFn: async () => (await apiRequest(editingPlan?.id ? "PATCH" : "POST", editingPlan?.id ? `/api/platform/plans/${editingPlan.id}` : "/api/platform/plans", {
+      name: planForm.name, slug: planForm.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), description: planForm.description || null,
       monthlyPrice: Number(planForm.monthlyPrice), pricePerEmployee: Number(planForm.pricePerEmployee),
-      maxEmployees: Number(planForm.maxEmployees), maxCustomers: Number(planForm.maxCustomers), active: planForm.active ? 1 : 0,
+      maxEmployees: Number(planForm.maxEmployees), maxCustomers: Number(planForm.maxCustomers),
+      features: JSON.stringify(planForm.features), sortOrder: Number(planForm.sortOrder), active: planForm.active ? 1 : 0,
     })).json(),
-    onSuccess: async () => { await refreshPlatform("/api/platform/plans", "/api/platform/companies", "/api/platform/stats"); setEditingPlan(null); toast({ title: "Pakken er opdateret" }); },
+    onSuccess: async () => { const created = !editingPlan?.id; await refreshPlatform("/api/platform/plans", "/api/platform/companies", "/api/platform/stats"); setEditingPlan(null); toast({ title: created ? "Pakken er oprettet" : "Pakken er opdateret" }); },
     onError: mutationError,
   });
   const invoiceActionMutation = useMutation({
@@ -5953,9 +6003,22 @@ function PlatformRegnskabssystemPage() {
     onError: mutationError,
   });
   const openPlanEditor = (plan: any) => {
-    setPlanForm({ name: plan.name ?? "", description: plan.description ?? "", monthlyPrice: String(plan.monthlyPrice ?? 0), pricePerEmployee: String(plan.pricePerEmployee ?? 0), maxEmployees: String(plan.maxEmployees ?? -1), maxCustomers: String(plan.maxCustomers ?? -1), active: Boolean(plan.active) });
+    setPlanForm({
+      name: plan.name ?? "", slug: plan.slug ?? "", description: plan.description ?? "",
+      monthlyPrice: String(plan.monthlyPrice ?? 0), pricePerEmployee: String(plan.pricePerEmployee ?? 0),
+      maxEmployees: String(plan.maxEmployees ?? -1), maxCustomers: String(plan.maxCustomers ?? -1),
+      features: parsePlanFeatures(plan.features), sortOrder: String(plan.sortOrder ?? 1), active: Boolean(plan.active),
+    });
     setEditingPlan(plan);
   };
+  const openNewPlan = () => {
+    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxEmployees: "3", maxCustomers: "100", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
+    setEditingPlan({ id: null });
+  };
+  const togglePlanFeature = (feature: string, checked: boolean) => setPlanForm((form) => ({
+    ...form,
+    features: checked ? Array.from(new Set([...form.features, feature])) : form.features.filter((item) => item !== feature),
+  }));
   const allowedTabs = ["dashboard", "virksomheder", "pakker", "betalinger", "backup_platform", "platform_drift", "fagbrugere", "platform_support", "adgangspolitik"];
   const tab = allowedTabs.includes(activeTab) ? activeTab : "dashboard";
   const headings: Record<string, [string, string]> = {
@@ -6023,14 +6086,23 @@ function PlatformRegnskabssystemPage() {
         </div>)}</div>}
     </SectionCard>}
 
-    {tab === "pakker" && <SectionCard title="Aktive pakkeløsninger" icon={<Package className="size-4" />}>
-      {plansQuery.isLoading ? <Skeleton className="h-32 w-full" /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{(plansQuery.data ?? []).map((plan) => <div key={plan.id} className="rounded-xl border bg-background p-4">
-        <div className="flex items-start justify-between"><div><p className="font-semibold">{plan.name}</p><p className="text-xs text-muted-foreground">{plan.slug}</p></div><StatusChip status={plan.active ? "aktiv" : "inaktiv"} /></div>
-        <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md.</span></p>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Kunder<br/><strong>{plan.maxCustomers === -1 ? "Ubegrænset" : plan.maxCustomers}</strong></div><div className="rounded-lg bg-muted p-2">Ansatte<br/><strong>{plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees}</strong></div></div>
-        <p className="mt-3 min-h-8 text-xs text-muted-foreground">{plan.description || "Ingen beskrivelse"}</p>
-        <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => openPlanEditor(plan)}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger pakke</Button>
-      </div>)}</div>}
+    {tab === "pakker" && <SectionCard title="Pakkeløsninger" icon={<Package className="size-4" />}>
+      <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div><p className="text-sm font-semibold">Pakker med rigtigt indhold</p><p className="mt-1 text-xs text-muted-foreground">Funktionerne her bliver vist som pakkens indhold og gemmes sammen med abonnementet. Årsbetaling beregnes som 10 måneders pris.</p></div>
+        <Button onClick={openNewPlan}><Plus className="mr-2 h-4 w-4"/>Opret ny pakke</Button>
+      </div>
+      {plansQuery.isLoading ? <Skeleton className="h-32 w-full" /> : plansQuery.isError ? <p className="text-sm text-destructive">Kunne ikke hente pakkeløsningerne.</p> : (plansQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center"><Package className="mx-auto mb-3 h-9 w-9 text-muted-foreground"/><p className="text-sm font-medium">Ingen pakkeløsninger endnu</p><Button className="mt-3" size="sm" onClick={openNewPlan}>Opret den første pakke</Button></div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{(plansQuery.data ?? []).map((plan) => {
+        const features = parsePlanFeatures(plan.features);
+        return <div key={plan.id} className={`flex flex-col rounded-xl border bg-background p-4 shadow-sm ${plan.active ? "" : "opacity-65"}`}>
+          <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{plan.name}</p><p className="text-[11px] text-muted-foreground">{plan.slug}</p></div><StatusChip status={plan.active ? "aktiv" : "inaktiv"} /></div>
+          <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md. ekskl. moms</span></p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{money(Number(plan.monthlyPrice) * 10)} / år · 2 måneder inkluderet</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2">Kunder<br/><strong>{plan.maxCustomers === -1 ? "Ubegrænset" : plan.maxCustomers}</strong></div><div className="rounded-lg bg-muted p-2">Brugere/ansatte<br/><strong>{plan.maxEmployees === -1 ? "Ubegrænset" : plan.maxEmployees}</strong></div></div>
+          <p className="mt-3 min-h-12 text-xs text-muted-foreground">{plan.description || "Ingen beskrivelse"}</p>
+          <div className="mt-3 flex-1 border-t pt-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{features.length} funktioner inkluderet</p><ul className="space-y-1.5">{features.map((feature) => <li key={feature} className="flex gap-2 text-xs"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{PLAN_FEATURE_LABELS[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>{features.length === 0 && <p className="text-xs text-amber-700">Pakken mangler funktioner.</p>}</div>
+          <Button className="mt-4 w-full" size="sm" variant="outline" onClick={() => openPlanEditor(plan)}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger pakke</Button>
+        </div>;
+      })}</div>}
     </SectionCard>}
 
     {tab === "betalinger" && <div className="grid gap-4 xl:grid-cols-[.7fr_1.3fr]">
@@ -6117,18 +6189,22 @@ function PlatformRegnskabssystemPage() {
     </Dialog>
 
     <Dialog open={Boolean(editingPlan)} onOpenChange={(open) => { if (!open) setEditingPlan(null); }}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader><DialogTitle>Rediger pakkeløsning</DialogTitle></DialogHeader>
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+        <DialogHeader><DialogTitle>{editingPlan?.id ? "Rediger pakkeløsning" : "Opret pakkeløsning"}</DialogTitle></DialogHeader>
         <div className="grid gap-4 py-2 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="plan-name">Navn</Label><Input id="plan-name" value={planForm.name} onChange={(event) => setPlanForm((form) => ({ ...form, name: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-name">Navn *</Label><Input id="plan-name" value={planForm.name} onChange={(event) => setPlanForm((form) => ({ ...form, name: event.target.value, ...(!editingPlan?.id && !form.slug ? { slug: event.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") } : {}) }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-slug">Systemnavn *</Label><Input id="plan-slug" value={planForm.slug} disabled={Boolean(editingPlan?.id)} onChange={(event) => setPlanForm((form) => ({ ...form, slug: event.target.value }))}/><p className="text-[11px] text-muted-foreground">Bruges internt og kan ikke ændres efter oprettelse.</p></div>
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="plan-description">Beskrivelse</Label><Textarea id="plan-description" value={planForm.description} onChange={(event) => setPlanForm((form) => ({ ...form, description: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-price">Pris pr. måned, kr.</Label><Input id="plan-price" type="number" min="0" step="0.01" value={planForm.monthlyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, monthlyPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-employee-price">Pris pr. ansat, kr.</Label><Input id="plan-employee-price" type="number" min="0" step="0.01" value={planForm.pricePerEmployee} onChange={(event) => setPlanForm((form) => ({ ...form, pricePerEmployee: event.target.value }))}/></div>
-          <div className="space-y-2"><Label htmlFor="plan-employees">Maks. ansatte (-1 = fri)</Label><Input id="plan-employees" type="number" min="-1" value={planForm.maxEmployees} onChange={(event) => setPlanForm((form) => ({ ...form, maxEmployees: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-employees">Maks. brugere/ansatte (-1 = fri)</Label><Input id="plan-employees" type="number" min="-1" value={planForm.maxEmployees} onChange={(event) => setPlanForm((form) => ({ ...form, maxEmployees: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-customers">Maks. kunder (-1 = fri)</Label><Input id="plan-customers" type="number" min="-1" value={planForm.maxCustomers} onChange={(event) => setPlanForm((form) => ({ ...form, maxCustomers: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-order">Placering</Label><Input id="plan-order" type="number" min="1" value={planForm.sortOrder} onChange={(event) => setPlanForm((form) => ({ ...form, sortOrder: event.target.value }))}/></div>
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs"><span className="text-muted-foreground">Årspris</span><strong className="mt-1 block text-base">{money((Number(planForm.monthlyPrice) || 0) * 10)} ekskl. moms</strong><span className="text-muted-foreground">10 måneders pris</span></div>
+          <div className="space-y-3 sm:col-span-2"><div><Label>Inkluderede funktioner *</Label><p className="text-xs text-muted-foreground">Vælg præcis hvad kunden får adgang til i pakken.</p></div><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{PLAN_FEATURES.map(([key, label]) => <label key={key} className="flex cursor-pointer items-start gap-2 rounded-lg p-2 hover:bg-muted"><Checkbox checked={planForm.features.includes(key)} onCheckedChange={(checked) => togglePlanFeature(key, checked === true)} /><span className="text-sm leading-4">{label}</span></label>)}</div></div>
           <div className="flex items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><p className="text-sm font-medium">Pakken kan vælges</p><p className="text-xs text-muted-foreground">Deaktivering ændrer ikke eksisterende abonnementer.</p></div><Switch checked={planForm.active} onCheckedChange={(checked) => setPlanForm((form) => ({ ...form, active: checked }))}/></div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => setEditingPlan(null)}>Annuller</Button><Button disabled={savePlanMutation.isPending || !planForm.name || Number(planForm.monthlyPrice) < 0} onClick={() => savePlanMutation.mutate()}>{savePlanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Gem ændringer</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => setEditingPlan(null)}>Annuller</Button><Button disabled={savePlanMutation.isPending || !planForm.name.trim() || !planForm.slug.trim() || planForm.features.length === 0 || Number(planForm.monthlyPrice) < 0} onClick={() => savePlanMutation.mutate()}>{savePlanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingPlan?.id ? "Gem ændringer" : "Opret pakke"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;
