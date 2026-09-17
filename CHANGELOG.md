@@ -1,5 +1,11 @@
 # Ændringslog
 
+## 3.11.8 — 2026-09-17
+
+- Migrerer de sidste historiske SmartDrift-standardpakker til det korrekte SmartRegnskab-katalog.
+- Genkender både den gamle “Drift”-pakke og nyere “Virksomhed”-pakke uden at bryde eksisterende abonnementer.
+- Opretter manglende standardpakker sikkert, hvis en ældre installation kun har en del af kataloget.
+
 ## 3.11.7 — 2026-09-17
 
 - Udfylder pakkeløsningerne med konkrete regnskabsfunktioner for Start, Virksomhed, Professionel og Enterprise.

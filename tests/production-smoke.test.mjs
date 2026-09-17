@@ -24,6 +24,26 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
   try {
     existingDb.prepare(`INSERT INTO companies (name, email, status, kind, created_at)
       VALUES (?, ?, 'aktiv', 'platform', ?)`).run("Tidligere platform", "old-platform@example.test", new Date().toISOString());
+    const insertLegacyPlan = existingDb.prepare(`INSERT INTO plans
+      (name, slug, description, monthly_price, price_per_employee, max_employees, max_customers, features, sort_order, active)
+      VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 1)`);
+    insertLegacyPlan.run("Start", "start", "Gammel driftspakke", 199, 5, 15, JSON.stringify(["opgaver", "tidsregistrering", "kunder", "fakturering"]), 1);
+    insertLegacyPlan.run("Drift", "drift", "Gammel driftspakke", 499, 25, 100, JSON.stringify([
+      "opgaver", "tidsregistrering", "kunder", "fakturering", "vagtplan", "fravaer", "fotodokumentation",
+      "loen_eksport", "regnskab_eksport", "geofence", "tilbud", "materialer", "kvalitetskontrol", "noegler",
+      "api_integration", "skabeloner", "rengoringsservice", "rengoringsaftaler", "rengoringsplaner", "gdpr_vaerktoejer",
+    ]), 2);
+    insertLegacyPlan.run("Professionel", "professionel", "Gammel driftspakke", 999, -1, -1, JSON.stringify([
+      "opgaver", "tidsregistrering", "kunder", "fakturering", "vagtplan", "fravaer", "fotodokumentation",
+      "loen_eksport", "regnskab_eksport", "geofence", "tilbud", "materialer", "kvalitetskontrol", "noegler",
+      "skabeloner", "rengoringsservice", "rengoringsaftaler", "rengoringsplaner", "regnskab", "backup",
+    ]), 3);
+    insertLegacyPlan.run("Enterprise", "enterprise", "Gammel driftspakke", 1999, -1, -1, JSON.stringify([
+      "opgaver", "tidsregistrering", "kunder", "fakturering", "vagtplan", "fravaer", "fotodokumentation",
+      "loen_eksport", "regnskab_eksport", "geofence", "api_integration", "revisionsspor", "tilbud", "materialer",
+      "kvalitetskontrol", "noegler", "gdpr_vaerktoejer", "skabeloner", "rengoringsservice", "rengoringsaftaler",
+      "rengoringsplaner", "regnskab", "backup", "support_sla",
+    ]), 4);
   } finally {
     existingDb.close();
   }
@@ -390,7 +410,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.7");
+    assert.equal(operations.version, "3.11.8");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
     assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);

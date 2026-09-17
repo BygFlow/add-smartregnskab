@@ -49,11 +49,36 @@ const DEFAULT_PLANS = [
   },
 ] as const;
 
-const LEGACY_PLAN_FEATURES: Record<string, string[]> = {
-  start: ["regnskab", "fakturering", "bilag", "moms"],
-  virksomhed: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation"],
-  professionel: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer"],
-  enterprise: ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer", "konsolidering", "support_sla"],
+const LEGACY_PLAN_FEATURES: Record<string, string[][]> = {
+  start: [
+    ["regnskab", "fakturering", "bilag", "moms"],
+    ["opgaver", "tidsregistrering", "kunder", "fakturering"],
+  ],
+  virksomhed: [
+    ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation"],
+  ],
+  drift: [[
+    "opgaver", "tidsregistrering", "kunder", "fakturering", "vagtplan", "fravaer", "fotodokumentation",
+    "loen_eksport", "regnskab_eksport", "geofence", "tilbud", "materialer", "kvalitetskontrol", "noegler",
+    "api_integration", "skabeloner", "rengoringsservice", "rengoringsaftaler", "rengoringsplaner", "gdpr_vaerktoejer",
+  ]],
+  professionel: [
+    ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer"],
+    [
+      "opgaver", "tidsregistrering", "kunder", "fakturering", "vagtplan", "fravaer", "fotodokumentation",
+      "loen_eksport", "regnskab_eksport", "geofence", "tilbud", "materialer", "kvalitetskontrol", "noegler",
+      "skabeloner", "rengoringsservice", "rengoringsaftaler", "rengoringsplaner", "regnskab", "backup",
+    ],
+  ],
+  enterprise: [
+    ["regnskab", "fakturering", "bilag", "moms", "bank", "budget", "loen", "automation", "revision", "api_integration", "backup", "gdpr_vaerktoejer", "konsolidering", "support_sla"],
+    [
+      "opgaver", "tidsregistrering", "kunder", "fakturering", "vagtplan", "fravaer", "fotodokumentation",
+      "loen_eksport", "regnskab_eksport", "geofence", "api_integration", "revisionsspor", "tilbud", "materialer",
+      "kvalitetskontrol", "noegler", "gdpr_vaerktoejer", "skabeloner", "rengoringsservice", "rengoringsaftaler",
+      "rengoringsplaner", "regnskab", "backup", "support_sla",
+    ],
+  ],
 };
 
 function sameFeatureSet(raw: string, expected: string[]): boolean {
@@ -80,9 +105,14 @@ export function seedSystemData(): void {
     // selv har ændret, bliver bevidst ikke overskrevet.
     db.transaction((tx) => {
       for (const plan of DEFAULT_PLANS) {
-        const current = existingPlans.find((item) => item.slug === plan.slug);
-        const legacy = LEGACY_PLAN_FEATURES[plan.slug];
-        if (!current || !legacy || !sameFeatureSet(current.features, legacy)) continue;
+        const exists = existingPlans.some((item) => item.slug === plan.slug || (plan.slug === "virksomhed" && item.slug === "drift"));
+        if (!exists) tx.insert(plans).values({ ...plan, features: JSON.stringify(plan.features), active: 1 }).run();
+      }
+      for (const current of existingPlans) {
+        const targetSlug = current.slug === "drift" ? "virksomhed" : current.slug;
+        const plan = DEFAULT_PLANS.find((item) => item.slug === targetSlug);
+        const legacyVariants = LEGACY_PLAN_FEATURES[current.slug];
+        if (!plan || !legacyVariants?.some((legacy) => sameFeatureSet(current.features, legacy))) continue;
         tx.update(plans).set({
           name: plan.name,
           description: plan.description,
