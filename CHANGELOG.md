@@ -1,5 +1,11 @@
 # Ændringslog
 
+## 3.11.9 — 2026-09-17
+
+- Gør adskillelsen mellem ADD SmartRegnskab og ADD SmartDrift permanent ved opstart.
+- Forhindrer den historiske SmartDrift-demodatabase i at blive indlæst i regnskabsproduktet, også i udviklingsmiljøer.
+- Tilføjer regressionstest, som sikrer, at SmartRegnskabs navigation ikke får rengørings-, vagtplan- eller geofencefunktioner tilbage.
+
 ## 3.11.8 — 2026-09-17
 
 - Migrerer de sidste historiske SmartDrift-standardpakker til det korrekte SmartRegnskab-katalog.

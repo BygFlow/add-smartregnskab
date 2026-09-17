@@ -4,7 +4,6 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
-import { seedDatabase } from "./seed";
 import { seedSystemData } from "./seed-system";
 import { startScheduler } from "./scheduler";
 import { randomUUID } from "node:crypto";
@@ -14,7 +13,7 @@ import { usingFallbackKey } from "./crypto";
 import { assertDatabaseReady } from "./storage";
 import { emailConfigured } from "./messaging";
 
-const APP_VERSION = "3.11.8";
+const APP_VERSION = "3.11.9";
 
 const app = express();
 const httpServer = createServer(app);
@@ -164,12 +163,9 @@ app.get("/readyz", async (_req, res) => {
 (async () => {
   // Validate security-critical configuration before migrations, seeding or binding a port.
   usingFallbackKey();
-  if (process.env.ALLOW_DEMO_SEED === "1") {
-    if (process.env.NODE_ENV === "production") throw new Error("ALLOW_DEMO_SEED må ikke bruges i produktion.");
-    seedDatabase();
-  } else {
-    seedSystemData();
-  }
+  // SmartRegnskab initialiseres altid med sit eget regnskabskatalog. Den gamle
+  // SmartDrift-demodatabase må aldrig indlæses i dette separate produkt.
+  seedSystemData();
   await registerRoutes(httpServer, app);
 
   // ── Production error handler ──

@@ -410,7 +410,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.11.8");
+    assert.equal(operations.version, "3.11.9");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
     assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);

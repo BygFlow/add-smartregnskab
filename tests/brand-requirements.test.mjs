@@ -10,6 +10,8 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   const theme = read("client/src/index.css");
   const favicon = read("public/favicon.svg");
   const androidIcon = read("android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml");
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const serverEntry = read("server/index.ts");
 
   assert.match(brand, /ADD SmartRegnskab/);
   assert.match(brand, /TIL DIN VIRKSOMHED/);
@@ -22,4 +24,6 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(favicon, /#9CDD3F/);
   assert.match(androidIcon, /#9CDD3F/);
   assert.match(login, /platform@addsmartregnskab\.dk/);
+  assert.doesNotMatch(shell, /rengøringsservice|rengøringsaftaler|rengøringsplaner|vagtplan|geofence/i);
+  assert.doesNotMatch(serverEntry, /seedDatabase|ALLOW_DEMO_SEED/);
 });
