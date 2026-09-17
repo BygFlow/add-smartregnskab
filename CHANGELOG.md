@@ -1,5 +1,10 @@
 # Ændringslog
 
+## 3.13.1 — 2026-09-17
+
+- Retter opgraderingen af eksisterende standardpakker, så hver pakke får sine egne bilags-, posterings-, virksomheds- og integrationsgrænser.
+- Bevarer administratorens selvoprettede og selvtilpassede pakker.
+
 ## 3.13.0 — 2026-09-17
 
 - Tilføjer virksomhedens egen side til abonnement, pakkevalg, QuickPay og abonnementsfakturaer.

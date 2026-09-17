@@ -126,7 +126,13 @@ export function seedSystemData(): void {
         const legacyVariants = LEGACY_PLAN_FEATURES[current.slug];
         const usesLegacyFeatures = legacyVariants?.some((legacy) => sameFeatureSet(current.features, legacy)) ?? false;
         const usesLegacyPrice = LEGACY_PLAN_PRICES[current.slug]?.includes(Number(current.monthlyPrice)) ?? false;
-        if (!plan || (!usesLegacyFeatures && !usesLegacyPrice)) continue;
+        if (!plan) continue;
+        const usesMigrationDefaults = current.maxDocuments === 500
+          && current.maxEntries === 5000
+          && current.maxCompanies === 1
+          && current.maxIntegrations === 2
+          && sameFeatureSet(current.features, [...plan.features]);
+        if (!usesLegacyFeatures && !usesLegacyPrice && !usesMigrationDefaults) continue;
         tx.update(plans).set({
           name: plan.name,
           description: plan.description,
@@ -137,6 +143,8 @@ export function seedSystemData(): void {
             maxUsers: plan.maxUsers,
             maxEmployees: plan.maxEmployees,
             maxCustomers: plan.maxCustomers,
+          } : {}),
+          ...(usesLegacyPrice || usesMigrationDefaults ? {
             maxDocuments: plan.maxDocuments,
             maxEntries: plan.maxEntries,
             maxCompanies: plan.maxCompanies,
