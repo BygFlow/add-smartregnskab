@@ -1,5 +1,10 @@
 # Ændringslog
 
+## 3.11.5 — 2026-09-17
+
+- Tilpasset den krypterede S3-backup til Hetzner Object Storage uden ikke-understøttede streaming-checksum-trailere.
+- Sender kendt indholdslængde for database og bilag, så uploaden kan verificeres stabilt hos S3-kompatible EU-udbydere.
+
 ## 3.11.4 — 2026-09-17
 
 - Gjort Systemdrift operationel med statusopdatering, jobhistorik og kontrolleret manuel kørsel.

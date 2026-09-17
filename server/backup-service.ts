@@ -19,6 +19,11 @@ function client() {
     region: required("S3_REGION"),
     endpoint: process.env.S3_ENDPOINT?.trim() || undefined,
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    // S3-kompatible udbydere understøtter ikke nødvendigvis SDK'ets
+    // valgfrie aws-chunked checksum-trailere. Bevar checksums, når protokollen
+    // kræver dem, og brug kendt indholdslængde for filstreams.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: { accessKeyId: required("S3_ACCESS_KEY_ID"), secretAccessKey: required("S3_SECRET_ACCESS_KEY") },
   });
 }
@@ -57,7 +62,7 @@ export async function createExternalBackup(): Promise<BackupResult> {
   const bucket = required("S3_BUCKET");
   const s3 = client();
   await s3.send(new PutObjectCommand({
-    Bucket: bucket, Key: databaseKey, Body: createReadStream(localPath), ContentType: "application/vnd.sqlite3",
+    Bucket: bucket, Key: databaseKey, Body: createReadStream(localPath), ContentLength: size, ContentType: "application/vnd.sqlite3",
     ServerSideEncryption: "AES256", Metadata: { sha256: checksum, product: "add-smartregnskab", created: new Date().toISOString() },
   }));
   const fileRoot = resolve(process.env.FILE_STORAGE_DIR || "./uploads");
@@ -67,7 +72,7 @@ export async function createExternalBackup(): Promise<BackupResult> {
     const fileChecksum = createHash("sha256").update(readFileSync(path)).digest("hex");
     const fileSize = statSync(path).size;
     const fileKey = `${snapshotPrefix}/files/${relativePath}`;
-    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: createReadStream(path), ServerSideEncryption: "AES256", Metadata: { sha256: fileChecksum, product: "add-smartregnskab" } }));
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: createReadStream(path), ContentLength: fileSize, ServerSideEncryption: "AES256", Metadata: { sha256: fileChecksum, product: "add-smartregnskab" } }));
     uploadedFiles.push({ key: fileKey, relativePath, size: fileSize, checksum: fileChecksum });
   }
   const manifest = { format: 1, product: "ADD SmartRegnskab", createdAt: new Date().toISOString(), database: { key: databaseKey, size, checksum }, files: uploadedFiles };
