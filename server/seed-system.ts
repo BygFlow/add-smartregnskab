@@ -6,15 +6,15 @@ import { eq } from "drizzle-orm";
 const DEFAULT_PLANS = [
   {
     name: "Start", slug: "start",
-    description: "Gratis grundpakke til selvstændige, der vil i gang med digital bogføring.",
-    monthlyPrice: 0, pricePerEmployee: 0, maxUsers: 1, maxEmployees: 0, maxCustomers: -1,
+    description: "En enkel grundpakke til selvstændige, der vil i gang med digital bogføring.",
+    monthlyPrice: 199, pricePerEmployee: 0, maxUsers: 1, maxEmployees: 0, maxCustomers: -1,
     features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang"],
     sortOrder: 1,
   },
   {
     name: "Virksomhed", slug: "virksomhed",
     description: "Automatiseret bogføring, bank, betalinger og økonomistyring til virksomheder i vækst.",
-    monthlyPrice: 199, pricePerEmployee: 0, maxUsers: 3, maxEmployees: 10, maxCustomers: -1,
+    monthlyPrice: 349, pricePerEmployee: 0, maxUsers: 3, maxEmployees: 10, maxCustomers: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -25,7 +25,7 @@ const DEFAULT_PLANS = [
   {
     name: "Professionel", slug: "professionel",
     description: "Fuld økonomifunktion med avanceret kontrol, revision, integrationer og sikker backup.",
-    monthlyPrice: 399, pricePerEmployee: 0, maxUsers: 10, maxEmployees: 50, maxCustomers: -1,
+    monthlyPrice: 549, pricePerEmployee: 0, maxUsers: 10, maxEmployees: 50, maxCustomers: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -37,7 +37,7 @@ const DEFAULT_PLANS = [
   {
     name: "Enterprise", slug: "enterprise",
     description: "Alle funktioner, koncernregnskab, udvidet API, kontrolspor og prioriteret SLA.",
-    monthlyPrice: 699, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
+    monthlyPrice: 749, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -82,11 +82,11 @@ const LEGACY_PLAN_FEATURES: Record<string, string[][]> = {
 };
 
 const LEGACY_PLAN_PRICES: Record<string, number[]> = {
-  start: [199],
-  virksomhed: [499],
-  drift: [499],
-  professionel: [999],
-  enterprise: [1999],
+  start: [0, 199],
+  virksomhed: [199, 499],
+  drift: [199, 499],
+  professionel: [399, 999],
+  enterprise: [699, 1999],
 };
 
 function sameFeatureSet(raw: string, expected: string[]): boolean {

@@ -148,7 +148,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const enterprisePlan = plans.find((plan) => plan.slug === "enterprise");
     const startFeatures = JSON.parse(startPlan.features);
     const enterpriseFeatures = JSON.parse(enterprisePlan.features);
-    assert.deepEqual([startPlan.monthlyPrice, businessPlan.monthlyPrice, professionalPlan.monthlyPrice, enterprisePlan.monthlyPrice], [0, 199, 399, 699]);
+    assert.deepEqual([startPlan.monthlyPrice, businessPlan.monthlyPrice, professionalPlan.monthlyPrice, enterprisePlan.monthlyPrice], [199, 349, 549, 749]);
     assert.deepEqual([startPlan.maxUsers, businessPlan.maxUsers, professionalPlan.maxUsers, enterprisePlan.maxUsers], [1, 3, 10, -1]);
     assert.ok(plans.every((plan) => plan.maxCustomers === -1));
     assert.ok(startFeatures.includes("fakturering"));
@@ -417,7 +417,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.12.0");
+    assert.equal(operations.version, "3.12.1");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
     assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);

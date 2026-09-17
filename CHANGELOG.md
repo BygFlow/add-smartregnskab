@@ -1,5 +1,10 @@
 # Ændringslog
 
+## 3.12.1 — 2026-09-17
+
+- Fastlægger pakkepriserne til 199 / 349 / 549 / 749 kr. pr. måned ekskl. moms.
+- Bevarer separate grænser for brugere og lønansatte samt ubegrænsede kunder og leverandører.
+
 ## 3.12.0 — 2026-09-17
 
 - Indfører en tydelig og konkurrencedygtig prisliste: 0 / 199 / 399 / 699 kr. pr. måned ekskl. moms.
