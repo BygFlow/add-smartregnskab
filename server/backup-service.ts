@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,6 +12,24 @@ function required(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Miljøvariablen ${name} mangler.`);
   return value;
+}
+
+function backupEncryptionKey() {
+  return createHash("sha256").update(required("ENCRYPTION_KEY"), "utf8").digest();
+}
+
+function encryptForBackup(plain: Buffer) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", backupEncryptionKey(), iv);
+  const body = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return { body, metadata: { encryption: "aes-256-gcm", iv: iv.toString("hex"), tag: cipher.getAuthTag().toString("hex") } };
+}
+
+function decryptFromBackup(body: Buffer, metadata?: Record<string, string>) {
+  if (metadata?.encryption !== "aes-256-gcm" || !metadata.iv || !metadata.tag) throw new Error("Backupobjektet mangler klientkryptering.");
+  const decipher = createDecipheriv("aes-256-gcm", backupEncryptionKey(), Buffer.from(metadata.iv, "hex"));
+  decipher.setAuthTag(Buffer.from(metadata.tag, "hex"));
+  return Buffer.concat([decipher.update(body), decipher.final()]);
 }
 
 function client() {
@@ -62,9 +80,10 @@ export async function createExternalBackup(): Promise<BackupResult> {
   const bucket = required("S3_BUCKET");
   const s3 = client();
   const databaseBytes = readFileSync(localPath);
+  const encryptedDatabase = encryptForBackup(databaseBytes);
   await s3.send(new PutObjectCommand({
-    Bucket: bucket, Key: databaseKey, Body: databaseBytes, ContentLength: databaseBytes.length, ContentType: "application/vnd.sqlite3",
-    ServerSideEncryption: "AES256", Metadata: { sha256: checksum, product: "add-smartregnskab", created: new Date().toISOString() },
+    Bucket: bucket, Key: databaseKey, Body: encryptedDatabase.body, ContentLength: encryptedDatabase.body.length, ContentType: "application/octet-stream",
+    Metadata: { sha256: checksum, product: "add-smartregnskab", created: new Date().toISOString(), ...encryptedDatabase.metadata },
   }));
   const fileRoot = resolve(process.env.FILE_STORAGE_DIR || "./uploads");
   const uploadedFiles: ManifestFile[] = [];
@@ -74,14 +93,16 @@ export async function createExternalBackup(): Promise<BackupResult> {
     const fileSize = statSync(path).size;
     const fileKey = `${snapshotPrefix}/files/${relativePath}`;
     const fileBytes = readFileSync(path);
-    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: fileBytes, ContentLength: fileBytes.length, ServerSideEncryption: "AES256", Metadata: { sha256: fileChecksum, product: "add-smartregnskab" } }));
+    const encryptedFile = encryptForBackup(fileBytes);
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body, ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }));
     uploadedFiles.push({ key: fileKey, relativePath, size: fileSize, checksum: fileChecksum });
   }
   const manifest = { format: 1, product: "ADD SmartRegnskab", createdAt: new Date().toISOString(), database: { key: databaseKey, size, checksum }, files: uploadedFiles };
   const manifestBytes = Buffer.from(JSON.stringify(manifest));
   const manifestChecksum = createHash("sha256").update(manifestBytes).digest("hex");
   const key = `${snapshotPrefix}/manifest.json`;
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: manifestBytes, ContentType: "application/json", ServerSideEncryption: "AES256", Metadata: { sha256: manifestChecksum, product: "add-smartregnskab" } }));
+  const encryptedManifest = encryptForBackup(manifestBytes);
+  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: encryptedManifest.body, ContentType: "application/octet-stream", Metadata: { sha256: manifestChecksum, product: "add-smartregnskab", ...encryptedManifest.metadata } }));
   const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: databaseKey }));
   const manifestHead = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
   const verified = Number(head.ContentLength) === size && head.Metadata?.sha256 === checksum && Number(manifestHead.ContentLength) === manifestBytes.length && manifestHead.Metadata?.sha256 === manifestChecksum;
@@ -96,7 +117,7 @@ export async function verifyExternalBackup(key: string) {
   const s3 = client();
   const manifestObject = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   if (!manifestObject.Body) throw new Error("Backupmanifestet er tomt.");
-  const manifestBytes = Buffer.from(await manifestObject.Body.transformToByteArray());
+  const manifestBytes = decryptFromBackup(Buffer.from(await manifestObject.Body.transformToByteArray()), manifestObject.Metadata);
   const manifestChecksum = createHash("sha256").update(manifestBytes).digest("hex");
   if (manifestObject.Metadata?.sha256 && manifestObject.Metadata.sha256 !== manifestChecksum) throw new Error("Backupmanifestets kontrolsum stemmer ikke.");
   const manifest = JSON.parse(manifestBytes.toString("utf8")) as { database: ManifestFile; files: ManifestFile[] };
@@ -104,13 +125,13 @@ export async function verifyExternalBackup(key: string) {
   if (!object.Body) throw new Error("Databasen i backuppen er tom.");
   const tempPath = join(tmpdir(), `smartregnskab-restore-check-${Date.now()}.db`);
   try {
-    const bytes = Buffer.from(await object.Body.transformToByteArray());
+    const bytes = decryptFromBackup(Buffer.from(await object.Body.transformToByteArray()), object.Metadata);
     const checksum = createHash("sha256").update(bytes).digest("hex");
     if (checksum !== manifest.database.checksum || (object.Metadata?.sha256 && object.Metadata.sha256 !== checksum)) throw new Error("Backupens SHA-256 kontrolsum stemmer ikke.");
     for (const file of manifest.files || []) {
       const remote = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: file.key }));
       if (!remote.Body) throw new Error(`Bilaget ${file.relativePath} mangler i backuppen.`);
-      const fileBytes = Buffer.from(await remote.Body.transformToByteArray());
+      const fileBytes = decryptFromBackup(Buffer.from(await remote.Body.transformToByteArray()), remote.Metadata);
       const fileChecksum = createHash("sha256").update(fileBytes).digest("hex");
       if (fileBytes.length !== file.size || fileChecksum !== file.checksum) throw new Error(`Bilaget ${file.relativePath} bestod ikke integritetskontrollen.`);
     }

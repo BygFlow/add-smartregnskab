@@ -1,5 +1,11 @@
 # Ændringslog
 
+## 3.11.6 — 2026-09-17
+
+- Krypterer database, bilag og manifest lokalt med AES-256-GCM før upload til Hetzner Object Storage.
+- Fjerner AWS SSE-S3-headeren, som Hetzner ikke understøtter, uden at opgive kryptering ved lagring.
+- Verificerer dekryptering, SHA-256-kontrolsummer og SQLite-integritet ved hver backupkørsel.
+
 ## 3.11.5 — 2026-09-17
 
 - Tilpasset den krypterede S3-backup til Hetzner Object Storage uden ikke-understøttede streaming-checksum-trailere.
