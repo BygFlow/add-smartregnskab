@@ -68,6 +68,6 @@ export function registerReadinessRoutes(app: Express) {
       { id: "security", name: "Sikkerhedsnøgler", status: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "ok" : "error", message: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "Session og kryptering bruger produktionsnøgler." : "Kritiske sikkerhedsnøgler mangler." },
     ];
     const blocking = services.filter((service) => service.status === "error");
-    res.json({ generatedAt: new Date().toISOString(), version: "3.11.4", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
+    res.json({ generatedAt: new Date().toISOString(), version: "3.11.5", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
   }));
 }
