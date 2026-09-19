@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Route, Router, Switch } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,8 +10,9 @@ import { queryClient } from "@/lib/queryClient";
 import RegnskabLogin from "@/pages/regnskab-login";
 import { RegnskabsPlatformShell } from "@/pages/regnskabs-shell";
 import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig";
-import Fagportal from "@/pages/regnskab-tabs/fagportal";
 import { Marketing } from "@/pages/marketing";
+
+const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
 
 function useRouteLocation(): [string, (to: string, options?: { replace?: boolean }) => void] {
   const [location, navigate] = useHashLocation();
@@ -71,7 +73,11 @@ function Root() {
   }
 
   if (["bogholder", "revisor", "revisor_admin"].includes(user.role) && user.twoFactorEnabled !== 1) {
-    return <main className="min-h-screen bg-background p-6"><Fagportal /></main>;
+    return (
+      <Suspense fallback={<main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser fagportal…</p></main>}>
+        <main className="min-h-screen bg-background p-6"><Fagportal /></main>
+      </Suspense>
+    );
   }
 
   return (
