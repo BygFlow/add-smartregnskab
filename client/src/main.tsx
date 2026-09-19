@@ -17,7 +17,9 @@ if (isNative()) {
   // PWA service worker — only for web, feature-detected, fails gracefully in iframe preview
   if ("serviceWorker" in navigator && window.self === window.top) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+        .then((registration) => registration.update())
+        .catch(() => {});
     });
   }
 }

@@ -21,6 +21,8 @@ interface S3Config {
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  endpoint?: string;
+  forcePathStyle: boolean;
 }
 
 function s3Config(): S3Config | null {
@@ -31,6 +33,8 @@ function s3Config(): S3Config | null {
     region: S3_REGION,
     accessKeyId: S3_ACCESS_KEY_ID,
     secretAccessKey: S3_SECRET_ACCESS_KEY,
+    endpoint: process.env.S3_ENDPOINT?.trim() || undefined,
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
   };
 }
 
@@ -106,9 +110,17 @@ function timestampParts(date = new Date()): { amzDate: string; dateStamp: string
 }
 
 function s3RequestParts(config: S3Config, storageKey: string) {
-  const host = `${config.bucket}.s3.${config.region}.amazonaws.com`;
-  const canonicalUri = `/${safeKey(storageKey).split("/").map(awsEncode).join("/")}`;
-  return { host, canonicalUri, service: "s3", algorithm: "AWS4-HMAC-SHA256" };
+  const encodedKey = safeKey(storageKey).split("/").map(awsEncode).join("/");
+  const endpoint = config.endpoint
+    ? new URL(config.endpoint)
+    : new URL(`https://s3.${config.region}.amazonaws.com`);
+  const endpointPath = endpoint.pathname.replace(/\/$/, "");
+  const usePathStyle = config.forcePathStyle;
+  const host = usePathStyle ? endpoint.host : `${config.bucket}.${endpoint.host}`;
+  const canonicalUri = usePathStyle
+    ? `${endpointPath}/${awsEncode(config.bucket)}/${encodedKey}`.replace(/^([^/])/, "/$1")
+    : `${endpointPath}/${encodedKey}`.replace(/^([^/])/, "/$1");
+  return { protocol: endpoint.protocol, host, canonicalUri, service: "s3", algorithm: "AWS4-HMAC-SHA256" };
 }
 
 function signingKey(secret: string, dateStamp: string, region: string, service: string): Buffer {
@@ -144,7 +156,8 @@ async function s3Fetch(method: "PUT" | "GET" | "DELETE", storageKey: string, bod
   if (!config) throw new Error("S3 er ikke konfigureret.");
   const payloadHash = sha256(body ?? Buffer.alloc(0));
   const signed = authorization(config, method, storageKey, payloadHash);
-  const response = await fetch(`https://${signed.host}${signed.canonicalUri}`, {
+  const protocol = s3RequestParts(config, storageKey).protocol;
+  const response = await fetch(`${protocol}//${signed.host}${signed.canonicalUri}`, {
     method,
     headers: {
       host: signed.host,
@@ -214,7 +227,7 @@ export async function presignedUrl(storage: string, storageKey: string): Promise
   const config = s3Config();
   if (!config) throw new Error("S3 er ikke konfigureret.");
 
-  const { host, canonicalUri, service, algorithm } = s3RequestParts(config, storageKey);
+  const { protocol, host, canonicalUri, service, algorithm } = s3RequestParts(config, storageKey);
   const { amzDate, dateStamp } = timestampParts();
   const scope = `${dateStamp}/${config.region}/${service}/aws4_request`;
   const query: Record<string, string> = {
@@ -232,7 +245,7 @@ export async function presignedUrl(storage: string, storageKey: string): Promise
   const stringToSign = [algorithm, amzDate, scope, sha256(canonicalRequest)].join("\n");
   const signature = createHmac("sha256", signingKey(config.secretAccessKey, dateStamp, config.region, service))
     .update(stringToSign).digest("hex");
-  return `https://${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+  return `${protocol}//${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 }
 
 /** Dekoder en ældre data-URL og validerer dens MIME-type og størrelse. */

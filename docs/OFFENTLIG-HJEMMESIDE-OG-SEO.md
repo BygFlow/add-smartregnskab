@@ -1,6 +1,6 @@
 # Offentlig hjemmeside og SEO
 
-Version 3.14.0 tilføjer offentlig forside, Funktioner, Priser, Integrationer, Sikkerhed, FAQ, Om, Kontakt, Book demo, Hjælpecenter, Login, Opret konto, Privatliv, Vilkår og Cookies samt seks målrettede landingssider.
+Version 3.15.0 indeholder offentlig forside, Funktioner, Priser, Integrationer, Sikkerhed, FAQ, Om, Kontakt, Book demo, Hjælpecenter, Login, Opret konto, Privatliv, Vilkår og Cookies samt seks målrettede landingssider.
 
 ## Teknisk
 

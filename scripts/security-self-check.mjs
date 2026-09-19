@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 const files = execFileSync("git", ["-c", "core.quotepath=false", "ls-files", "-z", "server", "client/src", "scripts", "shared"])
@@ -11,6 +11,7 @@ const rules = [
   { id: "weak-hash-password", pattern: /createHash\s*\(\s*["'](?:md5|sha1)["']\s*\).*password/gi },
 ];
 for (const file of files) {
+  if (!existsSync(file)) continue;
   const text = readFileSync(file, "utf8");
   for (const rule of rules) if (rule.pattern.test(text)) findings.push({ rule: rule.id, file });
   ruleReset();

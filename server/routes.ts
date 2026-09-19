@@ -601,7 +601,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/portal-documents", "/products", "/purchase-orders", "/receipts",
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
     "/regulatory-changes", "/reminder-flow", "/reports", "/role-controls", "/professional",
-    "/security-audit-events", "/suppliers", "/system-health-events", "/tax-deadlines", "/saft", "/external-backup",
+    "/security-audit-events", "/suppliers", "/system-health-events", "/tax-deadlines", "/saft", "/external-backup", "/backup-protection",
     "/vat-periods", "/vat-reconciliations", "/vouchers", "/workflow-definitions",
     "/workflow-runs", "/year-end-closes",
   ];

@@ -300,7 +300,7 @@ export default function Arkivering({ companyId }: { companyId: number }) {
                 data-testid="form-description"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="F.eks. Køb af rengøringsmidler"
+                placeholder="F.eks. Køb af kontorartikler"
               />
             </div>
             <div className="space-y-2">

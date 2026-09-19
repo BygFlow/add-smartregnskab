@@ -51,9 +51,9 @@
   --chart-3: 170 40% 42%;
   --chart-4: 43 65% 52%;
   --chart-5: 27 75% 52%;
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: "JetBrains Mono", Menlo, monospace;
+  --font-mono: ui-monospace, "Cascadia Mono", Menlo, monospace;
   --radius: 0.375rem;
   --tracking-normal: -0.011em;
   --spacing: 0.25rem;

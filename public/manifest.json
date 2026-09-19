@@ -2,7 +2,7 @@
   "name": "ADD SmartRegnskab",
   "short_name": "SmartRegnskab",
   "description": "Mere tid til det, der skaber værdi. Dansk platform til bogføring, fakturering, bankafstemning, moms og økonomisk kontrol.",
-  "start_url": "/#/smartregnskab/app",
+  "start_url": "/#/login",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#255c49",

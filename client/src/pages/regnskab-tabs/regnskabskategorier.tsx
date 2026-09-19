@@ -252,7 +252,7 @@ export default function Regnskabskategorier({ companyId }: { companyId: number }
                 data-testid="form-categoryName"
                 value={form.categoryName}
                 onChange={(e) => setForm((f) => ({ ...f, categoryName: e.target.value }))}
-                placeholder="F.eks. Rengøringsmidler"
+                placeholder="F.eks. Kontorartikler"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">

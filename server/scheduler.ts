@@ -360,6 +360,11 @@ export async function runJobNow(job: string): Promise<JobResult | null> {
 }
 
 let timers: NodeJS.Timeout[] = [];
+let running = false;
+
+export function schedulerRunning(): boolean {
+  return running;
+}
 
 /**
  * Starter planlæggeren. Hvert job får en lille forskudt start, så de ikke
@@ -368,10 +373,12 @@ let timers: NodeJS.Timeout[] = [];
  */
 export function startScheduler(): void {
   if (process.env.DISABLE_JOBS === "1") {
+    running = false;
     console.log("Automatiske job er slået fra (DISABLE_JOBS=1).");
     return;
   }
   stopScheduler();
+  running = true;
   let offset = 0;
   for (const [id, entry] of Object.entries(JOBS)) {
     offset += 20_000;
@@ -390,4 +397,5 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   for (const t of timers) clearTimeout(t as any);
   timers = [];
+  running = false;
 }

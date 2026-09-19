@@ -143,7 +143,7 @@ export async function initPushNotifications(): Promise<void> {
     await PushNotifications.register();
     
     PushNotifications.addListener('registration', (token: { value: string }) => {
-      console.log('Push token:', token.value);
+      console.info('Push-notifikationer er registreret.');
     });
     
     PushNotifications.addListener('pushNotificationReceived', (notification: any) => {

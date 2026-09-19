@@ -5,15 +5,16 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 import { seedSystemData } from "./seed-system";
-import { startScheduler } from "./scheduler";
+import { schedulerRunning, startScheduler } from "./scheduler";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { usingFallbackKey } from "./crypto";
 import { assertDatabaseReady } from "./storage";
 import { emailConfigured } from "./messaging";
+import { externalBackupConfigured } from "./backup-service";
 
-const APP_VERSION = "3.14.0";
+const APP_VERSION = "3.15.0";
 
 const app = express();
 const httpServer = createServer(app);
@@ -51,7 +52,7 @@ app.use((_req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https:; font-src 'self' data:; frame-ancestors 'none'");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-k1EgCP6gd1+EDNxyDwrnYxilVNQJoARjpT4gLdz6wX8='; connect-src 'self' https:; font-src 'self' data:; frame-ancestors 'none'");
   next();
 });
 
@@ -146,7 +147,11 @@ app.get("/readyz", async (_req, res) => {
       checks: {
         database: "ok",
         file_storage: "ok",
-        scheduler: "running",
+        scheduler: schedulerRunning() ? "running" : "stopped",
+        external_backup: externalBackupConfigured() ? "configured" : "not_configured",
+        quickpay: process.env.QUICKPAY_API_KEY?.trim() ? "configured" : "not_configured",
+        aiia: process.env.AIIA_CLIENT_ID?.trim() && process.env.AIIA_CLIENT_SECRET?.trim() ? "configured" : "not_configured",
+        email: emailConfigured() ? "configured" : "not_configured",
       },
       timestamp: new Date().toISOString(),
     });
@@ -217,7 +222,7 @@ app.get("/readyz", async (_req, res) => {
       log(`AiiA: ${process.env.AIIA_CLIENT_ID ? "configured" : "not configured"}`);
       log(`Email: ${emailConfigured() ? "configured" : "not configured"}`);
       log(`Encryption: ${usingFallbackKey() ? "development fallback" : "configured"}`);
-      startScheduler(); // automatiske job: gentagne opgaver, rykkere, fornyelse, GDPR
+      startScheduler(); // bankdata, regelovervågning og krypteret ekstern backup
     },
   );
 })();

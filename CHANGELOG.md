@@ -1,5 +1,15 @@
 # Ændringslog
 
+## 3.15.0 — 2026-09-19
+
+- Rettet S3-kompatibel fillagring, så Hetzner-endpoint og path-style-konfiguration respekteres.
+- Opdateret PWA-cache til network-first for navigationer og versionshash'ede statiske filer.
+- Erstattet simulerede kundebackuphandlinger med læsebeskyttet, verificerbar platformstatus.
+- Opdateret Android-version, cacheversion, API-status og dokumentation til 3.15.0.
+- Fjernet ubrugte SmartDrift-komponenter og rengøringsspecifikke hjælpetekster fra klienten.
+- Fjernet eksterne fontkald, beskyttet strukturerede data med CSP-hash og genaktiveret browserzoom.
+- Fjernet logning af push-token og indført automatisk genindlæsning af friske forespørgsler.
+
 ## 3.14.0 — 2026-09-19
 
 - Komplet offentlig hjemmeside med produkt-, pris-, integrations-, sikkerheds-, FAQ-, kontakt-, demo- og juridiske sider.

@@ -12,6 +12,25 @@ const actor = (req: Request) => String((req as any).auth?.user?.email || (req as
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: any) => Promise.resolve(fn(req, res)).catch(next);
 
 export function registerComplianceRoutes(app: Express) {
+  app.get("/api/backup-protection/status", requireRole("leder", "platform_admin"), asyncRoute(async (_req, res) => {
+    const latest = db.select().from(backupJobs).where(eq(backupJobs.scope, "platform")).all()
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+    let verified = false;
+    if (latest?.summary) {
+      try { verified = JSON.parse(latest.summary).verified === true; } catch {}
+    }
+    res.json({
+      configured: externalBackupConfigured(),
+      encrypted: true,
+      provider: "S3-kompatibelt eksternt lager",
+      schedule: "daglig",
+      lastBackupAt: latest?.createdAt || null,
+      lastStatus: latest?.status || null,
+      lastVerified: verified,
+      customerDataVisibleToPlatformAdmin: false,
+    });
+  }));
+
   app.get("/api/saft/accounts", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     res.json(db.select().from(accounts).where(eq(accounts.companyId, companyId(req))).all().map((account) => ({ id: account.id, accountNumber: account.accountNumber, name: account.name, standardAccountNumber: account.standardAccountNumber, active: account.active })));
   }));
