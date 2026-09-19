@@ -1,6 +1,7 @@
 # NemHandel og Peppol — drifts- og integrationsbeskrivelse
 
-Status: integrationsklar, men ikke tilsluttet et produktionsadgangspunkt.
+Status: Sproom-adapter og generisk adapter er implementeret, men et
+produktionsadgangspunkt er ikke tilsluttet, før aftale og nøgler er sat.
 
 ## Implementeret
 
@@ -14,8 +15,36 @@ Status: integrationsklar, men ikke tilsluttet et produktionsadgangspunkt.
 - Leverandør-ID, antal forsøg, fejl, tider og status gemmes i revisionssporet.
 - Signaturkontrolleret webhook til indgående dokumenter.
 - Manuel, godkendt import samt XML-download til ekstern validering.
+- Sproom-modtageropslag før afsendelse, binær dokumentupload og kontrol af
+  `X-Sproom-DocumentId`.
+- Sproom child-company-token pr. virksomhed, så kunders dokumenter ikke sendes
+  under platformens egen juridiske identitet.
+- Sproom-webhook med RSA-SHA256-signatur, leveringstilstande og automatisk
+  hentning af modtagne OIOUBL/Peppol-dokumenter.
 
-## Leverandørkontrakt
+## Anbefalet produktionsadapter: Sproom
+
+Sæt `EINVOICE_PROVIDER=sproom`, `SPROOM_API_TOKEN` og
+`SPROOM_COMPANY_MAP`. Kortet er JSON fra ADD SmartRegnskabs interne
+virksomheds-ID til Sprooms child-company UUID, eksempel:
+
+```json
+{"1":"e042e119-fd0c-4dd6-bf7e-02564c9fbd7b"}
+```
+
+Hver virksomhed skal oprettes eller tilmeldes som child company. Adapteren
+henter et tidsbegrænset virksomhedstoken, slår modtageren op i NemHandel/Peppol
+og uploader XML binært til `POST /api/documents`. Sprooms webhook-URL er:
+
+`https://app.addsmartregnskab.dk/api/einvoice/sproom/webhook`
+
+Opret både `documentStatusChanged` og `documentReceived`. Hent Sprooms offentlige
+webhooknøgle fra `GET /api/webhooks/key`, og sæt den som PEM i
+`SPROOM_WEBHOOK_PUBLIC_KEY` eller som base64 af hele PEM-filen i
+`SPROOM_WEBHOOK_PUBLIC_KEY_BASE64`. Webhooken afviser alle kald, hvor
+RSA-SHA256-signaturen i `X-Signature` ikke kan bekræftes.
+
+## Generisk leverandørkontrakt
 
 `EINVOICE_PROVIDER_URL` modtager JSON med `format`, `recipient` og
 `documentBase64`. Et vellykket svar skal være HTTP 2xx og bør indeholde `id`
@@ -31,9 +60,10 @@ og sendes i `X-Einvoice-Signature`. Hemmeligheden er
 1. Indgå aftale med et NemHandel/Peppol access point, der understøtter både
    afsendelse, modtagelse, kreditnotaer og nødvendige svarmeddelelser.
 2. Kortlæg leverandørens API til den dokumenterede kontrakt eller tilføj en
-   leverandørspecifik adapter.
-3. Registrér ADD SmartRegnskab eller serviceleverandøren korrekt i
-   Nemhandelsregisteret.
+   leverandørspecifik adapter. Sproom-adapteren er allerede implementeret.
+3. Opret eller tilmeld hver kunde som child company, og registrér dens CVR/GLN
+   til modtagelse i NemHandel og eventuelt Peppol. ADD SmartRegnskab må ikke
+   registrere kundens identitet uden kundens gyldige accept og leverandørflow.
 4. Validér repræsentative dokumenter i NemHandels officielle validator.
 5. Kør ende-til-ende-test til et separat CVR/GLN og gem kvitteringerne.
 6. Gennemfør leverandørspecifik ende-til-ende-test af afvisning, timeout,

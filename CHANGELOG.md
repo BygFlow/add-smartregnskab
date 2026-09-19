@@ -1,5 +1,13 @@
 # Ændringslog
 
+## 3.15.1 — 2026-09-19
+
+- Tilføjet produktionsadapter til Sproom for NemHandel og Peppol.
+- Tilføjet modtageropslag, binær XML-upload og krav om Sprooms dokument-ID før status “sendt”.
+- Tilføjet isolerede child-company-tokens og eksplicit kobling mellem hver kundevirksomhed og Sproom.
+- Tilføjet RSA-SHA256-verificeret Sproom-webhook til leveringsstatus og indgående dokumenter.
+- Opdateret driftsvejledning og releasekontrol med Sproom-konfiguration.
+
 ## 3.15.0 — 2026-09-19
 
 - Rettet S3-kompatibel fillagring, så Hetzner-endpoint og path-style-konfiguration respekteres.

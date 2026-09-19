@@ -16,7 +16,7 @@ const requiredFiles = [
   "docs/AIIA-QUICKPAY-DRIFT.md", "server/aiia.ts", "server/payments.ts",
   "server/saft.ts", "server/backup-service.ts", "server/einvoice.ts", "server/einvoice-routes.ts",
   "server/import-adapters.ts", "server/migration-routes.ts", "server/readiness-routes.ts",
-  "docs/RELEASE-3.15.0-DRIFTSBEVIS.md",
+  "docs/RELEASE-3.15.1-DRIFTSBEVIS.md",
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
@@ -24,11 +24,12 @@ const grep = spawnSync("git", ["grep", "-In", "SmartDrift Clean", "--", ".", ":(
 const trackedText = grep.status === 1 ? "" : String(grep.stdout || grep.stderr || "");
 add("brand-separation", trackedText.trim() === "", "code", trackedText.trim() || "Ingen SmartDrift Clean-referencer i produktkoden; SmartRegnskab er fortsat et separat produkt.");
 
+const sproom = String(process.env.EINVOICE_PROVIDER || "").toLowerCase() === "sproom";
 const productionEnv = [
   ["external-backup", ["S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]],
-  ["einvoice-access-point", ["EINVOICE_PROVIDER_URL", "EINVOICE_PROVIDER_API_KEY"]],
+  ["einvoice-access-point", sproom ? ["SPROOM_API_TOKEN", "SPROOM_COMPANY_MAP"] : ["EINVOICE_PROVIDER_URL", "EINVOICE_PROVIDER_API_KEY"]],
   ["einvoice-validator", ["EINVOICE_VALIDATOR_URL"]],
-  ["einvoice-inbound", ["EINVOICE_WEBHOOK_SECRET"]],
+  ["einvoice-inbound", sproom ? ["SPROOM_WEBHOOK_PUBLIC_KEY_BASE64"] : ["EINVOICE_WEBHOOK_SECRET"]],
   ["subscription-payments", ["QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY"]],
   ["automatic-bankdata", ["AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET"]],
 ];

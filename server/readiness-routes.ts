@@ -49,7 +49,7 @@ export function registerReadinessRoutes(app: Express) {
   app.get("/api/integration-adapters/status", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     const cid = tenantId(req);
     const integrations = await storage.getIntegrations(cid);
-    const electronic = providerStatus();
+    const electronic = providerStatus(cid);
     res.json({ adapters: [
       { id: "economic", name: "e-conomic", mode: "API", configured: integrations.some((item: any) => String(item.provider).toLowerCase().includes("conomic")) },
       { id: "dinero", name: "Dinero", mode: "CSV-import", configured: true },
@@ -77,6 +77,6 @@ export function registerReadinessRoutes(app: Express) {
       { id: "security", name: "Sikkerhedsnøgler", status: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "ok" : "error", message: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "Session og kryptering bruger produktionsnøgler." : "Kritiske sikkerhedsnøgler mangler." },
     ];
     const blocking = services.filter((service) => service.status === "error");
-    res.json({ generatedAt: new Date().toISOString(), version: "3.15.0", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
+    res.json({ generatedAt: new Date().toISOString(), version: "3.15.1", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
   }));
 }

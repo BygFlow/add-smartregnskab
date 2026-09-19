@@ -15,7 +15,7 @@ test("S3-compatible file storage honors the configured endpoint", () => {
 test("PWA updates do not pin authenticated users to an old shell", () => {
   const sw = read("public/sw.js");
   const main = read("client/src/main.tsx");
-  assert.match(sw, /smartregnskab-v3\.15\.0/);
+  assert.match(sw, /smartregnskab-v3\.15\.1/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
   assert.match(sw, /cache: "no-store"/);
   assert.match(main, /updateViaCache: "none"/);

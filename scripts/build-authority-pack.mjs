@@ -13,7 +13,7 @@ const files = [
   "docs/LOVSTATUS-2026-09-10.md",
   "docs/FAGPORTAL-3.7.0.md",
   "docs/AIIA-QUICKPAY-DRIFT.md",
-  "docs/RELEASE-3.15.0-DRIFTSBEVIS.md",
+  "docs/RELEASE-3.15.1-DRIFTSBEVIS.md",
 ];
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });

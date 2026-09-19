@@ -1,8 +1,9 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual, verify } from "node:crypto";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import type { Company, Customer, CreditNote, EinvoiceQueue, Invoice, InvoiceItem } from "@shared/schema";
 
 export type EInvoiceFormat = "OIOUBL_2_1" | "PEPPOL_BIS_3";
+export type EInvoiceProvider = "generic" | "sproom";
 
 type DocumentInput = {
   company: Company;
@@ -110,11 +111,20 @@ export function validateEInvoice(payload: string): string[] {
   return errors;
 }
 
-export function providerStatus() {
+export function providerStatus(companyId?: number) {
+  const provider = String(process.env.EINVOICE_PROVIDER || "generic").toLowerCase() === "sproom" ? "sproom" : "generic";
+  const companyMap = sproomCompanyMap();
+  const configured = provider === "sproom"
+    ? Boolean(process.env.SPROOM_API_TOKEN && (companyId ? companyMap[String(companyId)] : Object.keys(companyMap).length))
+    : Boolean(process.env.EINVOICE_PROVIDER_URL && process.env.EINVOICE_PROVIDER_API_KEY);
   return {
-    configured: Boolean(process.env.EINVOICE_PROVIDER_URL && process.env.EINVOICE_PROVIDER_API_KEY),
+    provider,
+    configured,
+    companyMapped: provider !== "sproom" || !companyId || Boolean(companyMap[String(companyId)]),
     validatorConfigured: Boolean(process.env.EINVOICE_VALIDATOR_URL),
-    inboundConfigured: Boolean(process.env.EINVOICE_WEBHOOK_SECRET),
+    inboundConfigured: provider === "sproom"
+      ? Boolean(process.env.SPROOM_WEBHOOK_PUBLIC_KEY || process.env.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64)
+      : Boolean(process.env.EINVOICE_WEBHOOK_SECRET),
     supportedFormats: ["OIOUBL_2_1", "PEPPOL_BIS_3"],
   };
 }
@@ -127,7 +137,107 @@ export async function providerValidate(payload: string, format: EInvoiceFormat):
   return [`Ekstern validator afviste dokumentet (${response.status}): ${(await response.text()).slice(0, 500)}`];
 }
 
-export async function providerSend(payload: string, format: EInvoiceFormat, recipient: string) {
+function providerKind(): EInvoiceProvider {
+  return String(process.env.EINVOICE_PROVIDER || "generic").toLowerCase() === "sproom" ? "sproom" : "generic";
+}
+
+function sproomBaseUrl(): string {
+  return String(process.env.SPROOM_API_URL || "https://sproom.net/api").replace(/\/$/, "");
+}
+
+function sproomCompanyMap(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(process.env.SPROOM_COMPANY_MAP || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([key, value]) => /^\d+$/.test(key) && typeof value === "string" && value.trim()));
+  } catch {
+    return {};
+  }
+}
+
+function sproomCompanyId(companyId: number): string {
+  const externalId = sproomCompanyMap()[String(companyId)];
+  if (!externalId) throw new Error(`Virksomhed ${companyId} er ikke knyttet til en Sproom-kundevirksomhed.`);
+  return externalId;
+}
+
+export function internalCompanyIdForSproom(externalCompanyId: string): number | null {
+  const entry = Object.entries(sproomCompanyMap()).find(([, value]) => value === externalCompanyId);
+  return entry ? Number(entry[0]) : null;
+}
+
+async function sproomCompanyToken(companyId: number): Promise<string> {
+  const parentToken = process.env.SPROOM_API_TOKEN?.trim();
+  if (!parentToken) throw new Error("Sproom API-token mangler.");
+  const response = await fetch(`${sproomBaseUrl()}/child-companies/${encodeURIComponent(sproomCompanyId(companyId))}/token`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${parentToken}` },
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Sproom kunne ikke udstede virksomhedstoken (${response.status}): ${body.slice(0, 500)}`);
+  try {
+    const parsed = JSON.parse(body);
+    const token = String(parsed.token || parsed.accessToken || parsed.access_token || "").trim();
+    if (token) return token;
+  } catch { /* handled below */ }
+  const token = body.replace(/^"|"$/g, "").trim();
+  if (!token) throw new Error("Sproom returnerede ikke et virksomhedstoken.");
+  return token;
+}
+
+function sproomRecipient(recipient: string): string {
+  const value = recipient.trim();
+  if (/^\d{13}$/.test(value)) return `GLN:${value}`;
+  const cvr = value.replace(/^DK/i, "").replace(/\D/g, "");
+  if (/^\d{8}$/.test(cvr)) return `DK:CVR:${cvr}`;
+  throw new Error("Modtageren mangler et gyldigt GLN eller CVR til NemHandel-opslag.");
+}
+
+export async function sproomDownloadDocument(documentId: string, companyId: number, format: EInvoiceFormat): Promise<string> {
+  const token = await sproomCompanyToken(companyId);
+  const targetFormat = format === "PEPPOL_BIS_3" ? "peppolBis3" : "oioUbl2";
+  const response = await fetch(`${sproomBaseUrl()}/documents/${encodeURIComponent(documentId)}/${targetFormat}`, {
+    headers: { Accept: "application/xml, application/octet-stream", Authorization: `Bearer ${token}` },
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Sproom-dokumentet kunne ikke hentes (${response.status}): ${body.slice(0, 500)}`);
+  return body;
+}
+
+export function verifySproomSignature(raw: string, signature?: string): boolean {
+  if (!signature) return false;
+  try {
+    const direct = process.env.SPROOM_WEBHOOK_PUBLIC_KEY?.replace(/\\n/g, "\n").trim();
+    const encoded = process.env.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64?.trim();
+    const publicKey = direct || (encoded ? Buffer.from(encoded, "base64").toString("utf8") : "");
+    if (!publicKey) return false;
+    return verify("RSA-SHA256", Buffer.from(raw, "utf8"), publicKey, Buffer.from(signature, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+export async function providerSend(payload: string, format: EInvoiceFormat, recipient: string, companyId?: number) {
+  if (providerKind() === "sproom") {
+    if (!companyId) throw new Error("Virksomheds-ID mangler ved Sproom-afsendelse.");
+    const token = await sproomCompanyToken(companyId);
+    const recipientResponse = await fetch(`${sproomBaseUrl()}/recipients/${encodeURIComponent(sproomRecipient(recipient))}`, {
+      headers: { Accept: "*/*", Authorization: `Bearer ${token}` },
+    });
+    if (!recipientResponse.ok) {
+      const reason = (await recipientResponse.text()).slice(0, 500);
+      throw new Error(`Modtageren er ikke registreret til e-faktura (${recipientResponse.status}): ${reason}`);
+    }
+    const response = await fetch(`${sproomBaseUrl()}/documents`, {
+      method: "POST",
+      headers: { Accept: "*/*", Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+      body: Buffer.from(payload, "utf8"),
+    });
+    const body = await response.text();
+    if (!response.ok) throw new Error(`Sproom afviste dokumentet (${response.status}): ${body.slice(0, 500)}`);
+    const messageId = response.headers.get("x-sproom-documentid") || response.headers.get("x-sproom-document-id") || "";
+    if (!messageId) throw new Error("Sproom accepterede kaldet, men returnerede ikke X-Sproom-DocumentId. Dokumentet markeres ikke som sendt.");
+    return { messageId, response: body.slice(0, 2000) };
+  }
   if (!process.env.EINVOICE_PROVIDER_URL || !process.env.EINVOICE_PROVIDER_API_KEY) throw new Error("NemHandel/Peppol-leverandøren er ikke konfigureret. Dokumentet er ikke sendt.");
   const idempotencyKey = createHash("sha256").update(`${format}\0${recipient}\0${payload}`).digest("hex");
   const response = await fetch(process.env.EINVOICE_PROVIDER_URL, { method: "POST", headers: { Authorization: `Bearer ${process.env.EINVOICE_PROVIDER_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ format, recipient, documentBase64: Buffer.from(payload).toString("base64") }) });
