@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /smartregnskab/app
+Sitemap: https://app.addsmartregnskab.dk/sitemap.xml
+

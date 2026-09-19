@@ -13,7 +13,7 @@ import { usingFallbackKey } from "./crypto";
 import { assertDatabaseReady } from "./storage";
 import { emailConfigured } from "./messaging";
 
-const APP_VERSION = "3.13.1";
+const APP_VERSION = "3.14.0";
 
 const app = express();
 const httpServer = createServer(app);

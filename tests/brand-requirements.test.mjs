@@ -12,6 +12,9 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   const androidIcon = read("android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml");
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const serverEntry = read("server/index.ts");
+  const marketing = read("client/src/pages/marketing.tsx");
+  const sitemap = read("public/sitemap.xml");
+  const robots = read("public/robots.txt");
 
   assert.match(brand, /ADD SmartRegnskab/);
   assert.match(brand, /TIL DIN VIRKSOMHED/);
@@ -26,4 +29,11 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(login, /platform@addsmartregnskab\.dk/);
   assert.doesNotMatch(shell, /rengøringsservice|rengøringsaftaler|rengøringsplaner|vagtplan|geofence/i);
   assert.doesNotMatch(serverEntry, /seedDatabase|ALLOW_DEMO_SEED/);
+  assert.match(marketing, /Hjælpecenter/);
+  assert.match(marketing, /Bilag og udgifter/);
+  assert.match(marketing, /AI hjælper\. Du godkender\./);
+  assert.match(marketing, /Kun nødvendige/);
+  assert.match(marketing, /regnskabsprogram-smaa-virksomheder/);
+  assert.match(sitemap, /regnskab-haandvaerkere/);
+  assert.match(robots, /Disallow: \/api\//);
 });

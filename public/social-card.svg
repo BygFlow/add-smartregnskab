@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">ADD SmartRegnskab</title><desc id="desc">Mere tid til det, der skaber værdi</desc>
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#052e28"/><stop offset="1" stop-color="#176b55"/></linearGradient></defs>
+  <rect width="1200" height="630" fill="url(#g)"/><circle cx="1030" cy="110" r="240" fill="#ffffff" opacity=".05"/><circle cx="1030" cy="110" r="150" fill="#ffffff" opacity=".05"/>
+  <rect x="90" y="92" width="86" height="86" rx="22" fill="#e7f8ef"/><path d="M118 140h13v24h-13zm20-16h13v40h-13zm20-13h13v53h-13z" fill="#176b55"/>
+  <text x="205" y="130" fill="#fff" font-family="Arial,sans-serif" font-size="38" font-weight="700">ADD SmartRegnskab</text><text x="205" y="168" fill="#a7d9c9" font-family="Arial,sans-serif" font-size="18" letter-spacing="5">TIL DIN VIRKSOMHED</text>
+  <text x="90" y="335" fill="#fff" font-family="Arial,sans-serif" font-size="64" font-weight="700">Mere tid til det,</text><text x="90" y="413" fill="#fff" font-family="Arial,sans-serif" font-size="64" font-weight="700">der skaber værdi</text>
+  <text x="90" y="500" fill="#c5e6dc" font-family="Arial,sans-serif" font-size="28">Bogføring · Faktura · Bank · Moms · Rapporter</text>
+</svg>

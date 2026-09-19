@@ -4,7 +4,8 @@ import "./index.css";
 import { initNative, isNative } from "./lib/native-bridge";
 
 if (!window.location.hash) {
-  window.location.hash = "#/";
+  const publicPath = window.location.pathname === "/" ? "/" : window.location.pathname;
+  window.location.hash = `#${publicPath}${window.location.search}`;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -23,10 +23,19 @@ export function registerReadinessRoutes(app: Express) {
   app.get("/api/onboarding/status", requireRole("leder", "holdleder", "platform_admin"), asyncRoute(async (req, res) => {
     const cid = tenantId(req);
     const company = await storage.getCompany(cid);
-    const [accounts, customers, invoices] = await Promise.all([storage.all("accounts", cid), storage.getCustomers(cid), storage.getInvoices(cid)]);
+    const [accounts, customers, invoices, profiles, integrations, vouchers] = await Promise.all([
+      storage.all("accounts", cid), storage.getCustomers(cid), storage.getInvoices(cid),
+      storage.all("business_profiles", cid), storage.getIntegrations(cid), storage.all("vouchers", cid),
+    ]);
+    const profile = profiles[0] as any;
     const steps = [
       { id: "company", title: "Virksomhedsoplysninger", complete: Boolean(company?.name && company?.cvr && company?.address && company?.email), action: "Udfyld navn, CVR, adresse og mail" },
+      { id: "fiscal_year", title: "Regnskabsår", complete: Boolean(profile?.fiscalYearStart), action: "Vælg regnskabsårets start under Brancheprofil" },
       { id: "accounts", title: "Kontoplan", complete: accounts.length > 0, action: "Opret eller importér en kontoplan" },
+      { id: "bank", title: "Bank eller integration", complete: integrations.some((item: any) => item.status === "forbundet" || item.status === "aktiv"), action: "Forbind bankdata eller vælg et kontrolleret importflow" },
+      { id: "invoice_setup", title: "Fakturaopsætning", complete: Boolean(company?.cvr && company?.address && company?.email), action: "Kontrollér afsenderoplysninger, betalingsfrist og nummerserie" },
+      { id: "vat", title: "Momsopsætning", complete: Boolean(profile?.vatSetup), action: "Vælg momsopsætning under Brancheprofil" },
+      { id: "voucher", title: "Første bilag", complete: vouchers.length > 0, action: "Upload og kontrollér det første bilag" },
       { id: "customer", title: "Første kunde", complete: customers.length > 0, action: "Opret eller importér en kunde" },
       { id: "invoice", title: "Første faktura", complete: invoices.length > 0, action: "Opret en kladdefaktura og kontrollér moms" },
       { id: "dpa", title: "Databehandleraftale", complete: Boolean(company?.dpaAcceptedAt), action: "Læs og acceptér databehandleraftalen" },
@@ -68,6 +77,6 @@ export function registerReadinessRoutes(app: Express) {
       { id: "security", name: "Sikkerhedsnøgler", status: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "ok" : "error", message: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "Session og kryptering bruger produktionsnøgler." : "Kritiske sikkerhedsnøgler mangler." },
     ];
     const blocking = services.filter((service) => service.status === "error");
-    res.json({ generatedAt: new Date().toISOString(), version: "3.13.1", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
+    res.json({ generatedAt: new Date().toISOString(), version: "3.14.0", overall: blocking.length ? "blocked" : services.some((service) => service.status === "warning") ? "attention" : "operational", services, blockers: blocking.map((service) => service.message) });
   }));
 }

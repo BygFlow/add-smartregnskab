@@ -98,6 +98,23 @@ import {
   queueAndSend, invoiceEmail, reminderEmail, shiftSms, emailConfigured, smsConfigured,
 } from "./messaging";
 
+const publicLeadAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function publicLeadAllowed(ip: string) {
+  const now = Date.now();
+  if (publicLeadAttempts.size > 10_000) {
+    publicLeadAttempts.forEach((value, key) => { if (value.resetAt <= now) publicLeadAttempts.delete(key); });
+  }
+  const current = publicLeadAttempts.get(ip);
+  if (!current || current.resetAt <= now) {
+    publicLeadAttempts.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return true;
+  }
+  if (current.count >= 5) return false;
+  current.count += 1;
+  return true;
+}
+
 // ── Hjælpere ──
 
 function validate<T>(schema: SafeParse<T>, data: unknown): T {
@@ -513,6 +530,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
   app.get("/api/legal/databehandleraftale", h(async (_req, res) => {
     res.type("text/plain; charset=utf-8").send(dpaText());
+  }));
+
+  /** Offentlig kontakt/demo. Gemmes som lead med samtykke og sender en intern besked. */
+  app.post("/api/public/leads", h(async (req, res) => {
+    if (!publicLeadAllowed(req.ip || req.socket.remoteAddress || "unknown")) {
+      return res.status(429).json({ error: "For mange henvendelser. Prøv igen senere." });
+    }
+    const text = (value: unknown, max: number) => typeof value === "string" ? value.trim().slice(0, max) : "";
+    const line = (value: unknown, max: number) => text(value, max).replace(/[\r\n]+/g, " ");
+    const name = line(req.body?.name, 120);
+    const email = text(req.body?.email, 180).toLowerCase();
+    const phone = line(req.body?.phone, 40);
+    const company = line(req.body?.company, 160);
+    const message = text(req.body?.message, 2_000);
+    const kind = req.body?.kind === "demo" ? "demo" : "kontakt";
+    const source = line(req.body?.source, 80) || "website";
+    if (!name || !message || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || req.body?.consent !== true) {
+      return res.status(400).json({ error: "Navn, gyldig e-mail, besked og samtykke er påkrævet." });
+    }
+    const platform = (await storage.getCompanies()).find((item: any) => item.kind === "platform");
+    if (!platform) return res.status(503).json({ error: "Kontaktfunktionen er midlertidigt utilgængelig." });
+    const lead = await storage.insert("leads", {
+      companyId: platform.id,
+      source: `website_${kind}:${source}`,
+      customerName: company ? `${name} — ${company}` : name,
+      customerEmail: email,
+      customerPhone: phone || null,
+      message,
+      status: "ny",
+      createdAt: nowIso(),
+    });
+    const recipient = process.env.LEAD_NOTIFICATION_EMAIL || process.env.MAIL_REPLY_TO || process.env.SMTP_USER;
+    if (recipient) {
+      await queueAndSend({
+        companyId: platform.id,
+        channel: "email",
+        recipient,
+        subject: `${kind === "demo" ? "Demoforespørgsel" : "Kontakt"} fra ${name}`,
+        body: `Navn: ${name}\nVirksomhed: ${company || "—"}\nE-mail: ${email}\nTelefon: ${phone || "—"}\nKilde: ${source}\n\n${message}`,
+        relatedType: "lead",
+        relatedId: lead.id,
+      });
+    }
+    return res.status(201).json({ ok: true, id: lead.id });
   }));
 
   registerPublicEInvoiceRoutes(app);

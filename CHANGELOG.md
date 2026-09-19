@@ -1,5 +1,15 @@
 # Ændringslog
 
+## 3.14.0 — 2026-09-19
+
+- Komplet offentlig hjemmeside med produkt-, pris-, integrations-, sikkerheds-, FAQ-, kontakt-, demo- og juridiske sider.
+- Seks SEO-landingssider til mindre virksomheder, fakturering, bilag, økonomioverblik, håndværkere og servicevirksomheder.
+- Offentligt hjælpecenter med 14 danske artikler og søgning.
+- Cookievalg, dynamiske metadata, structured data, sitemap, robots og social-card.
+- Kontakt- og demoformular gemmer ratebegrænsede leads og sender intern notifikation, når mail er opsat.
+- Onboarding udvidet til ti kontroller fra virksomhedsopsætning til første faktura og databehandleraftale.
+- Ti danske hjælpevideomanuskripter, marketingvideo-shotlist og marketing-/launchpakke.
+
 ## 3.13.1 — 2026-09-17
 
 - Retter opgraderingen af eksisterende standardpakker, så hver pakke får sine egne bilags-, posterings-, virksomheds- og integrationsgrænser.

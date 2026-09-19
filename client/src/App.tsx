@@ -10,6 +10,7 @@ import RegnskabLogin from "@/pages/regnskab-login";
 import { RegnskabsPlatformShell } from "@/pages/regnskabs-shell";
 import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig";
 import Fagportal from "@/pages/regnskab-tabs/fagportal";
+import { Marketing } from "@/pages/marketing";
 
 function useRouteLocation(): [string, (to: string, options?: { replace?: boolean }) => void] {
   const [location, navigate] = useHashLocation();
@@ -26,12 +27,32 @@ function Root() {
   if (!user) {
     return (
       <Switch>
+        <Route path="/" component={() => <Marketing page="home" />} />
+        <Route path="/funktioner" component={() => <Marketing page="features" />} />
+        <Route path="/priser" component={() => <Marketing page="pricing" />} />
+        <Route path="/integrationer" component={() => <Marketing page="integrations" />} />
+        <Route path="/sikkerhed" component={() => <Marketing page="security" />} />
+        <Route path="/faq" component={() => <Marketing page="faq" />} />
+        <Route path="/om" component={() => <Marketing page="about" />} />
+        <Route path="/kontakt" component={() => <Marketing page="contact" />} />
+        <Route path="/book-demo" component={() => <Marketing page="demo" />} />
+        <Route path="/hjaelp" component={() => <Marketing page="help" />} />
+        <Route path="/privatliv" component={() => <Marketing page="privacy" />} />
+        <Route path="/vilkaar" component={() => <Marketing page="terms" />} />
+        <Route path="/cookies" component={() => <Marketing page="cookies" />} />
+        <Route path="/regnskabsprogram-smaa-virksomheder" component={() => <Marketing page="landing" landingSlug="regnskabsprogram-smaa-virksomheder" />} />
+        <Route path="/fakturaprogram-virksomheder" component={() => <Marketing page="landing" landingSlug="fakturaprogram-virksomheder" />} />
+        <Route path="/bilag-og-bogfoering" component={() => <Marketing page="landing" landingSlug="bilag-og-bogfoering" />} />
+        <Route path="/oekonomioverblik" component={() => <Marketing page="landing" landingSlug="oekonomioverblik" />} />
+        <Route path="/regnskab-haandvaerkere" component={() => <Marketing page="landing" landingSlug="regnskab-haandvaerkere" />} />
+        <Route path="/regnskab-servicevirksomheder" component={() => <Marketing page="landing" landingSlug="regnskab-servicevirksomheder" />} />
+        <Route path="/login" component={RegnskabLogin} />
         <Route path="/tilmeld" component={Tilmeld} />
         <Route path="/bekraeft" component={Bekraeft} />
         <Route path="/glemt" component={Glemt} />
         <Route path="/nulstil" component={Nulstil} />
         <Route path="/invitation" component={Invitation} />
-        <Route component={RegnskabLogin} />
+        <Route component={() => <Marketing page="home" />} />
       </Switch>
     );
   }
