@@ -335,7 +335,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const onboardingResponse = await fetch(`${base}/api/onboarding/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(onboardingResponse.status, 200);
     const onboarding = await onboardingResponse.json();
-    assert.equal(onboarding.total, 5);
+    assert.equal(onboarding.total, 10);
     assert.ok(onboarding.completed >= 2);
     const einvoiceStatus = await fetch(`${base}/api/einvoice-queue/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(einvoiceStatus.status, 200);
@@ -434,7 +434,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.13.1");
+    assert.equal(operations.version, "3.14.0");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     assert.equal((await fetch(`${base}/api/platform/jobs`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);
     assert.equal((await fetch(`${base}/api/platform/professionals`, { headers: { Authorization: `Bearer ${platformToken}` } })).status, 200);

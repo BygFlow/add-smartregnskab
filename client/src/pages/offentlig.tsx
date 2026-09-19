@@ -77,7 +77,7 @@ function PublicLayout({ children, title, description, testId = "card-public" }: 
           {children}
         </div>
         <div className="mt-4 text-center">
-          <Link href="/" data-testid="link-back-to-login" className="text-sm font-medium text-primary hover:underline">
+          <Link href="/login" data-testid="link-back-to-login" className="text-sm font-medium text-primary hover:underline">
             Tilbage til login
           </Link>
         </div>

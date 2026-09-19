@@ -221,7 +221,8 @@ export default function RegnskabLogin() {
 
           <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm">
             <Link href="/glemt" data-testid="link-regnskab-forgot" className="font-medium text-primary hover:underline">Glemt adgangskode?</Link>
-            <a href={apiUrl("/api/legal/privatliv")} target="_blank" rel="noreferrer" data-testid="link-regnskab-privacy" className="font-medium text-primary hover:underline">Privatlivspolitik</a>
+            <Link href="/privatliv" data-testid="link-regnskab-privacy" className="font-medium text-primary hover:underline">Privatlivspolitik</Link>
+            <Link href="/" className="font-medium text-primary hover:underline">Til hjemmesiden</Link>
           </div>
 
           <p className="mt-8 text-center text-[11px] text-muted-foreground/70 md:hidden">
