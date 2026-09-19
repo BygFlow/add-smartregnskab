@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const version = "3.10.2";
+const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 const destination = join("artifacts", `myndighedspakke-${version}`);
 const files = [
   "docs/REGISTRERINGS-CHECKLISTE.md", "docs/REGISTRERING-ERHVERVSSTYRELSEN.md", "docs/MYNDIGHEDSBILAG.md",
@@ -13,6 +13,7 @@ const files = [
   "docs/LOVSTATUS-2026-09-10.md",
   "docs/FAGPORTAL-3.7.0.md",
   "docs/AIIA-QUICKPAY-DRIFT.md",
+  "docs/RELEASE-3.15.0-DRIFTSBEVIS.md",
 ];
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });
