@@ -9,14 +9,20 @@ const DEFAULT_PLANS = [
     description: "En enkel grundpakke til selvstændige, der vil i gang med digital bogføring.",
     monthlyPrice: 199, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
     maxDocuments: 500, maxEntries: 5000, maxCompanies: 1, maxIntegrations: 2,
+    includedCompanies: 1, additionalCompanyPrice: 0,
+    includedAiCredits: 0, aiAddonPrice: 99, aiAddonCredits: 250,
+    aiCreditsPerAdditionalCompany: 0, aiCostCap: 0, aiCostCapPerAdditionalCompany: 0,
     features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang"],
     sortOrder: 1,
   },
   {
-    name: "Virksomhed", slug: "virksomhed",
+    name: "Drift", slug: "virksomhed",
     description: "Automatiseret bogføring, bank, betalinger og økonomistyring til virksomheder i vækst.",
     monthlyPrice: 349, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
     maxDocuments: 2500, maxEntries: 25000, maxCompanies: 1, maxIntegrations: 5,
+    includedCompanies: 1, additionalCompanyPrice: 0,
+    includedAiCredits: 0, aiAddonPrice: 149, aiAddonCredits: 1000,
+    aiCreditsPerAdditionalCompany: 0, aiCostCap: 0, aiCostCapPerAdditionalCompany: 0,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -28,7 +34,10 @@ const DEFAULT_PLANS = [
     name: "Professionel", slug: "professionel",
     description: "Fuld økonomifunktion med avanceret kontrol, revision, integrationer og sikker backup.",
     monthlyPrice: 549, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
-    maxDocuments: 10000, maxEntries: 100000, maxCompanies: 3, maxIntegrations: 15,
+    maxDocuments: 10000, maxEntries: 100000, maxCompanies: 5, maxIntegrations: 15,
+    includedCompanies: 1, additionalCompanyPrice: 499,
+    includedAiCredits: 3000, aiAddonPrice: 0, aiAddonCredits: 0,
+    aiCreditsPerAdditionalCompany: 1500, aiCostCap: 150, aiCostCapPerAdditionalCompany: 100,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -42,6 +51,9 @@ const DEFAULT_PLANS = [
     description: "Alle funktioner, koncernregnskab, udvidet API, kontrolspor og prioriteret SLA.",
     monthlyPrice: 749, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
     maxDocuments: -1, maxEntries: -1, maxCompanies: -1, maxIntegrations: -1,
+    includedCompanies: 5, additionalCompanyPrice: 399,
+    includedAiCredits: 5000, aiAddonPrice: 0, aiAddonCredits: 0,
+    aiCreditsPerAdditionalCompany: 1500, aiCostCap: 250, aiCostCapPerAdditionalCompany: 100,
     features: [
       "regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter", "bank_csv", "revisoradgang",
       "bank", "ai_bogforing", "automation", "faste_fakturaer", "debitorstyring", "budget", "cashflow",
@@ -86,11 +98,11 @@ const LEGACY_PLAN_FEATURES: Record<string, string[][]> = {
 };
 
 const LEGACY_PLAN_PRICES: Record<string, number[]> = {
-  start: [0, 199],
-  virksomhed: [199, 499],
-  drift: [199, 499],
-  professionel: [399, 999],
-  enterprise: [699, 1999],
+  start: [0, 199, 299],
+  virksomhed: [199, 349, 499],
+  drift: [199, 349, 499],
+  professionel: [399, 549, 999],
+  enterprise: [699, 749, 1999],
 };
 
 function sameFeatureSet(raw: string, expected: string[]): boolean {
@@ -149,6 +161,14 @@ export function seedSystemData(): void {
             maxEntries: plan.maxEntries,
             maxCompanies: plan.maxCompanies,
             maxIntegrations: plan.maxIntegrations,
+            includedCompanies: plan.includedCompanies,
+            additionalCompanyPrice: plan.additionalCompanyPrice,
+            includedAiCredits: plan.includedAiCredits,
+            aiAddonPrice: plan.aiAddonPrice,
+            aiAddonCredits: plan.aiAddonCredits,
+            aiCreditsPerAdditionalCompany: plan.aiCreditsPerAdditionalCompany,
+            aiCostCap: plan.aiCostCap,
+            aiCostCapPerAdditionalCompany: plan.aiCostCapPerAdditionalCompany,
           } : {}),
           sortOrder: plan.sortOrder,
         }).where(eq(plans.id, current.id)).run();

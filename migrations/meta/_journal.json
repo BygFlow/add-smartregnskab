@@ -71,6 +71,13 @@
       "when": 1789893310097,
       "tag": "0009_flawless_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789896796757,
+      "tag": "0010_rich_night_thrasher",
+      "breakpoints": true
     }
   ]
 }

@@ -5927,6 +5927,9 @@ function PlatformRegnskabssystemPage() {
   const [planForm, setPlanForm] = useState({
     name: "", slug: "", description: "", monthlyPrice: "", pricePerEmployee: "",
     maxDocuments: "", maxEntries: "", maxCompanies: "", maxIntegrations: "",
+    includedCompanies: "1", additionalCompanyPrice: "0", includedAiCredits: "0",
+    aiAddonPrice: "0", aiAddonCredits: "0", aiCreditsPerAdditionalCompany: "0",
+    aiCostCap: "0", aiCostCapPerAdditionalCompany: "0",
     features: [] as string[], sortOrder: "1", active: true,
   });
   useEffect(() => {
@@ -5988,6 +5991,10 @@ function PlatformRegnskabssystemPage() {
       maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
       maxDocuments: Number(planForm.maxDocuments), maxEntries: Number(planForm.maxEntries),
       maxCompanies: Number(planForm.maxCompanies), maxIntegrations: Number(planForm.maxIntegrations),
+      includedCompanies: Number(planForm.includedCompanies), additionalCompanyPrice: Number(planForm.additionalCompanyPrice),
+      includedAiCredits: Number(planForm.includedAiCredits), aiAddonPrice: Number(planForm.aiAddonPrice),
+      aiAddonCredits: Number(planForm.aiAddonCredits), aiCreditsPerAdditionalCompany: Number(planForm.aiCreditsPerAdditionalCompany),
+      aiCostCap: Number(planForm.aiCostCap), aiCostCapPerAdditionalCompany: Number(planForm.aiCostCapPerAdditionalCompany),
       features: JSON.stringify(planForm.features), sortOrder: Number(planForm.sortOrder), active: planForm.active ? 1 : 0,
     })).json(),
     onSuccess: async () => { const created = !editingPlan?.id; await refreshPlatform("/api/platform/plans", "/api/platform/companies", "/api/platform/stats"); setEditingPlan(null); toast({ title: created ? "Pakken er oprettet" : "Pakken er opdateret" }); },
@@ -6019,12 +6026,16 @@ function PlatformRegnskabssystemPage() {
       monthlyPrice: String(plan.monthlyPrice ?? 0), pricePerEmployee: String(plan.pricePerEmployee ?? 0),
       maxDocuments: String(plan.maxDocuments ?? 500), maxEntries: String(plan.maxEntries ?? 5000),
       maxCompanies: String(plan.maxCompanies ?? 1), maxIntegrations: String(plan.maxIntegrations ?? 2),
+      includedCompanies: String(plan.includedCompanies ?? 1), additionalCompanyPrice: String(plan.additionalCompanyPrice ?? 0),
+      includedAiCredits: String(plan.includedAiCredits ?? 0), aiAddonPrice: String(plan.aiAddonPrice ?? 0),
+      aiAddonCredits: String(plan.aiAddonCredits ?? 0), aiCreditsPerAdditionalCompany: String(plan.aiCreditsPerAdditionalCompany ?? 0),
+      aiCostCap: String(plan.aiCostCap ?? 0), aiCostCapPerAdditionalCompany: String(plan.aiCostCapPerAdditionalCompany ?? 0),
       features: parsePlanFeatures(plan.features), sortOrder: String(plan.sortOrder ?? 1), active: Boolean(plan.active),
     });
     setEditingPlan(plan);
   };
   const openNewPlan = () => {
-    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxDocuments: "500", maxEntries: "5000", maxCompanies: "1", maxIntegrations: "2", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
+    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxDocuments: "500", maxEntries: "5000", maxCompanies: "1", maxIntegrations: "2", includedCompanies: "1", additionalCompanyPrice: "0", includedAiCredits: "0", aiAddonPrice: "0", aiAddonCredits: "0", aiCreditsPerAdditionalCompany: "0", aiCostCap: "0", aiCostCapPerAdditionalCompany: "0", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
     setEditingPlan({ id: null });
   };
   const togglePlanFeature = (feature: string, checked: boolean) => setPlanForm((form) => ({
@@ -6115,6 +6126,7 @@ function PlatformRegnskabssystemPage() {
             <div className="rounded-lg bg-muted p-2">Virksomheder<br/><strong>{plan.maxCompanies === -1 ? "Ubegrænset" : num(plan.maxCompanies)}</strong></div>
             <div className="rounded-lg bg-muted p-2">Integrationer<br/><strong>{plan.maxIntegrations === -1 ? "Ubegrænset" : num(plan.maxIntegrations)}</strong></div>
           </div>
+          <div className="mt-2 rounded-lg border bg-primary/5 p-2 text-xs"><strong>{plan.includedAiCredits > 0 ? `${num(plan.includedAiCredits)} AI inkluderet` : `AI-tilkøb ${money(plan.aiAddonPrice)}`}</strong><span className="block text-muted-foreground">{plan.includedCompanies} CVR inkluderet{plan.additionalCompanyPrice > 0 ? ` · +${money(plan.additionalCompanyPrice)} pr. ekstra` : ""}</span></div>
           <p className="mt-3 min-h-12 text-xs text-muted-foreground">{plan.description || "Ingen beskrivelse"}</p>
           <div className="mt-3 flex-1 border-t pt-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{features.length} funktioner inkluderet</p><ul className="space-y-1.5">{features.map((feature) => <li key={feature} className="flex gap-2 text-xs"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{PLAN_FEATURE_LABELS[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>{features.length === 0 && <p className="text-xs text-amber-700">Pakken mangler funktioner.</p>}</div>
           <Button className="mt-4 w-full" size="sm" variant="outline" onClick={() => openPlanEditor(plan)}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger pakke</Button>
@@ -6218,6 +6230,14 @@ function PlatformRegnskabssystemPage() {
           <div className="space-y-2"><Label htmlFor="plan-entries">Posteringer pr. måned (-1 = fri)</Label><Input id="plan-entries" type="number" min="-1" value={planForm.maxEntries} onChange={(event) => setPlanForm((form) => ({ ...form, maxEntries: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-companies">Virksomheder (-1 = fri)</Label><Input id="plan-companies" type="number" min="-1" value={planForm.maxCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, maxCompanies: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-integrations">Aktive integrationer (-1 = fri)</Label><Input id="plan-integrations" type="number" min="-1" value={planForm.maxIntegrations} onChange={(event) => setPlanForm((form) => ({ ...form, maxIntegrations: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Inkluderede CVR-numre</Label><Input type="number" min="1" value={planForm.includedCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, includedCompanies: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Pris pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.additionalCompanyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, additionalCompanyPrice: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Inkluderede AI-handlinger</Label><Input type="number" min="0" value={planForm.includedAiCredits} onChange={(event) => setPlanForm((form) => ({ ...form, includedAiCredits: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>AI-handlinger pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.aiCreditsPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCreditsPerAdditionalCompany: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>AI-tilkøbspris</Label><Input type="number" min="0" value={planForm.aiAddonPrice} onChange={(event) => setPlanForm((form) => ({ ...form, aiAddonPrice: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>AI-handlinger i tilkøb</Label><Input type="number" min="0" value={planForm.aiAddonCredits} onChange={(event) => setPlanForm((form) => ({ ...form, aiAddonCredits: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Internt AI-omkostningsloft</Label><Input type="number" min="0" value={planForm.aiCostCap} onChange={(event) => setPlanForm((form) => ({ ...form, aiCostCap: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Ekstra AI-loft pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.aiCostCapPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCostCapPerAdditionalCompany: event.target.value }))}/></div>
           <div className="rounded-lg border bg-muted/30 p-3 text-xs sm:col-span-2"><strong>Brugere, kunder og leverandører begrænses ikke.</strong><p className="mt-1 text-muted-foreground">Pakkerne skelnes i stedet på regnskabsvolumen, virksomheder, integrationer og funktioner.</p></div>
           <div className="space-y-2"><Label htmlFor="plan-order">Placering</Label><Input id="plan-order" type="number" min="1" value={planForm.sortOrder} onChange={(event) => setPlanForm((form) => ({ ...form, sortOrder: event.target.value }))}/></div>
           <div className="rounded-lg border bg-muted/30 p-3 text-xs"><span className="text-muted-foreground">Årspris</span><strong className="mt-1 block text-base">{money((Number(planForm.monthlyPrice) || 0) * 10)} ekskl. moms</strong><span className="text-muted-foreground">10 måneders pris</span></div>

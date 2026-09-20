@@ -280,13 +280,23 @@ export interface BillingPreview {
   basePrice: number;
   perEmployee: number;
   employeeCharge: number;
+  legalCompanyCount: number;
+  includedCompanies: number;
+  additionalCompanyCount: number;
+  pricePerAdditionalCompany: number;
+  additionalCompanyCharge: number;
+  aiAddonEnabled: boolean;
+  aiAddonCharge: number;
+  aiCreditsIncluded: number;
+  aiCostCapDkk: number;
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
 }
 
 /**
- * Beregner en periodes abonnementspris: fast pakkepris plus pris pr. ansat.
+ * Beregner organisationens pris. SE-enheder er dimensioner under et CVR og
+ * tælles derfor ikke som juridiske selskaber eller ekstra abonnementer.
  */
 export async function previewBilling(companyId: number): Promise<BillingPreview | null> {
   const sub = await storage.getSubscriptionByCompany(companyId);
@@ -294,9 +304,28 @@ export async function previewBilling(companyId: number): Promise<BillingPreview 
   const plan = await storage.getPlan(sub.planId);
   if (!plan) return null;
 
-  const employeeCount = (await storage.getEmployees(companyId)).length;
+  const currentCompany = await storage.getCompany(companyId);
+  const ownerId = currentCompany?.subscriptionOwnerId || companyId;
+  const organizationCompanies = (await storage.getCompanies()).filter(
+    (company) => (company.subscriptionOwnerId || company.id) === ownerId && company.kind !== "platform",
+  );
+  const employeeCount = (await Promise.all(
+    organizationCompanies.map((company) => storage.getEmployees(company.id)),
+  )).flat().length;
+  const legalCompanyCount = organizationCompanies.length;
+  const includedCompanies = Math.max(1, plan.includedCompanies);
+  const additionalCompanyCount = Math.max(0, legalCompanyCount - includedCompanies);
+  const additionalCompanyCharge = round2(additionalCompanyCount * plan.additionalCompanyPrice);
   const employeeCharge = round2(employeeCount * plan.pricePerEmployee);
-  let net = round2(plan.monthlyPrice + employeeCharge);
+  const aiAddonEnabled = Boolean(sub.aiAddonEnabled && plan.aiAddonCredits > 0);
+  const aiAddonCharge = aiAddonEnabled ? plan.aiAddonPrice : 0;
+  const aiCreditsIncluded = plan.includedAiCredits
+    + additionalCompanyCount * plan.aiCreditsPerAdditionalCompany
+    + (aiAddonEnabled ? plan.aiAddonCredits : 0);
+  const aiCostCapDkk = plan.aiCostCap
+    + additionalCompanyCount * plan.aiCostCapPerAdditionalCompany
+    + (aiAddonEnabled ? Math.max(10, round2(plan.aiAddonPrice * 0.25)) : 0);
+  let net = round2(plan.monthlyPrice + employeeCharge + additionalCompanyCharge + aiAddonCharge);
 
   // Årlig betaling: 12 måneder med 2 måneders rabat
   if (sub.billingCycle === "aarlig") net = round2(net * 10);
@@ -311,6 +340,15 @@ export async function previewBilling(companyId: number): Promise<BillingPreview 
     basePrice: plan.monthlyPrice,
     perEmployee: plan.pricePerEmployee,
     employeeCharge,
+    legalCompanyCount,
+    includedCompanies,
+    additionalCompanyCount,
+    pricePerAdditionalCompany: plan.additionalCompanyPrice,
+    additionalCompanyCharge,
+    aiAddonEnabled,
+    aiAddonCharge,
+    aiCreditsIncluded,
+    aiCostCapDkk,
     netAmount: net,
     vatAmount: vat,
     totalAmount: round2(net + vat),
@@ -390,7 +428,11 @@ export async function platformMetrics(today: string) {
     if (sub.status !== "aktiv") continue;
     activeCount++;
 
-    const monthly = plan.monthlyPrice + employees * plan.pricePerEmployee;
+    const additionalCompanies = Math.max(0, organizationIds.length - Math.max(1, plan.includedCompanies));
+    const monthly = plan.monthlyPrice
+      + employees * plan.pricePerEmployee
+      + additionalCompanies * plan.additionalCompanyPrice
+      + (sub.aiAddonEnabled && plan.aiAddonCredits > 0 ? plan.aiAddonPrice : 0);
     // Årsabonnementer regnes om til en månedlig værdi (10 mdr. betalt over 12)
     mrr += sub.billingCycle === "aarlig" ? (monthly * 10) / 12 : monthly;
   }

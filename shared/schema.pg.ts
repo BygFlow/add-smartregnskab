@@ -439,6 +439,14 @@ export const plans = pgTable("plans", {
   maxEntries: integer("max_entries").notNull().default(5000),
   maxCompanies: integer("max_companies").notNull().default(1),
   maxIntegrations: integer("max_integrations").notNull().default(2),
+  includedCompanies: integer("included_companies").notNull().default(1),
+  additionalCompanyPrice: doublePrecision("additional_company_price").notNull().default(0),
+  includedAiCredits: integer("included_ai_credits").notNull().default(0),
+  aiAddonPrice: doublePrecision("ai_addon_price").notNull().default(0),
+  aiAddonCredits: integer("ai_addon_credits").notNull().default(0),
+  aiCreditsPerAdditionalCompany: integer("ai_credits_per_additional_company").notNull().default(0),
+  aiCostCap: doublePrecision("ai_cost_cap").notNull().default(0),
+  aiCostCapPerAdditionalCompany: doublePrecision("ai_cost_cap_per_additional_company").notNull().default(0),
   features: text("features").notNull().default("[]"), // JSON: ["api_integration", "vagtplan", ...]
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
@@ -447,6 +455,35 @@ export const plans = pgTable("plans", {
 export const insertPlanSchema = createInsertSchema(plans).omit({ id: true });
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
 export type Plan = typeof plans.$inferSelect;
+
+export const aiUsageEvents = pgTable("ai_usage_events", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  subscriptionOwnerId: integer("subscription_owner_id").notNull(),
+  userId: integer("user_id"),
+  actionType: text("action_type").notNull(),
+  model: text("model"),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  credits: integer("credits").notNull().default(1),
+  estimatedCostDkk: doublePrecision("estimated_cost_dkk").notNull().default(0),
+  externalRequestId: text("external_request_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertAiUsageEventSchema = createInsertSchema(aiUsageEvents).omit({ id: true });
+export type InsertAiUsageEvent = z.infer<typeof insertAiUsageEventSchema>;
+export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
+
+export const aiUsageSettings = pgTable("ai_usage_settings", {
+  id: serial("id").primaryKey(),
+  subscriptionOwnerId: integer("subscription_owner_id").notNull().unique(),
+  autoTopupEnabled: boolean("auto_topup_enabled").notNull().default(false),
+  autoTopupPackCredits: integer("auto_topup_pack_credits").notNull().default(500),
+  hardCostCapOverride: doublePrecision("hard_cost_cap_override"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
 
 // ── Subscriptions (virksomhedens abonnement) ──
 export const subscriptions = pgTable("subscriptions", {
@@ -461,6 +498,7 @@ export const subscriptions = pgTable("subscriptions", {
   cancelledAt: text("cancelled_at"),
   startedAt: text("started_at").notNull(),
   autoRenew: boolean("auto_renew").notNull().default(true),
+  aiAddonEnabled: boolean("ai_addon_enabled").notNull().default(false),
   paymentMethodId: integer("payment_method_id"),
   dunningStage: integer("dunning_stage").notNull().default(0), // 0-3: rykkertrin ved fejlet betaling
   lastPaymentAttempt: text("last_payment_attempt"),

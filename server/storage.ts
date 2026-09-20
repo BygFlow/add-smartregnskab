@@ -149,6 +149,18 @@ if (!hasApplicationSchema) {
         name text NOT NULL, se_number text, unit_type text DEFAULT 'department' NOT NULL,
         dimension_value_id integer, active integer DEFAULT 1 NOT NULL, created_at text NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS ai_usage_events (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
+        subscription_owner_id integer NOT NULL, user_id integer, action_type text NOT NULL,
+        model text, input_tokens integer DEFAULT 0 NOT NULL, output_tokens integer DEFAULT 0 NOT NULL,
+        credits integer DEFAULT 1 NOT NULL, estimated_cost_dkk real DEFAULT 0 NOT NULL,
+        external_request_id text, created_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS ai_usage_settings (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, subscription_owner_id integer NOT NULL,
+        auto_topup_enabled integer DEFAULT 0 NOT NULL, auto_topup_pack_credits integer DEFAULT 500 NOT NULL,
+        hard_cost_cap_override real, created_at text NOT NULL, updated_at text NOT NULL
+      );
     `);
 
     addColumn("dimension_values", "company_id", "integer");
@@ -178,10 +190,19 @@ if (!hasApplicationSchema) {
     addColumn("plans", "max_entries", "integer DEFAULT 5000 NOT NULL");
     addColumn("plans", "max_companies", "integer DEFAULT 1 NOT NULL");
     addColumn("plans", "max_integrations", "integer DEFAULT 2 NOT NULL");
+    addColumn("plans", "included_companies", "integer DEFAULT 1 NOT NULL");
+    addColumn("plans", "additional_company_price", "real DEFAULT 0 NOT NULL");
+    addColumn("plans", "included_ai_credits", "integer DEFAULT 0 NOT NULL");
+    addColumn("plans", "ai_addon_price", "real DEFAULT 0 NOT NULL");
+    addColumn("plans", "ai_addon_credits", "integer DEFAULT 0 NOT NULL");
+    addColumn("plans", "ai_credits_per_additional_company", "integer DEFAULT 0 NOT NULL");
+    addColumn("plans", "ai_cost_cap", "real DEFAULT 0 NOT NULL");
+    addColumn("plans", "ai_cost_cap_per_additional_company", "real DEFAULT 0 NOT NULL");
     addColumn("companies", "parent_company_id", "integer");
     addColumn("companies", "subscription_owner_id", "integer");
     addColumn("companies", "group_role", "text DEFAULT 'standalone' NOT NULL");
     addColumn("companies", "ownership_percent", "real");
+    addColumn("subscriptions", "ai_addon_enabled", "integer DEFAULT 0 NOT NULL");
   })();
 
   // Index creation is safe and idempotent. If a historical database already
@@ -193,6 +214,9 @@ if (!hasApplicationSchema) {
     "CREATE UNIQUE INDEX IF NOT EXISTS professional_membership_user_company_unique ON professional_memberships (user_id, company_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS company_access_user_company_unique ON company_access_memberships (user_id, company_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS company_units_company_se_unique ON company_units (company_id, se_number)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_settings_owner_unique ON ai_usage_settings (subscription_owner_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_external_request_unique ON ai_usage_events (external_request_id)",
+    "CREATE INDEX IF NOT EXISTS ai_usage_owner_created_idx ON ai_usage_events (subscription_owner_id, created_at)",
     "CREATE UNIQUE INDEX IF NOT EXISTS invoices_company_number_unique ON invoices (company_id, invoice_number)",
     "CREATE UNIQUE INDEX IF NOT EXISTS journal_entries_company_number_unique ON journal_entries (company_id, entry_number)",
     "CREATE UNIQUE INDEX IF NOT EXISTS quotes_company_number_unique ON quotes (company_id, quote_number)",

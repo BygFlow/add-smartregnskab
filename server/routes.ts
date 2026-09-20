@@ -19,6 +19,7 @@ import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice
 import { registerProfessionalRoutes } from "./professional-routes";
 import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
+import { aiUsageOverview } from "./ai-usage";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
@@ -588,7 +589,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/auth", "/company", "/organization", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
     "/accounting-category-rules", "/accounting-control-center", "/accounting-integrations",
     "/accounting-rules", "/accounts", "/accruals", "/advanced-vat", "/ai-accounting-tasks",
-    "/ai-governance", "/ai-regnskab", "/annual-reports", "/api-keys", "/archive-records",
+    "/ai-governance", "/ai-regnskab", "/ai-usage", "/annual-reports", "/api-keys", "/archive-records",
     "/audit-log", "/audit-package", "/auditor-portal", "/backups", "/bank", "/bank-integrations",
     "/bank-payments", "/bank-reconciliation", "/bank-transactions", "/budget-versions",
     "/budgets", "/business-profiles", "/cashflow-projections", "/compliance-checks",
@@ -1991,6 +1992,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.send(pdf);
   }));
 
+  app.get("/api/ai-usage", h(async (req, res) => {
+    res.json(await aiUsageOverview(tenantId(req)));
+  }));
+
+  app.post("/api/subscription/ai-addon", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const sub = await storage.getSubscriptionByCompany(cid);
+    const plan = await storage.getCompanyPlan(cid);
+    if (!sub || !plan) return res.status(400).json({ error: "Virksomheden har ikke et abonnement." });
+    if (plan.aiAddonCredits <= 0) return res.status(409).json({ error: "AI er allerede inkluderet i denne pakke." });
+    const enabled = req.body?.enabled === true;
+    const updated = await storage.updateSubscription(sub.id, { aiAddonEnabled: enabled ? 1 : 0 });
+    await audit(req, enabled ? "aktiver_ai_tilkoeb" : "deaktiver_ai_tilkoeb", "subscription", sub.id, `${plan.aiAddonCredits} AI-handlinger`);
+    res.json({ subscription: updated, nextCharge: await previewBilling(cid), aiUsage: await aiUsageOverview(cid) });
+  }));
+
   /** Virksomheden vælger selv en anden pakke. */
   app.post("/api/subscription/plan", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
@@ -2046,8 +2063,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (c.subscriptionOwnerId && c.subscriptionOwnerId !== c.id) continue;
       const sub = subs.find((s) => s.companyId === c.id);
       const plan = sub ? plans.get(sub.planId) : undefined;
-      const employees = (await storage.getEmployees(c.id)).length;
-      const monthly = plan ? plan.monthlyPrice + employees * plan.pricePerEmployee : 0;
+      const organizationIds = allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id).map((company) => company.id);
+      const employees = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
+      const charge = await previewBilling(c.id);
+      const monthly = charge ? charge.netAmount / (sub?.billingCycle === "aarlig" ? 10 : 1) : 0;
       out.push({
         id: c.id,
         name: c.name,
@@ -2056,7 +2075,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdAt: c.createdAt,
         employeeCount: employees,
         userCount: (await storage.getUsers(c.id)).length,
-        legalCompanyCount: allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id).length,
+        legalCompanyCount: organizationIds.length,
         planName: plan?.name ?? "Ingen pakke",
         planId: plan?.id ?? null,
         subscriptionStatus: sub?.status ?? "ingen",
@@ -2085,7 +2104,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // AI-insigt: virksomhedens sundhed
     const unpaidInvoices = invoices.filter((i) => i.status !== "betalt");
     const outstanding = unpaidInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
-    const monthlyValue = plan ? plan.monthlyPrice + employees.length * plan.pricePerEmployee : 0;
+    const monthlyValue = nextCharge ? nextCharge.netAmount / (sub?.billingCycle === "aarlig" ? 10 : 1) : 0;
     const healthScore = company.status === "aktiv" ? 100 : company.status === "proeve" ? 70 : company.status === "i_restance" ? 40 : company.status === "spaerret" ? 15 : 5;
     res.json({
       company: {

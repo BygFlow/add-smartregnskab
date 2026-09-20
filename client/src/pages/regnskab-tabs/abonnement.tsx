@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CreditCard, FileText, Loader2, Package, ShieldCheck } from "lucide-react";
+import { Check, CreditCard, FileText, Loader2, Package, ShieldCheck, Sparkles } from "lucide-react";
 import { apiRequest, openAuthedFile } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +20,12 @@ type Plan = {
   maxEntries: number;
   maxCompanies: number;
   maxIntegrations: number;
+  includedCompanies: number;
+  additionalCompanyPrice: number;
+  includedAiCredits: number;
+  aiAddonPrice: number;
+  aiAddonCredits: number;
+  aiCreditsPerAdditionalCompany: number;
   features?: string | string[] | null;
 };
 
@@ -40,8 +46,15 @@ type SubscriptionOverview = {
     companies: number; maxCompanies: number;
     integrations: number; maxIntegrations: number;
   };
-  nextCharge?: { total?: number; amount?: number } | null;
+  nextCharge?: { totalAmount?: number; netAmount?: number; additionalCompanyCount?: number; additionalCompanyCharge?: number; aiAddonEnabled?: boolean; aiAddonCharge?: number; aiCreditsIncluded?: number } | null;
   invoices: Array<{ id: number; invoiceNumber?: string; issueDate?: string; dueDate?: string; totalAmount?: number; status?: string }>;
+};
+
+type AiUsage = {
+  includedCredits: number; usedCredits: number; remainingCredits: number;
+  estimatedCostDkk: number; costCapDkk: number; percent: number;
+  warningLevel: "normal" | "advarsel" | "kritisk" | "stoppet";
+  allowed: boolean; aiAddonEnabled: boolean; aiAddonAvailable: boolean;
 };
 
 type BillingStatus = {
@@ -99,6 +112,10 @@ export default function Abonnement() {
     queryKey: ["/api/billing/status"],
     queryFn: async () => (await apiRequest("GET", "/api/billing/status")).json(),
   });
+  const aiUsage = useQuery<AiUsage>({
+    queryKey: ["/api/ai-usage"],
+    queryFn: async () => (await apiRequest("GET", "/api/ai-usage")).json(),
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
@@ -131,6 +148,17 @@ export default function Abonnement() {
     },
     onError: (error: unknown) => toast({ title: "QuickPay kunne ikke startes", description: error instanceof Error ? error.message : "Prøv igen.", variant: "destructive" }),
   });
+  const toggleAiAddon = useMutation({
+    mutationFn: async (enabled: boolean) => (await apiRequest("POST", "/api/subscription/ai-addon", { enabled })).json(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/subscription"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/ai-usage"] }),
+      ]);
+      toast({ title: "AI-tilkøbet er opdateret", description: "Ændringen vises på næste abonnementsfaktura." });
+    },
+    onError: (error: unknown) => toast({ title: "AI-tilkøbet kunne ikke ændres", description: error instanceof Error ? error.message : "Prøv igen.", variant: "destructive" }),
+  });
 
   const currentPlan = overview.data?.plan;
   const subscription = overview.data?.subscription;
@@ -161,6 +189,17 @@ export default function Abonnement() {
       </SectionCard>
     </div>
 
+    <SectionCard title="AI-forbrug og omkostningskontrol" icon={<Sparkles className="h-4 w-4" />}>
+      {aiUsage.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold">{aiUsage.data?.usedCredits ?? 0} / {aiUsage.data?.includedCredits ?? 0} AI-handlinger</p><StatusChip status={aiUsage.data?.warningLevel ?? "normal"} /></div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, aiUsage.data?.percent ?? 0)}%` }} /></div>
+          <p className="text-xs text-muted-foreground">Estimeret leverandøromkostning: {money(aiUsage.data?.estimatedCostDkk)} af et internt loft på {money(aiUsage.data?.costCapDkk)}. Ved grænsen pauses kun betalte AI-kald; regnskabet fortsætter.</p>
+        </div>
+        {aiUsage.data?.aiAddonAvailable && canManage && <Button variant={aiUsage.data.aiAddonEnabled ? "outline" : "default"} disabled={toggleAiAddon.isPending} onClick={() => toggleAiAddon.mutate(!aiUsage.data?.aiAddonEnabled)}>{toggleAiAddon.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{aiUsage.data.aiAddonEnabled ? "Fjern AI-tilkøb" : `Tilføj AI · ${money(currentPlan?.aiAddonPrice)}/md.`}</Button>}
+      </div>}
+    </SectionCard>
+
     <SectionCard title="Vælg pakkeløsning" icon={<Package className="h-4 w-4" />}>
       {plans.isLoading ? <Skeleton className="h-52 w-full" /> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{(plans.data ?? []).map((plan) => {
         const selected = currentPlan?.id === plan.id;
@@ -169,6 +208,8 @@ export default function Abonnement() {
           <div className="flex items-start justify-between gap-2"><div><p className="font-semibold">{plan.name}</p><p className="mt-1 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md.</span></p><p className="text-[11px] text-muted-foreground">{money(plan.monthlyPrice * 10)} / år · ekskl. moms</p></div>{selected && <StatusChip status="valgt" />}</div>
           <p className="mt-3 min-h-10 text-xs text-muted-foreground">{plan.description}</p>
           <div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]"><div className="rounded-md bg-muted p-2">Bilag/md.<strong className="block">{limit(plan.maxDocuments)}</strong></div><div className="rounded-md bg-muted p-2">Posteringer/md.<strong className="block">{limit(plan.maxEntries)}</strong></div><div className="rounded-md bg-muted p-2">Virksomheder<strong className="block">{limit(plan.maxCompanies)}</strong></div><div className="rounded-md bg-muted p-2">Integrationer<strong className="block">{limit(plan.maxIntegrations)}</strong></div></div>
+          <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-[11px]">{plan.includedAiCredits > 0 ? <><strong>{new Intl.NumberFormat("da-DK").format(plan.includedAiCredits)} AI-handlinger inkluderet</strong>{plan.aiCreditsPerAdditionalCompany > 0 && <span className="block text-muted-foreground">+{new Intl.NumberFormat("da-DK").format(plan.aiCreditsPerAdditionalCompany)} pr. ekstra CVR</span>}</> : <><strong>AI som tilkøb</strong><span className="block text-muted-foreground">{new Intl.NumberFormat("da-DK").format(plan.aiAddonCredits)} handlinger for {money(plan.aiAddonPrice)}/md.</span></>}</div>
+          {plan.additionalCompanyPrice > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{plan.includedCompanies} CVR inkluderet · +{money(plan.additionalCompanyPrice)} pr. ekstra CVR. SE-numre er inkluderet.</p>}
           <ul className="my-4 flex-1 space-y-1.5 text-xs">{included.slice(0, 6).map((feature) => <li key={feature} className="flex gap-2"><Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" /><span>{featureLabels[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>
           <Button variant={selected ? "outline" : "default"} disabled={selected || !canManage || changePlan.isPending} onClick={() => { if (window.confirm(`Skift abonnement til ${plan.name} for ${money(plan.monthlyPrice)} pr. måned ekskl. moms?`)) changePlan.mutate(plan.id); }}>{changePlan.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{selected ? "Aktuel pakke" : "Vælg pakke"}</Button>
         </div>;

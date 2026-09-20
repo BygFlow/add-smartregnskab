@@ -159,7 +159,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     );
     assert.deepEqual(
       [professionalPlan.maxDocuments, professionalPlan.maxEntries, professionalPlan.maxCompanies, professionalPlan.maxIntegrations],
-      [10000, 100000, 3, 15],
+      [10000, 100000, 5, 15],
     );
     assert.deepEqual(
       [enterprisePlan.maxDocuments, enterprisePlan.maxEntries, enterprisePlan.maxCompanies, enterprisePlan.maxIntegrations],
@@ -172,6 +172,18 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.ok(startFeatures.includes("revisoradgang"));
     assert.ok(enterpriseFeatures.includes("konsolidering"));
     assert.ok(enterpriseFeatures.includes("support_sla"));
+    assert.deepEqual(
+      [startPlan.includedAiCredits, startPlan.aiAddonPrice, startPlan.aiAddonCredits],
+      [0, 99, 250],
+    );
+    assert.deepEqual(
+      [businessPlan.includedAiCredits, businessPlan.aiAddonPrice, businessPlan.aiAddonCredits],
+      [0, 149, 1000],
+    );
+    assert.deepEqual(
+      [professionalPlan.includedCompanies, professionalPlan.additionalCompanyPrice, professionalPlan.includedAiCredits, professionalPlan.aiCreditsPerAdditionalCompany],
+      [1, 499, 3000, 1500],
+    );
 
     const customPlanResponse = await fetch(`${base}/api/platform/plans`, {
       method: "POST",
@@ -286,6 +298,23 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const groupedCustomers = await groupedPlatformList.json();
     assert.equal(groupedCustomers.length, 1, "a subsidiary must not be billed as a separate platform customer");
     assert.equal(groupedCustomers[0].legalCompanyCount, 2);
+
+    const groupedSubscription = await fetch(`${base}/api/subscription`, {
+      headers: { Authorization: `Bearer ${leaderToken}` },
+    });
+    assert.equal(groupedSubscription.status, 200);
+    const groupedSubscriptionData = await groupedSubscription.json();
+    assert.equal(groupedSubscriptionData.nextCharge.netAmount, 1048, "professional plus one extra CVR must be billed as 549 + 499");
+    assert.equal(groupedSubscriptionData.nextCharge.aiCreditsIncluded, 4500, "an extra CVR adds 1,500 AI actions");
+
+    const aiUsageResponse = await fetch(`${base}/api/ai-usage`, {
+      headers: { Authorization: `Bearer ${leaderToken}` },
+    });
+    assert.equal(aiUsageResponse.status, 200);
+    const aiUsage = await aiUsageResponse.json();
+    assert.equal(aiUsage.includedCredits, 4500);
+    assert.equal(aiUsage.usedCredits, 0);
+    assert.equal(aiUsage.costCapDkk, 250);
 
     const blockedDowngrade = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/plan`, {
       method: "POST",
