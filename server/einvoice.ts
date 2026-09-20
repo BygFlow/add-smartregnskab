@@ -149,7 +149,11 @@ function sproomCompanyMap(): Record<string, string> {
   try {
     const parsed = JSON.parse(process.env.SPROOM_COMPANY_MAP || "{}");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([key, value]) => /^\d+$/.test(key) && typeof value === "string" && value.trim()));
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([key, value]) => /^\d+$/.test(key) && typeof value === "string" && value.trim())
+        .map(([key, value]) => [key, String(value).trim()]),
+    );
   } catch {
     return {};
   }

@@ -1,5 +1,14 @@
 # Ændringslog
 
+## 3.15.2 — 2026-09-20
+
+- Rettet Sproom company-map validering, så projektet typekontrollerer og bygger rent.
+- Rettet SAF-T-eksporten, så den viser den aktuelle produktversion i stedet for et gammelt versionsnummer.
+- Koblet API-dokumentationen direkte til den rigtige API-nøglestyring og fjernet misvisende sandbox-tekst.
+- Synkroniseret serverstatus, systemopdateringslog, PWA-cache, pakkeversion og Android-version.
+- Erstattet rengøringsspecifikke eksempeltekster med generelle regnskabseksempler.
+- Tilføjet regressionstests for API-nøgleflow og SAF-T-version.
+
 ## 3.15.1 — 2026-09-19
 
 - Tilføjet produktionsadapter til Sproom for NemHandel og Peppol.

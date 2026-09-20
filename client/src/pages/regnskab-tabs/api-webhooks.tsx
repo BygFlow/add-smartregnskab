@@ -291,7 +291,7 @@ export default function ApiWebhooks({ companyId }: { companyId: number }) {
   );
 }
 
-/* ---------- API-nøgle dialog (mock) ---------- */
+/* ---------- Genvej til den rigtige API-nøglestyring ---------- */
 
 function KeyDialog({
   open,
@@ -308,12 +308,12 @@ function KeyDialog({
         </DialogHeader>
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>
-            I produktion oprettes og roteres API-nøgler i virksomhedsindstillinger under
+            API-nøgler oprettes, roteres og tilbagekaldes i den separate nøglestyring under
             <span className="text-foreground"> Integrationer → API-nøgler</span>.
           </p>
-          <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-            Beta: Generering af API-nøgler er ikke aktiveret i denne sandbox.
-          </div>
+          <p className="text-xs">
+            Den fulde nøgle vises kun én gang. Opbevar den i en godkendt password manager eller secret manager.
+          </p>
         </div>
         <DialogFooter>
           <Button
@@ -323,6 +323,16 @@ function KeyDialog({
             data-testid="close-key-dialog-btn"
           >
             Luk
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              onOpenChange(false);
+              window.location.hash = "/smartregnskab/app/api_keys_mgmt";
+            }}
+            data-testid="open-api-key-management-btn"
+          >
+            Gå til API-nøgler
           </Button>
         </DialogFooter>
       </DialogContent>

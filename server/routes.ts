@@ -4794,14 +4794,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   // SYSTEMOPDATERINGER — auto-notifikation ved opdatering
   // ═══════════════════════════════════════════════════════════════
-  const currentVersion = "3.2.1";
+  const currentVersion = "3.15.2";
   const existingReleases = await storage.all("system_releases");
   const hasCurrentVersion = existingReleases.some((r: any) => r.version === currentVersion);
   if (!hasCurrentVersion) {
     const release = await storage.insert("system_releases", {
-      version: currentVersion, title: "Sikker Simply-mail",
-      description: "Krypteret SMTP-mail via Simply.com med revisionsspor og sikker fejlhåndtering.",
-      features: JSON.stringify(["Simply SMTP med STARTTLS", "Skjulte driftshemmeligheder", "Revisionsspor for udgående mail"]),
+      version: currentVersion, title: "Drifts- og integrationsrettelser",
+      description: "Ensartet versionsvisning, korrekt SAF-T softwareversion og direkte adgang til sikker API-nøglestyring.",
+      features: JSON.stringify(["Korrekt SAF-T softwareversion", "Sikker API-nøglestyring", "Produktneutrale regnskabseksempler"]),
       status: "installeret", createdAt: nowIso(),
     });
     const allCompanies = await storage.all("companies");

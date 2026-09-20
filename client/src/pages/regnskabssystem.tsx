@@ -2564,7 +2564,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           data-testid="input-bilag-supplier"
                           value={voucherForm.supplier}
                           onChange={(e) => setVoucherForm((f) => ({ ...f, supplier: e.target.value }))}
-                          placeholder="F.eks. Renserimaskiner ApS"
+                          placeholder="F.eks. Eksempel Produktion ApS"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
@@ -4694,7 +4694,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       </div>
                       <div className="space-y-1">
                         <Label htmlFor="cc-name">Navn</Label>
-                        <Input id="cc-name" data-testid="input-cc-name" value={costCenterForm.name} onChange={(e) => setCostCenterForm((f) => ({ ...f, name: e.target.value }))} placeholder="Renseri Nord" />
+                        <Input id="cc-name" data-testid="input-cc-name" value={costCenterForm.name} onChange={(e) => setCostCenterForm((f) => ({ ...f, name: e.target.value }))} placeholder="Afdeling Nord" />
                       </div>
                       <div className="space-y-1">
                         <Label htmlFor="cc-type">Type</Label>

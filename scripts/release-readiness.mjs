@@ -16,7 +16,7 @@ const requiredFiles = [
   "docs/AIIA-QUICKPAY-DRIFT.md", "server/aiia.ts", "server/payments.ts",
   "server/saft.ts", "server/backup-service.ts", "server/einvoice.ts", "server/einvoice-routes.ts",
   "server/import-adapters.ts", "server/migration-routes.ts", "server/readiness-routes.ts",
-  "docs/RELEASE-3.15.1-DRIFTSBEVIS.md",
+  "docs/RELEASE-3.15.2-DRIFTSBEVIS.md",
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
