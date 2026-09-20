@@ -39,6 +39,12 @@ function Root() {
         <Route path="/kontakt" component={() => <Marketing page="contact" />} />
         <Route path="/book-demo" component={() => <Marketing page="demo" />} />
         <Route path="/hjaelp" component={() => <Marketing page="help" />} />
+        <Route path="/guides" component={() => <Marketing page="guides" />} />
+        <Route path="/guide/bedre-oekonomioverblik" component={() => <Marketing page="guide" guideSlug="bedre-oekonomioverblik" />} />
+        <Route path="/guide/guide-bilag-bogfoering" component={() => <Marketing page="guide" guideSlug="guide-bilag-bogfoering" />} />
+        <Route path="/guide/professionelle-fakturaer" component={() => <Marketing page="guide" guideSlug="professionelle-fakturaer" />} />
+        <Route path="/guide/fem-administrative-opgaver" component={() => <Marketing page="guide" guideSlug="fem-administrative-opgaver" />} />
+        <Route path="/guide/regnskabsworkflow-mindre-virksomheder" component={() => <Marketing page="guide" guideSlug="regnskabsworkflow-mindre-virksomheder" />} />
         <Route path="/privatliv" component={() => <Marketing page="privacy" />} />
         <Route path="/vilkaar" component={() => <Marketing page="terms" />} />
         <Route path="/cookies" component={() => <Marketing page="cookies" />} />

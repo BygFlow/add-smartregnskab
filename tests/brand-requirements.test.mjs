@@ -29,11 +29,16 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(login, /platform@addsmartregnskab\.dk/);
   assert.doesNotMatch(shell, /rengøringsservice|rengøringsaftaler|rengøringsplaner|vagtplan|geofence/i);
   assert.doesNotMatch(serverEntry, /seedDatabase|ALLOW_DEMO_SEED/);
+  assert.match(serverEntry, /https:\/\/www\.googletagmanager\.com/);
   assert.match(marketing, /Hjælpecenter/);
   assert.match(marketing, /Bilag og udgifter/);
   assert.match(marketing, /AI hjælper\. Du godkender\./);
   assert.match(marketing, /Kun nødvendige/);
   assert.match(marketing, /regnskabsprogram-smaa-virksomheder/);
+  assert.match(marketing, /Guides og checklister/);
+  assert.match(marketing, /VITE_GA_MEASUREMENT_ID/);
+  assert.doesNotMatch(marketing, /Simply\.com mail|S3-kompatibel backup/);
   assert.match(sitemap, /regnskab-haandvaerkere/);
+  assert.match(sitemap, /guide\/professionelle-fakturaer/);
   assert.match(robots, /Disallow: \/api\//);
 });

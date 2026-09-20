@@ -64,7 +64,7 @@ Alle optagelser skal bruge en særskilt demovirksomhed uden rigtige personer, CV
 
 ## 9. Integrationer (4 min.)
 
-1. Gennemgå QuickPay, mail, backup, AiiA og NemHandel/Peppol.
+1. Gennemgå kundeintegrationerne AiiA, NemHandel/Peppol, e-conomic, CSV-import samt REST API/webhooks.
 2. Demonstrér et testkald uden at vise secrets.
 3. Vis integrationslog, fejlbesked og sikker retry.
 4. Forklar pakkegrænsen for integrationer.

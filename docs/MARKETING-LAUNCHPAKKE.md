@@ -10,6 +10,8 @@
 
 Der er sider til regnskabsprogram for små virksomheder, fakturaprogram, bilag og bogføring, økonomioverblik, håndværkere og servicevirksomheder. AiiA og NemHandel beskrives som aftale-/konfigurationskrævende.
 
+Den offentlige integrationsside viser kun forbindelser, kunden selv kan tilslutte eller bruge. Maillevering, abonnementbetaling og ekstern backup behandles som intern drift og vises ikke som kundeintegrationer.
+
 ## Google Ads – startpakke
 
 Kampagner: Brand, Regnskabsprogram, Fakturaprogram, Bogføring/Bilag og Håndværkere.  

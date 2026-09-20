@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import type { Plan } from "@shared/schema";
 
-type MarketingPage = "home" | "features" | "pricing" | "integrations" | "security" | "faq" | "about" | "contact" | "demo" | "help" | "privacy" | "terms" | "cookies" | "landing";
+type MarketingPage = "home" | "features" | "pricing" | "integrations" | "security" | "faq" | "about" | "contact" | "demo" | "help" | "guides" | "guide" | "privacy" | "terms" | "cookies" | "landing";
 
 const nav = [
   ["Funktioner", "/funktioner"], ["Priser", "/priser"], ["Integrationer", "/integrationer"],
@@ -31,12 +31,65 @@ const features = [
 ];
 
 const integrations = [
-  ["QuickPay", "Abonnement og sikker onlinebetaling", "Aktiv"],
-  ["AiiA / Open Banking", "Automatisk bankdata, når virksomhedsaftalen er tilsluttet", "Kræver aftale"],
-  ["NemHandel / Peppol", "Elektroniske fakturaer med validering og leveringsstatus", "Kræver access point"],
-  ["Simply.com mail", "Faktura-, kvitterings- og systemmails", "Aktiv"],
-  ["S3-kompatibel backup", "Krypteret ekstern sikkerhedskopi og restore-kontrol", "Aktiv"],
+  ["AiiA / Open Banking", "Automatisk bankdata, når virksomhedens bankaftale er tilsluttet", "Kræver aftale"],
+  ["NemHandel / Peppol", "Elektroniske fakturaer via Sproom med validering og leveringsstatus", "Afventer partneraktivering"],
+  ["e-conomic", "Kontrolleret udveksling af regnskabsdata, når kundens aftale og adgang er tilsluttet", "Kræver aftale"],
   ["CSV-import", "Kontoplan, bankposter og data fra andre systemer", "Aktiv"],
+  ["REST API og webhooks", "Sikker integration med afgrænsede API-nøgler, hændelser og revisionsspor", "Pakkeafhængig"],
+] as const;
+
+const guides = {
+  "bedre-oekonomioverblik": {
+    title: "Sådan får små virksomheder bedre økonomioverblik",
+    intro: "Et godt økonomioverblik begynder med faste rutiner og afstemte data — ikke med flere regneark.",
+    sections: [
+      ["Saml grundlaget", "Få bilag, fakturaer og bankposter ind samme sted, og undersøg mangler løbende."],
+      ["Følg få nøgletal", "Se omsætning, udgifter, resultat, likviditet og ubetalte fakturaer i den samme valgte periode."],
+      ["Afstem før du beslutter", "Rapporter er mest værdifulde, når bank, debitorer, kreditorer og moms er kontrolleret."],
+    ],
+  },
+  "guide-bilag-bogfoering": {
+    title: "Guide til bilag og bogføring",
+    intro: "Et ensartet bilagsflow gør bogføringen hurtigere at kontrollere og lettere at dokumentere.",
+    sections: [
+      ["1. Modtag og kontrollér", "Kontrollér leverandør, dato, beløb, valuta og om dokumentet er læsbart."],
+      ["2. Moms og kontering", "Vurder momsbehandling og vælg konto ud fra den konkrete udgift og virksomhedens kontoplan."],
+      ["3. Godkend og arkivér", "Bogfør først efter kontrol, og bevar bilag og revisionsspor efter gældende krav."],
+    ],
+  },
+  "professionelle-fakturaer": {
+    title: "Sådan laver du professionelle fakturaer",
+    intro: "En tydelig faktura mindsker spørgsmål og gør betalingen lettere at matche.",
+    sections: [
+      ["Afsender og kunde", "Kontrollér virksomhedsnavn, CVR, adresse og kundens korrekte faktureringsoplysninger."],
+      ["Ydelse og beløb", "Beskriv ydelsen præcist, angiv dato, antal, pris, moms og samlet beløb."],
+      ["Betaling og levering", "Angiv betalingsfrist og betalingsoplysninger, og kontrollér leveringsstatus efter afsendelse."],
+    ],
+  },
+  "fem-administrative-opgaver": {
+    title: "5 administrative opgaver du kan gøre enklere",
+    intro: "Små faste arbejdsgange kan reducere den tid, der forsvinder på gentagelser og eftersøgning.",
+    sections: [
+      ["1–2. Bilag og fakturaer", "Brug en fast bilagsindbakke, og genbrug sikre fakturakladder til gentagne ydelser."],
+      ["3–4. Bank og opfølgning", "Afstem bankposter løbende, og arbejd fra en samlet liste over ubetalte fakturaer."],
+      ["5. Månedsafslutning", "Brug den samme checkliste hver måned, og dokumentér hvem der kontrollerede hvad."],
+    ],
+  },
+  "regnskabsworkflow-mindre-virksomheder": {
+    title: "Regnskabsworkflow for mindre virksomheder",
+    intro: "Et enkelt uge- og månedsflow giver bedre kontrol uden at gøre regnskabet til et heldagsprojekt.",
+    sections: [
+      ["Hver uge", "Indlæs bilag og bankposter, send fakturaer og følg op på forfaldne betalinger."],
+      ["Hver måned", "Afstem bank, debitorer, kreditorer og moms, og gennemgå resultat og likviditet."],
+      ["Ved periodens afslutning", "Undersøg differencer, lås først efter godkendelse, og gem dokumentation til revisor."],
+    ],
+  },
+} as const;
+
+const leadMagnets = [
+  ["Fakturacheckliste", "Afsender, kunde, dato, nummer, ydelse, moms, frist, betalingsoplysninger og slutkontrol."],
+  ["Månedlig økonomicheckliste", "Bankafstemning, manglende bilag, debitorer, kreditorer, moms, periodisering og backupstatus."],
+  ["Bilagscheckliste", "Læsbar fil, leverandør, dato, beløb, moms, konto, godkendelse og arkivering."],
 ] as const;
 
 const faqs = [
@@ -80,6 +133,28 @@ function money(value: number) {
 
 function limit(value: number) { return value < 0 ? "Ubegrænset" : new Intl.NumberFormat("da-DK").format(value); }
 
+const CONSENT_KEY = "add_cookie_consent";
+
+function analyticsAllowed() {
+  return localStorage.getItem(CONSENT_KEY) === "analytics";
+}
+
+function installAnalytics() {
+  if (!analyticsAllowed()) return;
+  const measurementId = String(import.meta.env.VITE_GA_MEASUREMENT_ID || "").trim();
+  if (!measurementId || document.querySelector("script[data-add-analytics]")) return;
+  const target = window as typeof window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void };
+  target.dataLayer = target.dataLayer || [];
+  target.gtag = (...args: unknown[]) => target.dataLayer?.push(args);
+  target.gtag("js", new Date());
+  target.gtag("config", measurementId, { anonymize_ip: true, send_page_view: false });
+  const script = document.createElement("script");
+  script.async = true;
+  script.dataset.addAnalytics = "true";
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
+  document.head.appendChild(script);
+}
+
 function useSeo(title: string, description: string, path = "") {
   useEffect(() => {
     document.title = `${title} | ADD SmartRegnskab`;
@@ -105,6 +180,10 @@ function useSeo(title: string, description: string, path = "") {
 
 function track(event: string, data: Record<string, string> = {}) {
   window.dispatchEvent(new CustomEvent("add:analytics", { detail: { event, ...data } }));
+  if (!analyticsAllowed()) return;
+  installAnalytics();
+  const target = window as typeof window & { gtag?: (...args: unknown[]) => void };
+  target.gtag?.("event", event, data);
 }
 
 function Header() {
@@ -124,15 +203,15 @@ function Footer() {
   return <footer className="bg-emerald-950 text-emerald-50"><div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-4">
     <div className="md:col-span-1"><div className="flex items-center gap-3"><Logo className="h-9 w-9 text-emerald-300" /><div className="font-semibold">ADD SmartRegnskab</div></div><p className="mt-4 text-sm leading-6 text-emerald-100/70">Mere tid til det, der skaber værdi.</p></div>
     <div><p className="text-sm font-semibold">Produkt</p><div className="mt-3 space-y-2 text-sm text-emerald-100/70"><Link className="block" href="/funktioner">Funktioner</Link><Link className="block" href="/priser">Priser</Link><Link className="block" href="/integrationer">Integrationer</Link><Link className="block" href="/sikkerhed">Sikkerhed</Link></div></div>
-    <div><p className="text-sm font-semibold">Hjælp</p><div className="mt-3 space-y-2 text-sm text-emerald-100/70"><Link className="block" href="/hjaelp">Hjælpecenter</Link><Link className="block" href="/faq">FAQ</Link><Link className="block" href="/kontakt">Kontakt</Link><Link className="block" href="/book-demo">Book demo</Link></div></div>
+    <div><p className="text-sm font-semibold">Hjælp</p><div className="mt-3 space-y-2 text-sm text-emerald-100/70"><Link className="block" href="/hjaelp">Hjælpecenter</Link><Link className="block" href="/guides">Guides og checklister</Link><Link className="block" href="/faq">FAQ</Link><Link className="block" href="/kontakt">Kontakt</Link><Link className="block" href="/book-demo">Book demo</Link></div></div>
     <div><p className="text-sm font-semibold">Virksomhed</p><div className="mt-3 space-y-2 text-sm text-emerald-100/70"><Link className="block" href="/om">Om produktet</Link><Link className="block" href="/privatliv">Privatliv</Link><Link className="block" href="/vilkaar">Vilkår</Link><Link className="block" href="/cookies">Cookies</Link></div></div>
   </div><div className="border-t border-white/10 px-4 py-5 text-center text-xs text-emerald-100/55">© {new Date().getFullYear()} ADD SmartDrift ApS · CVR 46761898 · Lynæs Søpark 49, 3390 Hundested</div></footer>;
 }
 
 function CookieConsent() {
-  const [visible, setVisible] = useState(() => !localStorage.getItem("add_cookie_consent"));
+  const [visible, setVisible] = useState(() => !localStorage.getItem(CONSENT_KEY));
   if (!visible) return null;
-  const choose = (value: "necessary" | "analytics") => { localStorage.setItem("add_cookie_consent", value); setVisible(false); window.dispatchEvent(new CustomEvent("add:consent", { detail: value })); };
+  const choose = (value: "necessary" | "analytics") => { localStorage.setItem(CONSENT_KEY, value); setVisible(false); window.dispatchEvent(new CustomEvent("add:consent", { detail: value })); if (value === "analytics") installAnalytics(); };
   return <aside className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl rounded-2xl border bg-white p-4 shadow-2xl sm:p-5" aria-label="Cookievalg"><div className="flex gap-3"><Cookie className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-semibold">Dit valg om cookies</p><p className="mt-1 text-sm text-slate-600">Nødvendige cookies bruges til sikker login og drift. Analyse aktiveres kun med dit valg.</p><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => choose("necessary")}>Kun nødvendige</Button><Button size="sm" onClick={() => choose("analytics")}>Tillad analyse</Button><Button asChild size="sm" variant="ghost"><Link href="/cookies">Læs mere</Link></Button></div></div></div></aside>;
 }
 
@@ -158,7 +237,7 @@ function Pricing() {
   return <Layout><section className="mx-auto max-w-7xl px-4 py-20 text-center sm:px-6"><p className="text-sm font-semibold text-emerald-700">PRISER</p><h1 className="mt-3 text-4xl font-semibold tracking-tight">Vælg efter dit regnskabsbehov</h1><p className="mx-auto mt-4 max-w-2xl text-slate-600">Alle priser er pr. måned ekskl. moms. Årsbetaling koster ti måneders pris.</p><div className="mt-12 grid gap-5 text-left lg:grid-cols-4">{data.map((plan, i) => <article key={plan.id} className={`rounded-2xl border bg-white p-6 shadow-sm ${i===1?"ring-2 ring-emerald-700":""}`}><div className="flex items-center justify-between"><h2 className="font-semibold">{plan.name}</h2>{i===1&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800">POPULÆR</span>}</div><p className="mt-5 text-3xl font-semibold">{money(plan.monthlyPrice)}<span className="text-sm font-normal text-slate-500"> /md.</span></p><p className="mt-1 text-xs text-slate-500">{money(plan.monthlyPrice*10)} /år</p><div className="my-5 h-px bg-slate-100"/><ul className="space-y-3 text-sm">{[[`${limit(plan.maxDocuments)} bilag/md.`],[`${limit(plan.maxEntries)} posteringer/md.`],[plan.maxCompanies===1?"1 virksomhed":`${limit(plan.maxCompanies)} virksomheder`],[`${limit(plan.maxIntegrations)} integrationer`]].map(([x])=><li className="flex gap-2" key={x}><Check className="h-4 w-4 text-emerald-700"/>{x}</li>)}</ul><Button asChild className="mt-7 w-full" variant={i===1?"default":"outline"}><Link href="/tilmeld">Start gratis</Link></Button></article>)}</div></section><Callout/></Layout>;
 }
 
-function Integrations() { useSeo("Integrationer", "Forbind ADD SmartRegnskab med betaling, bankdata, e-fakturering, mail og ekstern backup.", "integrationer"); return <Layout><Hero eyebrow="Integrationer" title="Forbind de vigtigste dele af økonomiflowet" lead="Hver integration viser tydeligt, om den er aktiv, kræver en virksomhedsaftale eller mangler opsætning."/><section className="mx-auto max-w-5xl px-4 py-20 sm:px-6"><div className="grid gap-4 sm:grid-cols-2">{integrations.map(([name,text,status])=><article key={name} className="rounded-2xl border bg-white p-6"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold">{name}</h2><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium">{status}</span></div><p className="mt-3 text-sm leading-6 text-slate-600">{text}</p></article>)}</div></section></Layout>; }
+function Integrations() { useSeo("Integrationer", "Forbind ADD SmartRegnskab med bankdata, e-fakturering, import og sikre API'er.", "integrationer"); return <Layout><Hero eyebrow="Integrationer" title="Forbind de vigtigste dele af økonomiflowet" lead="Her vises kun forbindelser, som kunden kan tilslutte eller bruge i sit regnskabsarbejde."/><section className="mx-auto max-w-5xl px-4 py-20 sm:px-6"><div className="grid gap-4 sm:grid-cols-2">{integrations.map(([name,text,status])=><article key={name} className="rounded-2xl border bg-white p-6"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold">{name}</h2><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium">{status}</span></div><p className="mt-3 text-sm leading-6 text-slate-600">{text}</p></article>)}</div><p className="mt-8 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">Systemmail, abonnementbetaling og ekstern backup er interne driftsydelser. De overvåges af ADD SmartRegnskab og er derfor ikke integrationer, som kunden skal opsætte.</p></section></Layout>; }
 
 function Security() { useSeo("Sikkerhed", "Læs om adgangskontrol, kryptering, backup, revisionsspor og databeskyttelse i ADD SmartRegnskab.", "sikkerhed"); const cards=[[LockKeyhole,"Adgang","Sikre sessioner, rollebaserede rettigheder, loginbegrænsning og tofaktorgodkendelse for fagbrugere."],[ShieldCheck,"Kontrolspor","Væsentlige handlinger, godkendelser og ændringer registreres med bruger og tidspunkt."],[FileCheck2,"Data og filer","Virksomhedsadskillelse, kontrollerede uploads, krypteret transport og beskyttet fillagring."],[Gauge,"Drift og backup","Sundhedskontrol, ekstern backup, checksums og dokumenteret restore-øvelse."]]; return <Layout><Hero eyebrow="Sikkerhed" title="Regnskabsdata kræver mere end et stærkt password" lead="ADD SmartRegnskab er bygget med lagdelt adgangskontrol, sikker konfiguration og sporbarhed."/><section className="mx-auto max-w-5xl px-4 py-20 sm:px-6"><div className="grid gap-5 sm:grid-cols-2">{cards.map(([Icon,title,text])=><article className="rounded-2xl border bg-white p-6" key={String(title)}><Icon className="h-6 w-6 text-emerald-700"/><h2 className="mt-4 font-semibold">{String(title)}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{String(text)}</p></article>)}</div><p className="mt-8 rounded-xl bg-amber-50 p-4 text-sm text-amber-950">Sikkerhed er et løbende arbejde. Juridiske dokumenter og databehandleraftale bør altid gennemgås af virksomhedens juridiske rådgiver før endelig anvendelse.</p></section></Layout>; }
 
@@ -177,12 +256,23 @@ function Contact({demo=false}:{demo?:boolean}) { useSeo(demo?"Book demo":"Kontak
 
 function Help() { const [q,setQ]=useState(""); useSeo("Hjælpecenter", "Hjælp til opsætning, bilag, bogføring, fakturaer, bank, moms, rapporter og adgang.", "hjaelp"); const shown=useMemo(()=>helpArticles.filter(([t,b])=>(t+" "+b).toLowerCase().includes(q.toLowerCase())),[q]); return <Layout><section className="mx-auto max-w-6xl px-4 py-20 sm:px-6"><p className="text-sm font-semibold text-emerald-700">HJÆLPECENTER</p><h1 className="mt-3 text-4xl font-semibold">Hvad vil du have hjælp til?</h1><Input className="mt-7 max-w-xl bg-white" placeholder="Søg i hjælpen" value={q} onChange={e=>setQ(e.target.value)} aria-label="Søg i hjælpecenter"/><div className="mt-10 grid gap-4 md:grid-cols-2">{shown.map(([title,body])=><article key={title} className="rounded-2xl border bg-white p-6"><BookOpen className="h-5 w-5 text-emerald-700"/><h2 className="mt-3 font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{body}</p></article>)}</div>{shown.length===0&&<p className="mt-10 text-slate-600">Ingen artikler matcher søgningen. <Link href="/kontakt" className="text-emerald-700 underline">Kontakt support</Link>.</p>}</section></Layout>; }
 
+function Guides() {
+  useSeo("Guides og checklister", "Praktiske danske guides til bilag, bogføring, fakturaer og økonomioverblik.", "guides");
+  return <Layout><section className="mx-auto max-w-6xl px-4 py-20 sm:px-6"><p className="text-sm font-semibold text-emerald-700">GUIDES</p><h1 className="mt-3 text-4xl font-semibold">Praktisk hjælp til et roligere regnskabsflow</h1><p className="mt-4 max-w-2xl leading-7 text-slate-600">Fagligt forsigtige arbejdsgange til mindre virksomheder. Indholdet er generel information og erstatter ikke konkret rådgivning fra bogholder, revisor eller juridisk rådgiver.</p><div className="mt-10 grid gap-4 md:grid-cols-2">{Object.entries(guides).map(([slug, guide])=><article key={slug} className="rounded-2xl border bg-white p-6"><BookOpen className="h-5 w-5 text-emerald-700"/><h2 className="mt-3 text-lg font-semibold">{guide.title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{guide.intro}</p><Link href={`/guide/${slug}`} className="mt-5 inline-flex items-center text-sm font-semibold text-emerald-800">Læs guiden <ChevronRight className="ml-1 h-4 w-4"/></Link></article>)}</div><div className="mt-16"><p className="text-sm font-semibold text-emerald-700">CHECKLISTER</p><h2 className="mt-3 text-3xl font-semibold">Klar til brug</h2><div className="mt-7 grid gap-4 md:grid-cols-3">{leadMagnets.map(([title, body])=><article key={title} className="rounded-2xl border border-emerald-100 bg-emerald-50 p-6"><FileCheck2 className="h-5 w-5 text-emerald-700"/><h3 className="mt-3 font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-700">{body}</p><Button type="button" variant="outline" className="mt-5" onClick={()=>window.print()}>Udskriv checkliste</Button></article>)}</div></div></section></Layout>;
+}
+
+function Guide({ slug }: { slug: string }) {
+  const guide = guides[slug as keyof typeof guides] || guides["bedre-oekonomioverblik"];
+  useSeo(guide.title, guide.intro, `guide/${slug}`);
+  return <Layout><article className="mx-auto max-w-3xl px-4 py-20 sm:px-6"><Link href="/guides" className="text-sm font-semibold text-emerald-800">← Alle guides</Link><p className="mt-8 text-sm font-semibold text-emerald-700">ADD SMARTREGNSKAB GUIDE</p><h1 className="mt-3 text-4xl font-semibold leading-tight">{guide.title}</h1><p className="mt-5 text-lg leading-8 text-slate-600">{guide.intro}</p><div className="mt-10 space-y-8">{guide.sections.map(([title, body])=><section key={title} className="rounded-2xl border bg-white p-6"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-3 leading-7 text-slate-600">{body}</p></section>)}</div><p className="mt-10 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-950">Guiden er generel information. Regler, moms og skat skal vurderes ud fra virksomhedens konkrete forhold.</p></article></Layout>;
+}
+
 const legal: Record<"privacy"|"terms"|"cookies",{title:string;intro:string;sections:[string,string][]}>={privacy:{title:"Privatlivspolitik",intro:"Sådan behandler ADD SmartDrift ApS oplysninger i forbindelse med ADD SmartRegnskab.",sections:[["Dataansvarlig","ADD SmartDrift ApS, CVR 46761898, Lynæs Søpark 49, 3390 Hundested."],["Formål","Vi behandler kontakt-, konto-, virksomheds-, support- og betalingsoplysninger for at levere tjenesten, beskytte kontoen, håndtere abonnementet og besvare henvendelser."],["Retsgrundlag","Behandling sker efter aftale, retlig forpligtelse, legitim interesse eller samtykke, afhængigt af formålet."],["Opbevaring og rettigheder","Oplysninger opbevares kun så længe formål og lovkrav kræver det. Du kan anmode om indsigt, rettelse, sletning, begrænsning og dataportabilitet, hvor reglerne giver ret til det."],["Kontakt","Skriv til regnskab@addsmartregnskab.dk om privatliv og rettigheder. Klage kan indgives til Datatilsynet."]]},terms:{title:"Vilkår",intro:"Grundvilkår for brug af ADD SmartRegnskab.",sections:[["Tjenesten","Abonnementet giver adgang til de funktioner og grænser, der fremgår af den valgte pakke."],["Kundens ansvar","Kunden er ansvarlig for korrekte oplysninger, brugeradgange, godkendelse af bogføring og overholdelse af egne bogførings- og skatteforpligtelser."],["AI og automatisering","Forslag fra AI er hjælpemidler og erstatter ikke kundens, bogholderens eller revisorens kontrol. Kritiske handlinger kræver godkendelse."],["Betaling og ændringer","Pris, periode og eventuel prøveperiode vises før bestilling. Pakkeændringer bekræftes tydeligt i løsningen."],["Ansvar og drift","Planlagt vedligeholdelse og driftsforstyrrelser håndteres efter gældende support- og driftsprocedurer. Endelige aftalevilkår skal accepteres ved køb."]]},cookies:{title:"Cookieinformation",intro:"Vi bruger kun analyse, når du har valgt det.",sections:[["Nødvendige cookies","Session, sikkerhed, login og dit cookievalg kræver teknisk lagring. Disse kan ikke fravælges, hvis tjenesten skal fungere."],["Analyse","Analyse af besøg og konverteringer aktiveres kun efter samtykke. Et afslag påvirker ikke adgangen til produktet."],["Ændr dit valg","Slet nøglen add_cookie_consent i browserens lokale lager for at få valget vist igen. En selvbetjeningsknap til ændring tilføjes før eksterne analysetags aktiveres."],["Tredjeparter","Eksterne marketingtags må først aktiveres, når de er konfigureret og samtykket er registreret."]]}};
 function Legal({kind}:{kind:"privacy"|"terms"|"cookies"}){const d=legal[kind];useSeo(d.title,d.intro,kind==="privacy"?"privatliv":kind==="terms"?"vilkaar":"cookies");return <Layout><article className="mx-auto max-w-3xl px-4 py-20 sm:px-6"><h1 className="text-4xl font-semibold">{d.title}</h1><p className="mt-4 text-lg text-slate-600">{d.intro}</p><p className="mt-3 text-xs text-slate-500">Senest opdateret 19. september 2026</p><div className="mt-10 space-y-8">{d.sections.map(([h,p])=><section key={h}><h2 className="text-xl font-semibold">{h}</h2><p className="mt-3 leading-7 text-slate-600">{p}</p></section>)}</div>{kind==="cookies"&&<Button className="mt-10" variant="outline" onClick={()=>{localStorage.removeItem("add_cookie_consent");window.location.reload();}}>Ændr cookievalg</Button>}</article></Layout>}
 
 function Landing({slug}:{slug:string}){const c=landingCopy[slug]??landingCopy["regnskabsprogram-smaa-virksomheder"];useSeo(c.eyebrow,c.lead,slug);return <Layout><Hero eyebrow={c.eyebrow} title={c.title} lead={c.lead}/><section className="mx-auto max-w-4xl px-4 py-16 sm:px-6"><div className="grid gap-4 sm:grid-cols-3">{c.bullets.map(x=><div key={x} className="rounded-xl border bg-white p-5 text-sm font-medium"><CheckCircle2 className="mb-3 h-5 w-5 text-emerald-700"/>{x}</div>)}</div></section><Callout/></Layout>}
 
-export function Marketing({ page, landingSlug }: { page: MarketingPage; landingSlug?: string }) {
+export function Marketing({ page, landingSlug, guideSlug }: { page: MarketingPage; landingSlug?: string; guideSlug?: string }) {
   useEffect(() => {
     const query = window.location.hash.includes("?") ? window.location.hash.split("?")[1] : window.location.search.slice(1);
     const params = new URLSearchParams(query);
@@ -191,5 +281,5 @@ export function Marketing({ page, landingSlug }: { page: MarketingPage; landingS
     }
     track("page_view", { page, landing: landingSlug ?? "" });
   }, [landingSlug, page]);
-  if(page==="home")return <Home/>; if(page==="features")return <Features/>; if(page==="pricing")return <Pricing/>; if(page==="integrations")return <Integrations/>; if(page==="security")return <Security/>; if(page==="faq")return <Faq/>; if(page==="about")return <About/>; if(page==="contact")return <Contact/>; if(page==="demo")return <Contact demo/>; if(page==="help")return <Help/>; if(page==="privacy")return <Legal kind="privacy"/>; if(page==="terms")return <Legal kind="terms"/>; if(page==="cookies")return <Legal kind="cookies"/>; return <Landing slug={landingSlug??""}/>;
+  if(page==="home")return <Home/>; if(page==="features")return <Features/>; if(page==="pricing")return <Pricing/>; if(page==="integrations")return <Integrations/>; if(page==="security")return <Security/>; if(page==="faq")return <Faq/>; if(page==="about")return <About/>; if(page==="contact")return <Contact/>; if(page==="demo")return <Contact demo/>; if(page==="help")return <Help/>; if(page==="guides")return <Guides/>; if(page==="guide")return <Guide slug={guideSlug??""}/>; if(page==="privacy")return <Legal kind="privacy"/>; if(page==="terms")return <Legal kind="terms"/>; if(page==="cookies")return <Legal kind="cookies"/>; return <Landing slug={landingSlug??""}/>;
 }

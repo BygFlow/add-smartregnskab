@@ -52,7 +52,7 @@ app.use((_req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-k1EgCP6gd1+EDNxyDwrnYxilVNQJoARjpT4gLdz6wX8='; connect-src 'self' https:; font-src 'self' data:; frame-ancestors 'none'");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' https://www.googletagmanager.com 'sha256-k1EgCP6gd1+EDNxyDwrnYxilVNQJoARjpT4gLdz6wX8='; connect-src 'self' https:; font-src 'self' data:; frame-ancestors 'none'");
   next();
 });
 
