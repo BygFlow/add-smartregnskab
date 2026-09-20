@@ -220,7 +220,99 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       body: JSON.stringify({ email: "leader@example.test", password: "A-strong-leader-password-2026" }),
     });
     assert.equal(leaderLogin.status, 200);
-    const leaderToken = (await leaderLogin.json()).token;
+    let leaderToken = (await leaderLogin.json()).token;
+
+    const initialOrganizationResponse = await fetch(`${base}/api/organization`, {
+      headers: { Authorization: `Bearer ${leaderToken}` },
+    });
+    assert.equal(initialOrganizationResponse.status, 200);
+    const initialOrganization = await initialOrganizationResponse.json();
+    assert.equal(initialOrganization.companies.length, 1, "an ordinary customer starts with one legal company");
+    assert.equal(initialOrganization.limits.maxCompanies, 1);
+
+    const blockedSubsidiary = await fetch(`${base}/api/organization/companies`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Blocked Child ApS", cvr: "12345678", groupRole: "subsidiary", ownershipPercent: 100 }),
+    });
+    assert.equal(blockedSubsidiary.status, 409, "the package company limit must be enforced");
+
+    const upgradeForGroup = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/plan`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: professionalPlan.id }),
+    });
+    assert.equal(upgradeForGroup.status, 200);
+
+    const subsidiaryResponse = await fetch(`${base}/api/organization/companies`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Smoke Child ApS", cvr: "87654321", groupRole: "subsidiary", ownershipPercent: 100 }),
+    });
+    assert.equal(subsidiaryResponse.status, 201);
+    const subsidiary = await subsidiaryResponse.json();
+    assert.equal(subsidiary.subscriptionOwnerId, companyResult.company.id);
+    assert.equal(subsidiary.parentCompanyId, companyResult.company.id);
+
+    const unitResponse = await fetch(`${base}/api/organization/units`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId: subsidiary.id, name: "Smoke driftsenhed", unitType: "se_unit", seNumber: "11223344" }),
+    });
+    assert.equal(unitResponse.status, 201);
+    assert.equal((await unitResponse.json()).seNumber, "11223344");
+
+    const switchToChild = await fetch(`${base}/api/professional/switch-company`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId: subsidiary.id }),
+    });
+    assert.equal(switchToChild.status, 200);
+    const childSession = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    assert.equal(childSession.status, 200);
+    const childSessionData = await childSession.json();
+    assert.equal(childSessionData.company.id, subsidiary.id);
+    assert.equal(childSessionData.plan.id, professionalPlan.id, "a subsidiary inherits the organization subscription");
+    const switchToOrganizationHome = await fetch(`${base}/api/professional/switch-company`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId: companyResult.company.id }),
+    });
+    assert.equal(switchToOrganizationHome.status, 200);
+
+    const groupedPlatformList = await fetch(`${base}/api/platform/companies`, {
+      headers: { Authorization: `Bearer ${platformToken}` },
+    });
+    const groupedCustomers = await groupedPlatformList.json();
+    assert.equal(groupedCustomers.length, 1, "a subsidiary must not be billed as a separate platform customer");
+    assert.equal(groupedCustomers[0].legalCompanyCount, 2);
+
+    const blockedDowngrade = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/plan`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: businessPlan.id }),
+    });
+    assert.equal(blockedDowngrade.status, 409, "a group cannot downgrade below its legal-company count");
+
+    const suspendOrganization = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/suspend`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "Smoke test" }),
+    });
+    assert.equal(suspendOrganization.status, 200);
+    assert.equal((await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${leaderToken}` } })).status, 401,
+      "suspension must invalidate the organization's active leader session");
+    const reactivateOrganization = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/reactivate`, {
+      method: "POST", headers: { Authorization: `Bearer ${platformToken}` },
+    });
+    assert.equal(reactivateOrganization.status, 200);
+    const leaderRelogin = await fetch(`${base}/api/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "leader@example.test", password: "A-strong-leader-password-2026" }),
+    });
+    assert.equal(leaderRelogin.status, 200);
+    leaderToken = (await leaderRelogin.json()).token;
+
     const assistantResponse = await fetch(`${base}/api/users`, {
       method: "POST",
       headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },

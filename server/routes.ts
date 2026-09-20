@@ -17,6 +17,7 @@ import { registerMigrationRoutes } from "./migration-routes";
 import { registerReadinessRoutes } from "./readiness-routes";
 import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice-routes";
 import { registerProfessionalRoutes } from "./professional-routes";
+import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
@@ -51,7 +52,7 @@ import {
   insertPaymentRunSchema,
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
-  insertCashflowProjectionSchema, professionalMemberships,
+  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
 type SafeParse<T> = {
@@ -340,6 +341,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       notes: "Oprettet via selvbetjening.",
       createdAt: nowIso(),
     } as any);
+    await storage.updateCompany(company.id, { subscriptionOwnerId: company.id, groupRole: "standalone" } as any);
 
     const user = await storage.createUser({
       companyId: company.id,
@@ -583,7 +585,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use("/api", platformCustomerDataGuard);
   app.use("/api", professionalAccessGuard);
   const regnskabApiPrefixes = [
-    "/auth", "/company", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
+    "/auth", "/company", "/organization", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
     "/accounting-category-rules", "/accounting-control-center", "/accounting-integrations",
     "/accounting-rules", "/accounts", "/accruals", "/advanced-vat", "/ai-accounting-tasks",
     "/ai-governance", "/ai-regnskab", "/annual-reports", "/api-keys", "/archive-records",
@@ -648,6 +650,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       user: { ...safeUser(a.user), companyId: a.companyId, homeCompanyId: a.user.companyId, role: a.role },
       company, plan, subscription,
       professional: a.professionalMembership ? { role: a.role, permissions: a.permissions } : null,
+      organizationAccess: a.companyMembership ? { role: a.role } : null,
     });
   }));
 
@@ -1934,11 +1937,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/subscription", h(async (req, res) => {
     const cid = tenantId(req);
+    const currentCompany = await storage.getCompany(cid);
+    const subscriptionOwnerId = currentCompany?.subscriptionOwnerId || cid;
+    const organizationCompanies = (await storage.getCompanies()).filter((company) =>
+      (company.subscriptionOwnerId || company.id) === subscriptionOwnerId,
+    );
+    const organizationCompanyCount = organizationCompanies.length;
+    const organizationIds = organizationCompanies.map((company) => company.id);
     const sub = await storage.getSubscriptionByCompany(cid);
     const plan = await storage.getCompanyPlan(cid);
-    const userCount = (await storage.getUsers(cid)).filter((user) => user.active === 1).length;
-    const employeeCount = (await storage.getEmployees(cid)).length;
-    const customerCount = (await storage.getCustomers(cid)).length;
+    const userCount = (await Promise.all(organizationIds.map((id) => storage.getUsers(id)))).flat().filter((user) => user.active === 1).length;
+    const employeeCount = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
+    const customerCount = (await Promise.all(organizationIds.map((id) => storage.getCustomers(id)))).flat().length;
+    const month = nowIso().slice(0, 7);
+    const organizationVouchers = (await Promise.all(organizationIds.map((id) => storage.all("vouchers", id)))).flat();
+    const organizationEntries = (await Promise.all(organizationIds.map((id) => storage.all("journal_entries", id)))).flat();
+    const organizationIntegrations = (await Promise.all(organizationIds.map(async (id) => [
+      ...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id)),
+    ]))).flat();
     const invoices = (await storage.getPlatformInvoices(cid));
     res.json({
       subscription: sub ?? null,
@@ -1950,13 +1966,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         maxEmployees: plan?.maxEmployees ?? -1,
         customers: customerCount,
         maxCustomers: plan?.maxCustomers ?? -1,
-        documents: (await storage.all("vouchers", cid)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(nowIso().slice(0, 7))).length,
+        documents: organizationVouchers.filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length,
         maxDocuments: plan?.maxDocuments ?? -1,
-        entries: (await storage.all("journal_entries", cid)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(nowIso().slice(0, 7))).length,
+        entries: organizationEntries.filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length,
         maxEntries: plan?.maxEntries ?? -1,
-        companies: 1,
+        companies: organizationCompanyCount,
         maxCompanies: plan?.maxCompanies ?? -1,
-        integrations: [...(await storage.getIntegrations(cid)), ...(await storage.all("accounting_integrations", cid))].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length,
+        integrations: organizationIntegrations.filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length,
         maxIntegrations: plan?.maxIntegrations ?? -1,
       },
       nextCharge: await previewBilling(cid),
@@ -1985,11 +2001,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     // Nedgradering må ikke efterlade et forbrug over de regnskabsfaglige pakkegrænser.
     const month = nowIso().slice(0, 7);
-    const documentCount = (await storage.all("vouchers", cid)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
-    const entryCount = (await storage.all("journal_entries", cid)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
-    const integrationCount = [...(await storage.getIntegrations(cid)), ...(await storage.all("accounting_integrations", cid))].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
+    const currentCompany = await storage.getCompany(cid);
+    const ownerId = currentCompany?.subscriptionOwnerId || cid;
+    const organizationIds = (await storage.getCompanies())
+      .filter((company) => (company.subscriptionOwnerId || company.id) === ownerId)
+      .map((company) => company.id);
+    const documentCount = (await Promise.all(organizationIds.map((id) => storage.all("vouchers", id)))).flat()
+      .filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
+    const entryCount = (await Promise.all(organizationIds.map((id) => storage.all("journal_entries", id)))).flat()
+      .filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
+    const integrationCount = (await Promise.all(organizationIds.map(async (id) => [
+      ...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id)),
+    ]))).flat().filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
     for (const [count, limit, label] of [[documentCount, plan.maxDocuments, "bilag denne måned"], [entryCount, plan.maxEntries, "posteringer denne måned"], [integrationCount, plan.maxIntegrations, "aktive integrationer"]] as const) {
       if (limit !== -1 && count > limit) return res.status(409).json({ error: `${plan.name} tillader ${limit} ${label}, og I bruger allerede ${count}. Vælg en større pakke.` });
+    }
+    const companyCount = organizationIds.length;
+    if (plan.maxCompanies !== -1 && companyCount > plan.maxCompanies) {
+      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og I har allerede ${companyCount}. Vælg en større pakke.` });
     }
     const updated = await storage.updateSubscription(sub.id, { planId: plan.id });
     await audit(req, "skift_pakke", "subscription", sub.id, plan.name);
@@ -2012,6 +2041,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     for (const c of allCompanies) {
       // ADD SmartRegnskabs egen konto vises ikke som kundevirksomhed
       if ((c as any).kind === "platform") continue;
+      // Underselskaber er juridiske regnskaber under kundens fælles abonnement,
+      // ikke selvstændige betalende platformskunder.
+      if (c.subscriptionOwnerId && c.subscriptionOwnerId !== c.id) continue;
       const sub = subs.find((s) => s.companyId === c.id);
       const plan = sub ? plans.get(sub.planId) : undefined;
       const employees = (await storage.getEmployees(c.id)).length;
@@ -2024,6 +2056,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdAt: c.createdAt,
         employeeCount: employees,
         userCount: (await storage.getUsers(c.id)).length,
+        legalCompanyCount: allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id).length,
         planName: plan?.name ?? "Ingen pakke",
         planId: plan?.id ?? null,
         subscriptionStatus: sub?.status ?? "ingen",
@@ -2334,6 +2367,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       status: trial > 0 ? "proeve" : "aktiv",
       createdAt: nowIso(), notes: null,
     }));
+    await storage.updateCompany(company.id, { subscriptionOwnerId: company.id, groupRole: "standalone" } as any);
     const admin = await storage.createUser(validate(insertUserSchema, {
       companyId: company.id, name: adminName || "Leder", email: normEmail,
       password: hashPassword(String(adminPassword)), role: "leder", active: 1, emailVerified: 1,
@@ -2410,11 +2444,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const plan = await storage.getPlan(Number(req.body?.planId));
     if (!plan) return res.status(400).json({ error: "Vælg en gyldig pakke." });
     const month = nowIso().slice(0, 7);
-    const documentCount = (await storage.all("vouchers", id)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
-    const entryCount = (await storage.all("journal_entries", id)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
-    const integrationCount = [...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id))].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
+    const company = await storage.getCompany(id);
+    const ownerId = company?.subscriptionOwnerId || id;
+    const organizationIds = (await storage.getCompanies())
+      .filter((item) => (item.subscriptionOwnerId || item.id) === ownerId)
+      .map((item) => item.id);
+    const documentCount = (await Promise.all(organizationIds.map((companyId) => storage.all("vouchers", companyId)))).flat()
+      .filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
+    const entryCount = (await Promise.all(organizationIds.map((companyId) => storage.all("journal_entries", companyId)))).flat()
+      .filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
+    const integrationCount = (await Promise.all(organizationIds.map(async (companyId) => [
+      ...(await storage.getIntegrations(companyId)), ...(await storage.all("accounting_integrations", companyId)),
+    ]))).flat().filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
     for (const [count, limit, label] of [[documentCount, plan.maxDocuments, "bilag denne måned"], [entryCount, plan.maxEntries, "posteringer denne måned"], [integrationCount, plan.maxIntegrations, "aktive integrationer"]] as const) {
       if (limit !== -1 && count > limit) return res.status(409).json({ error: `${plan.name} tillader ${limit} ${label}, og virksomheden bruger allerede ${count}.` });
+    }
+    if (plan.maxCompanies !== -1 && organizationIds.length > plan.maxCompanies) {
+      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og kundeorganisationen har allerede ${organizationIds.length}.` });
     }
     const updated = await storage.updateSubscription(sub.id, {
       planId: plan.id,
@@ -4900,9 +4946,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }));
       res.json(result);
     } else {
-      const cid = tenantId(req); const company = await storage.getCompany(cid);
-      const accounts = await storage.all("accounts", cid); const entries = await storage.all("journal_entries", cid);
-      res.json([{ ...company, accountCount: accounts.length, entryCount: entries.length }]);
+      const homeId = req.auth!.homeCompanyId;
+      const groupMemberships = (await db.select().from(companyAccessMemberships).all())
+        .filter((membership) => membership.userId === req.auth!.userId && membership.status === "active");
+      const professional = (await db.select().from(professionalMemberships).all())
+        .filter((membership) => membership.userId === req.auth!.userId && membership.status === "active"
+          && (!membership.accessExpiresAt || new Date(membership.accessExpiresAt).getTime() > Date.now()));
+      const ids = Array.from(new Set([homeId, ...groupMemberships.map((membership) => membership.companyId), ...professional.map((membership) => membership.companyId)]));
+      const result = await Promise.all(ids.map(async (cid) => {
+        const company = await storage.getCompany(cid);
+        const accounts = await storage.all("accounts", cid); const entries = await storage.all("journal_entries", cid);
+        return company ? { ...company, accountCount: accounts.length, entryCount: entries.length } : null;
+      }));
+      res.json(result.filter(Boolean));
     }
   }));
 
@@ -5974,6 +6030,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerReadinessRoutes(app);
   registerEInvoiceRoutes(app);
   registerProfessionalRoutes(app);
+  registerOrganizationRoutes(app);
   registerAiiaRoutes(app);
 
   return httpServer;

@@ -141,6 +141,7 @@ const AiStyring = lazy(() => import("@/pages/regnskab-tabs/ai-styring"));
 const Driftsklarhed = lazy(() => import("@/pages/regnskab-tabs/driftsklarhed"));
 const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
 const Abonnement = lazy(() => import("@/pages/regnskab-tabs/abonnement"));
+const Selskabsstruktur = lazy(() => import("@/pages/regnskab-tabs/selskabsstruktur"));
 
 /* ---------- typer ---------- */
 
@@ -5721,6 +5722,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               </TabsContent>
               <TabsContent value="abonnement" className="space-y-4">
                 <Abonnement />
+              </TabsContent>
+              <TabsContent value="selskabsstruktur" className="space-y-4">
+                <Selskabsstruktur />
               </TabsContent>
 
             </Tabs>

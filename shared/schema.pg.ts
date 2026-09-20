@@ -29,6 +29,10 @@ export const companies = pgTable("companies", {
   cvr: text("cvr"),
   phone: text("phone"),
   email: text("email"),
+  parentCompanyId: integer("parent_company_id"),
+  subscriptionOwnerId: integer("subscription_owner_id"),
+  groupRole: text("group_role").notNull().default("standalone"),
+  ownershipPercent: doublePrecision("ownership_percent"),
   // Platformstyring
   status: text("status").notNull().default("proeve"), // proeve, aktiv, i_restance, spaerret, opsagt
   kind: text("kind").notNull().default("kunde"), // kunde, platform
@@ -82,6 +86,36 @@ export const sessions = pgTable("sessions", {
 });
 
 export type Session = typeof sessions.$inferSelect;
+
+export const companyAccessMemberships = pgTable("company_access_memberships", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  companyId: integer("company_id").notNull(),
+  role: text("role").notNull().default("leder"),
+  status: text("status").notNull().default("active"),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({
+  userCompanyUnique: uniqueIndex("company_access_user_company_unique").on(table.userId, table.companyId),
+}));
+
+export const insertCompanyAccessMembershipSchema = createInsertSchema(companyAccessMemberships).omit({ id: true });
+export type CompanyAccessMembership = typeof companyAccessMemberships.$inferSelect;
+
+export const companyUnits = pgTable("company_units", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  name: text("name").notNull(),
+  seNumber: text("se_number"),
+  unitType: text("unit_type").notNull().default("department"),
+  dimensionValueId: integer("dimension_value_id"),
+  active: boolean("active").notNull().default(true),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({
+  companySeUnique: uniqueIndex("company_units_company_se_unique").on(table.companyId, table.seNumber),
+}));
+
+export const insertCompanyUnitSchema = createInsertSchema(companyUnits).omit({ id: true });
+export type CompanyUnit = typeof companyUnits.$inferSelect;
 
 export const professionalMemberships = pgTable("professional_memberships", {
   id: serial("id").primaryKey(),

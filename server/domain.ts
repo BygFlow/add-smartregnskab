@@ -359,7 +359,8 @@ export async function issueSubscriptionInvoice(companyId: number, today: string)
 /** Samlet månedlig omsætning på tværs af aktive abonnementer. */
 export async function platformMetrics(today: string) {
   const allCompanies = await storage.getCompanies();
-  const companies = allCompanies.filter((c) => (c as any).kind !== "platform");
+  const companies = allCompanies.filter((c) => (c as any).kind !== "platform"
+    && (!c.subscriptionOwnerId || c.subscriptionOwnerId === c.id));
   const subs = await storage.getSubscriptions();
   const allPlans = await storage.getPlans();
   const planById = new Map(allPlans.map((p) => [p.id, p]));
@@ -374,7 +375,10 @@ export async function platformMetrics(today: string) {
   for (const c of companies) {
     if (c.status === "spaerret") blockedCount++;
     if (c.status === "i_restance") arrearsCount++;
-    const employees = (await storage.getEmployees(c.id)).length;
+    const organizationIds = allCompanies
+      .filter((company) => (company.subscriptionOwnerId || company.id) === c.id)
+      .map((company) => company.id);
+    const employees = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
     totalEmployees += employees;
 
     const sub = subs.find((s) => s.companyId === c.id);

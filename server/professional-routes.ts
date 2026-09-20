@@ -1,7 +1,7 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import {
-  auditLogs, companies, professionalApprovals, professionalMemberships, users,
+  auditLogs, companies, companyAccessMemberships, professionalApprovals, professionalMemberships, users,
 } from "@shared/schema";
 import { db, storage } from "./storage";
 import { requireRole, sessionStorageKey, tenantId } from "./auth";
@@ -73,11 +73,16 @@ export function registerProfessionalRoutes(app: Express) {
       eq(professionalMemberships.companyId, companyId),
       eq(professionalMemberships.status, "active"),
     )).get();
-    if (!membership || (membership.accessExpiresAt && new Date(membership.accessExpiresAt).getTime() <= Date.now())) {
+    const companyMembership = await db.select().from(companyAccessMemberships).where(and(
+      eq(companyAccessMemberships.userId, req.auth!.userId),
+      eq(companyAccessMemberships.companyId, companyId),
+      eq(companyAccessMemberships.status, "active"),
+    )).get();
+    if (!companyMembership && (!membership || (membership.accessExpiresAt && new Date(membership.accessExpiresAt).getTime() <= Date.now()))) {
       return res.status(403).json({ error: "Du har ikke aktiv adgang til denne klient." });
     }
     await storage.updateSessionCompany(sessionStorageKey(req.auth!.token), companyId);
-    await audit(req, "skift_klient", "professional_membership", String(companyId));
+    await audit(req, companyMembership ? "skift_selskab" : "skift_klient", companyMembership ? "company_access_membership" : "professional_membership", String(companyId));
     res.json({ ok: true, companyId });
   }));
 

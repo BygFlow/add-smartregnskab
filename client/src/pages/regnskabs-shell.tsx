@@ -72,6 +72,7 @@ const COMPANY_GROUPS: NavGroup[] = [
     item("integrationer", "Integrationer", Link2),
   ] },
   { label: "Konto", items: [
+    item("selskabsstruktur", "Selskaber & SE-enheder", Building2),
     item("abonnement", "Abonnement & betaling", CreditCard),
   ] },
 ];

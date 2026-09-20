@@ -2,7 +2,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual, randomUUID } from
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
-import { professionalMemberships } from "@shared/schema";
+import { companyAccessMemberships, professionalMemberships } from "@shared/schema";
 import { db } from "./storage";
 import { and, eq } from "drizzle-orm";
 
@@ -66,6 +66,7 @@ export interface AuthContext {
   homeCompanyId: number;
   role: string;
   professionalMembership: typeof professionalMemberships.$inferSelect | null;
+  companyMembership: typeof companyAccessMemberships.$inferSelect | null;
   permissions: string[];
   email: string;
   employeeId: number | null;
@@ -119,17 +120,25 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const isPlatformAdmin = user.role === "platform_admin";
   let activeCompanyId = session.activeCompanyId ?? user.companyId;
   let professionalMembership: typeof professionalMemberships.$inferSelect | null = null;
+  let companyMembership: typeof companyAccessMemberships.$inferSelect | null = null;
   if (!isPlatformAdmin && activeCompanyId !== user.companyId) {
+    companyMembership = await db.select().from(companyAccessMemberships).where(and(
+      eq(companyAccessMemberships.userId, user.id),
+      eq(companyAccessMemberships.companyId, activeCompanyId),
+      eq(companyAccessMemberships.status, "active"),
+    )).get() ?? null;
     professionalMembership = await db.select().from(professionalMemberships).where(and(
       eq(professionalMemberships.userId, user.id),
       eq(professionalMemberships.companyId, activeCompanyId),
       eq(professionalMemberships.status, "active"),
     )).get() ?? null;
-    if (!professionalMembership
-      || (professionalMembership.accessExpiresAt && new Date(professionalMembership.accessExpiresAt) <= new Date())) {
+    const professionalExpired = professionalMembership?.accessExpiresAt
+      && new Date(professionalMembership.accessExpiresAt) <= new Date();
+    if (!companyMembership && (!professionalMembership || professionalExpired)) {
       await storage.updateSessionCompany(storedToken, user.companyId);
       activeCompanyId = user.companyId;
       professionalMembership = null;
+      companyMembership = null;
     }
   } else if (!isPlatformAdmin && ["bogholder", "revisor", "revisor_admin"].includes(user.role)) {
     professionalMembership = await db.select().from(professionalMemberships).where(and(
@@ -146,7 +155,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (!isPlatformAdmin) {
     const company = await storage.getCompany(activeCompanyId);
     if (!company) return res.status(401).json({ error: "Virksomheden findes ikke." });
-    if (company.status === "spaerret" || company.status === "opsagt") {
+    const subscription = await storage.getSubscriptionByCompany(activeCompanyId);
+    if (company.status === "spaerret" || company.status === "opsagt"
+      || subscription?.status === "i_restance" || subscription?.status === "spaerret" || subscription?.status === "opsagt") {
       return res.status(402).json({
         error: "Abonnementet er ikke aktivt. Kontakt ADD SmartRegnskab for at genåbne adgangen.",
         code: "abonnement_spaerret",
@@ -158,8 +169,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     userId: user.id,
     companyId: activeCompanyId,
     homeCompanyId: user.companyId,
-    role: professionalMembership?.professionalRole ?? user.role,
+    role: companyMembership?.role ?? professionalMembership?.professionalRole ?? user.role,
     professionalMembership,
+    companyMembership,
     permissions,
     email: user.email,
     employeeId: user.employeeId ?? null,
@@ -345,15 +357,23 @@ export async function checkAccountingLimit(
   if (limit < 0) return { ok: true };
 
   const month = new Date().toISOString().slice(0, 7);
+  const company = await storage.getCompany(companyId);
+  const ownerId = company?.subscriptionOwnerId || companyId;
+  const organizationCompanyIds = (await storage.getCompanies())
+    .filter((item) => (item.subscriptionOwnerId || item.id) === ownerId)
+    .map((item) => item.id);
   let current = 0;
   if (kind === "documents") {
-    current = (await storage.all("vouchers", companyId)).filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
+    const rows = await Promise.all(organizationCompanyIds.map((id) => storage.all("vouchers", id)));
+    current = rows.flat().filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
   } else if (kind === "entries") {
-    current = (await storage.all("journal_entries", companyId)).filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
+    const rows = await Promise.all(organizationCompanyIds.map((id) => storage.all("journal_entries", id)));
+    current = rows.flat().filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
   } else {
-    const primary = await storage.getIntegrations(companyId);
-    const accounting = await storage.all("accounting_integrations", companyId);
-    current = [...primary, ...accounting].filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
+    const rows = await Promise.all(organizationCompanyIds.map(async (id) => [
+      ...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id)),
+    ]));
+    current = rows.flat().filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
   }
 
   if (current >= limit) {

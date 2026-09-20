@@ -10,6 +10,11 @@ export const companies = sqliteTable("companies", {
   cvr: text("cvr"),
   phone: text("phone"),
   email: text("email"),
+  // Selskabsstruktur. Null betyder en almindelig, selvstændig kundevirksomhed.
+  parentCompanyId: integer("parent_company_id"),
+  subscriptionOwnerId: integer("subscription_owner_id"),
+  groupRole: text("group_role").notNull().default("standalone"), // standalone, holding, parent, subsidiary
+  ownershipPercent: real("ownership_percent"),
   // Platformstyring
   status: text("status").notNull().default("proeve"), // proeve, aktiv, i_restance, spaerret, opsagt
   kind: text("kind").notNull().default("kunde"), // kunde, platform
@@ -92,6 +97,42 @@ export const sessions = sqliteTable("sessions", {
 });
 
 export type Session = typeof sessions.$inferSelect;
+
+// Adgang til andre juridiske selskaber i samme kundeorganisation. Tabellen er
+// adskilt fra revisor-/bogholderadgang, så koncernadgang ikke fejlagtigt bliver
+// behandlet som ekstern rådgiveradgang.
+export const companyAccessMemberships = sqliteTable("company_access_memberships", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  companyId: integer("company_id").notNull(),
+  role: text("role").notNull().default("leder"),
+  status: text("status").notNull().default("active"),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({
+  userCompanyUnique: uniqueIndex("company_access_user_company_unique").on(table.userId, table.companyId),
+}));
+
+export const insertCompanyAccessMembershipSchema = createInsertSchema(companyAccessMemberships).omit({ id: true });
+export type CompanyAccessMembership = typeof companyAccessMemberships.$inferSelect;
+
+// SE-numre er administrative enheder under en juridisk virksomhed og får
+// derfor ikke et selvstændigt selskabsregnskab. De kobles i stedet til en
+// afdeling/dimension i den juridiske virksomheds bogføring.
+export const companyUnits = sqliteTable("company_units", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  name: text("name").notNull(),
+  seNumber: text("se_number"),
+  unitType: text("unit_type").notNull().default("department"), // department, se_unit
+  dimensionValueId: integer("dimension_value_id"),
+  active: integer("active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({
+  companySeUnique: uniqueIndex("company_units_company_se_unique").on(table.companyId, table.seNumber),
+}));
+
+export const insertCompanyUnitSchema = createInsertSchema(companyUnits).omit({ id: true });
+export type CompanyUnit = typeof companyUnits.$inferSelect;
 
 // Eksterne bogholdere og revisorer kan arbejde i flere klientvirksomheder med
 // ét login. Rettighederne gemmes pr. klient og kontrolleres på serveren.
