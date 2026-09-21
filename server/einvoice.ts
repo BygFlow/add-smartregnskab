@@ -19,18 +19,18 @@ const xml = (value: unknown) => String(value ?? "")
 const money = (value: number | null | undefined) => Number(value || 0).toFixed(2);
 const quantity = (value: number | null | undefined) => Number(value || 0).toFixed(4);
 
-function endpoint(customer: Customer): { id: string; scheme: string } {
+function endpoint(customer: Customer, format: EInvoiceFormat): { id: string; scheme: string } {
   const ean = String(customer.ean || "").replace(/\s/g, "");
-  if (/^\d{13}$/.test(ean)) return { id: ean, scheme: "0088" };
+  if (/^\d{13}$/.test(ean)) return { id: ean, scheme: format === "PEPPOL_BIS_3" ? "0088" : "GLN" };
   const cvr = String(customer.cvr || "").replace(/^DK/i, "").replace(/\D/g, "");
-  if (/^\d{8}$/.test(cvr)) return { id: `DK${cvr}`, scheme: "0184" };
+  if (/^\d{8}$/.test(cvr)) return { id: `DK${cvr}`, scheme: format === "PEPPOL_BIS_3" ? "0184" : "DK:CVR" };
   throw new Error("Kunden mangler et gyldigt GLN/EAN (13 cifre) eller CVR-nummer (8 cifre).");
 }
 
-function senderEndpoint(company: Company): { id: string; scheme: string } {
+function senderEndpoint(company: Company, format: EInvoiceFormat): { id: string; scheme: string } {
   const cvr = String(company.cvr || "").replace(/^DK/i, "").replace(/\D/g, "");
   if (!/^\d{8}$/.test(cvr)) throw new Error("Virksomheden mangler et gyldigt CVR-nummer.");
-  return { id: `DK${cvr}`, scheme: "0184" };
+  return { id: `DK${cvr}`, scheme: format === "PEPPOL_BIS_3" ? "0184" : "DK:CVR" };
 }
 
 function invoiceLines(items: InvoiceItem[], currency: string, peppol: boolean): string {
@@ -44,8 +44,8 @@ function invoiceLines(items: InvoiceItem[], currency: string, peppol: boolean): 
 export function generateEInvoice(input: DocumentInput): { xml: string; recipientEndpointId: string; endpointScheme: string } {
   const { company, customer, invoice, format } = input;
   if (!input.items.length) throw new Error("Fakturaen har ingen fakturalinjer.");
-  const receiver = endpoint(customer);
-  const sender = senderEndpoint(company);
+  const receiver = endpoint(customer, format);
+  const sender = senderEndpoint(company, format);
   const currency = company.currency || "DKK";
   const dueDate = invoice.dueDate || invoice.issueDate;
   const common = `<cbc:ID>${xml(invoice.invoiceNumber)}</cbc:ID><cbc:IssueDate>${xml(invoice.issueDate)}</cbc:IssueDate><cbc:DueDate>${xml(dueDate)}</cbc:DueDate><cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode><cbc:DocumentCurrencyCode>${xml(currency)}</cbc:DocumentCurrencyCode>`;
@@ -60,8 +60,8 @@ export function generateEInvoice(input: DocumentInput): { xml: string; recipient
 
 export function generateECreditNote(input: { company: Company; customer: Customer; creditNote: CreditNote; originalInvoice: Invoice; format: EInvoiceFormat }) {
   const { company, customer, creditNote, originalInvoice, format } = input;
-  const receiver = endpoint(customer);
-  const sender = senderEndpoint(company);
+  const receiver = endpoint(customer, format);
+  const sender = senderEndpoint(company, format);
   const currency = company.currency || "DKK";
   const vatRate = Number(originalInvoice.vatRate || company.vatRate || 0);
   const total = Math.abs(Number(creditNote.amount || 0));
@@ -81,7 +81,7 @@ export function generateEInvoiceResponse(original: EinvoiceQueue, company: Compa
   const endpoints = Array.from(original.payloadXml.matchAll(/<cbc:EndpointID\b[^>]*schemeID="([^"]+)"[^>]*>([^<]+)<\/cbc:EndpointID>/g));
   const receiver = endpoints[0] ? { scheme: endpoints[0][1], id: endpoints[0][2] } : null;
   if (!receiver) throw new Error("Det modtagne dokument indeholder ikke et afsender-ID.");
-  const sender = senderEndpoint(company);
+  const sender = senderEndpoint(company, original.format === "PEPPOL_BIS_3" ? "PEPPOL_BIS_3" : "OIOUBL_2_1");
   const type = ["application_response", "message_level_response", "invoice_response"].includes(responseType) ? responseType : "invoice_response";
   const customization = type === "message_level_response" ? "urn:fdc:peppol.eu:poacc:trns:mlr:3" : type === "invoice_response" ? "urn:fdc:peppol.eu:poacc:trns:invoice_response:3" : "OIOUBL-2.1";
   const responseCode = accepted ? "AP" : "RE";
@@ -196,6 +196,12 @@ function sproomRecipient(recipient: string): string {
   throw new Error("Modtageren mangler et gyldigt GLN eller CVR til NemHandel-opslag.");
 }
 
+export function sproomRequestId(payload: string, format: EInvoiceFormat, recipient: string): string {
+  // Sproom begrænser X-Request-Id til 64 tegn. En deterministisk SHA-256 gør
+  // genforsøg idempotente uden at dele fakturanummer eller andre kundedata.
+  return createHash("sha256").update(`${format}\0${recipient}\0${payload}`).digest("hex");
+}
+
 export async function sproomDownloadDocument(documentId: string, companyId: number, format: EInvoiceFormat): Promise<string> {
   const token = await sproomCompanyToken(companyId);
   const targetFormat = format === "PEPPOL_BIS_3" ? "peppolBis3" : "oioUbl2";
@@ -233,10 +239,21 @@ export async function providerSend(payload: string, format: EInvoiceFormat, reci
     }
     const response = await fetch(`${sproomBaseUrl()}/documents`, {
       method: "POST",
-      headers: { Accept: "*/*", Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+      headers: {
+        Accept: "*/*",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/octet-stream",
+        "X-Request-Id": sproomRequestId(payload, format, recipient),
+      },
       body: Buffer.from(payload, "utf8"),
     });
     const body = await response.text();
+    if (response.status === 409) {
+      try {
+        const existing = String(JSON.parse(body)?.documentId || "").trim();
+        if (existing) return { messageId: existing, response: body.slice(0, 2000), duplicate: true };
+      } catch { /* fall through to the normal provider error */ }
+    }
     if (!response.ok) throw new Error(`Sproom afviste dokumentet (${response.status}): ${body.slice(0, 500)}`);
     const messageId = response.headers.get("x-sproom-documentid") || response.headers.get("x-sproom-document-id") || "";
     if (!messageId) throw new Error("Sproom accepterede kaldet, men returnerede ikke X-Sproom-DocumentId. Dokumentet markeres ikke som sendt.");

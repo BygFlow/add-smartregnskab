@@ -17,6 +17,11 @@ produktionsadgangspunkt er ikke tilsluttet, før aftale og nøgler er sat.
 - Manuel, godkendt import samt XML-download til ekstern validering.
 - Sproom-modtageropslag før afsendelse, binær dokumentupload og kontrol af
   `X-Sproom-DocumentId`.
+- Deterministisk `X-Request-Id` på alle Sproom-uploads. Et sikkert genforsøg,
+  som Sproom svarer `409` på, genbruger det eksisterende dokument-ID og skaber
+  ikke en dublet.
+- Formatspecifikke endpoint-koder: `DK:CVR`/`GLN` i dansk OIOUBL og
+  `0184`/`0088` i Peppol BIS Billing 3.
 - Sproom child-company-token pr. virksomhed, så kunders dokumenter ikke sendes
   under platformens egen juridiske identitet.
 - Sproom-webhook med RSA-SHA256-signatur, leveringstilstande og automatisk
@@ -43,6 +48,19 @@ webhooknøgle fra `GET /api/webhooks/key`, og sæt den som PEM i
 `SPROOM_WEBHOOK_PUBLIC_KEY` eller som base64 af hele PEM-filen i
 `SPROOM_WEBHOOK_PUBLIC_KEY_BASE64`. Webhooken afviser alle kald, hvor
 RSA-SHA256-signaturen i `X-Signature` ikke kan bekræftes.
+
+## Staging
+
+Brug `SPROOM_API_URL=https://staging.sproom.net/api` sammen med et særskilt
+staging-token og staging child-company-ID. Brug aldrig produktionsnøgler i
+staging. Sproom oplyser i sin aktuelle Swagger-side, at stagingdatabasen
+nulstilles 16. maj og 16. november; testprofiler og integrationer skal derfor
+kunne oprettes igen efter disse datoer.
+
+Adapterens kontrakt er kontrolleret mod Sproom API v1 den 21. september 2026:
+`POST /api/child-companies`, `GET /api/child-companies/{id}/token`,
+`GET /api/recipients/{orgId}`, `POST /api/documents` og webhook-endpoints under
+`/api/webhooks`.
 
 ## Generisk leverandørkontrakt
 

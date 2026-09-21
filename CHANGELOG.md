@@ -1,5 +1,14 @@
 # Ændringslog
 
+## 3.15.3 — 2026-09-21
+
+- Rettet OIOUBL-endpoint-koder til `DK:CVR` og `GLN`, mens Peppol fortsat
+  bruger ISO 6523-koderne `0184` og `0088`.
+- Tilføjet Sproom `X-Request-Id`, så genforsøg er idempotente og ikke opretter
+  dobbelte e-fakturaer.
+- Tilføjet sikker håndtering af Sprooms `409`-svar med eksisterende dokument-ID.
+- Tilføjet kontrakttests for formater, upload og dubletbeskyttelse.
+
 ## 3.15.2 — 2026-09-20
 
 - Rettet Sproom company-map validering, så projektet typekontrollerer og bygger rent.
