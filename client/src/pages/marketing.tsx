@@ -133,6 +133,20 @@ function money(value: number) {
 
 function limit(value: number) { return value < 0 ? "Ubegrænset" : new Intl.NumberFormat("da-DK").format(value); }
 
+const planAudience: Record<string, string> = {
+  start: "Til den lille virksomhed med enkel bogføring",
+  virksomhed: "Til virksomheden med mere bank, fakturering og automatisering",
+  drift: "Til virksomheden med mere bank, fakturering og automatisering",
+  professionel: "Til vækstvirksomheder og koncerner med flere selskaber",
+  enterprise: "Til større organisationer med avancerede krav",
+};
+
+function aiSummary(plan: Plan) {
+  if (plan.includedAiCredits > 0) return `${limit(plan.includedAiCredits)} AI-handlinger inkluderet pr. måned`;
+  if (plan.aiAddonCredits > 0) return `AI kan tilkøbes: ${limit(plan.aiAddonCredits)} handlinger for ${money(plan.aiAddonPrice)}/md.`;
+  return "AI er ikke inkluderet";
+}
+
 const CONSENT_KEY = "add_cookie_consent";
 
 function analyticsAllowed() {
@@ -223,7 +237,17 @@ function Hero({ eyebrow = "Dansk regnskab, gjort forståeligt", title = "Mere ti
 
 function Home() {
   useSeo("Dansk regnskabsprogram", "Bogføring, fakturering, bankafstemning, moms og rapporter i én sikker dansk regnskabsplatform.");
-  return <Layout><Hero /><section className="mx-auto max-w-7xl px-4 py-20 sm:px-6"><div className="max-w-2xl"><p className="text-sm font-semibold text-emerald-700">ÉN SAMLET ARBEJDSFLADE</p><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Færre løse ender i økonomien</h2><p className="mt-4 text-slate-600">Funktionerne hænger sammen, så næste handling er tydelig, og kritiske beslutninger forbliver under menneskelig kontrol.</p></div><div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">{features.map(({icon: Icon,title,text}) => <article key={title} className="rounded-2xl border bg-white p-6 shadow-sm"><span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-emerald-800"><Icon className="h-5 w-5" /></span><h3 className="mt-5 font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></article>)}</div></section><section className="bg-white"><div className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2"><div><p className="text-sm font-semibold text-emerald-700">KONTROL FØR AUTOMATIK</p><h2 className="mt-3 text-3xl font-semibold">AI hjælper. Du godkender.</h2><p className="mt-4 leading-7 text-slate-600">Systemet kan analysere, foreslå og prioritere. Handlinger med økonomisk eller juridisk betydning kræver godkendelse og registreres i revisionssporet.</p></div><div className="space-y-3">{["Forklarlige bogføringsforslag", "Ingen automatisk indsendelse af moms eller skat", "Ingen betaling uden godkendelse", "Log over forslag, ændringer og godkendelser"].map(x => <div key={x} className="flex gap-3 rounded-xl bg-emerald-50 p-4 text-sm"><CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />{x}</div>)}</div></div></section><Callout /></Layout>;
+  return <Layout>
+    <Hero title="Regnskabet samlet – med kontrol over hver vigtig handling" lead="Bilag, bogføring, fakturaer, bankafstemning, moms og rapporter i én løsning til danske virksomheder, koncerner, bogholdere og revisorer." />
+    <section className="border-b bg-white"><div className="mx-auto max-w-7xl px-4 py-10 sm:px-6"><div className="grid gap-5 md:grid-cols-3">{[
+      ["1. Saml", "Bilag, fakturaer og bankposter kommer ind i samme arbejdsgang."],
+      ["2. Kontrollér", "Systemet finder mangler og foreslår næste handling med dokumentation."],
+      ["3. Godkend", "Mennesket godkender kritisk bogføring, betaling, moms og skat."],
+    ].map(([title, text]) => <div key={title} className="rounded-xl bg-slate-50 p-5"><p className="font-semibold text-emerald-900">{title}</p><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></div>)}</div></div></section>
+    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6"><div className="max-w-2xl"><p className="text-sm font-semibold text-emerald-700">ÉN SAMLET ARBEJDSFLADE</p><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Færre løse ender i økonomien</h2><p className="mt-4 text-slate-600">Funktionerne hænger sammen, så næste handling er tydelig, og kritiske beslutninger forbliver under menneskelig kontrol.</p></div><div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">{features.map(({icon: Icon,title,text}) => <article key={title} className="rounded-2xl border bg-white p-6 shadow-sm"><span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-emerald-800"><Icon className="h-5 w-5" /></span><h3 className="mt-5 font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></article>)}</div></section>
+    <section className="bg-white"><div className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2"><div><p className="text-sm font-semibold text-emerald-700">KONTROL FØR AUTOMATIK</p><h2 className="mt-3 text-3xl font-semibold">AI hjælper. Du godkender.</h2><p className="mt-4 leading-7 text-slate-600">AI bliver et tilkøb i Start og Drift og er inkluderet i Professionel og Enterprise. Handlinger med økonomisk eller juridisk betydning kræver godkendelse og registreres i revisionssporet.</p><Button asChild variant="outline" className="mt-6"><Link href="/priser">Se pakker og AI-priser</Link></Button></div><div className="space-y-3">{["Forklarlige bogføringsforslag", "Ingen automatisk indsendelse af moms eller skat", "Ingen betaling uden godkendelse", "Log over forslag, ændringer og godkendelser"].map(x => <div key={x} className="flex gap-3 rounded-xl bg-emerald-50 p-4 text-sm"><CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />{x}</div>)}</div></div></section>
+    <Callout />
+  </Layout>;
 }
 
 function Callout() { return <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6"><div className="rounded-3xl bg-emerald-900 px-6 py-12 text-center text-white sm:px-12"><h2 className="text-3xl font-semibold">Klar til et enklere regnskabsflow?</h2><p className="mx-auto mt-3 max-w-2xl text-emerald-100/75">Start uden betalingskort, eller book en gennemgang af løsningen.</p><div className="mt-7 flex justify-center gap-3"><Button asChild className="bg-white text-emerald-950 hover:bg-emerald-50"><Link href="/tilmeld">Prøv gratis</Link></Button><Button asChild variant="outline" className="border-white/30 text-white hover:bg-white/10 hover:text-white"><Link href="/book-demo">Book demo</Link></Button></div></div></section>; }
@@ -232,9 +256,57 @@ function Features() { useSeo("Funktioner", "Se funktionerne i ADD SmartRegnskab:
 
 function Pricing() {
   useSeo("Priser", "Vælg ADD SmartRegnskab-pakke efter bilag, posteringer, virksomheder og integrationer.", "priser");
-  const { data = [] } = useQuery<Plan[]>({ queryKey: ["/api/plans"], queryFn: async () => (await apiRequest("GET", "/api/plans")).json() });
+  const { data = [], isLoading, isError } = useQuery<Plan[]>({ queryKey: ["/api/plans"], queryFn: async () => (await apiRequest("GET", "/api/plans")).json() });
   useEffect(() => track("view_pricing"), []);
-  return <Layout><section className="mx-auto max-w-7xl px-4 py-20 text-center sm:px-6"><p className="text-sm font-semibold text-emerald-700">PRISER</p><h1 className="mt-3 text-4xl font-semibold tracking-tight">Vælg efter dit regnskabsbehov</h1><p className="mx-auto mt-4 max-w-2xl text-slate-600">Alle priser er pr. måned ekskl. moms. Årsbetaling koster ti måneders pris.</p><div className="mt-12 grid gap-5 text-left lg:grid-cols-4">{data.map((plan, i) => <article key={plan.id} className={`rounded-2xl border bg-white p-6 shadow-sm ${i===1?"ring-2 ring-emerald-700":""}`}><div className="flex items-center justify-between"><h2 className="font-semibold">{plan.name}</h2>{i===1&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800">POPULÆR</span>}</div><p className="mt-5 text-3xl font-semibold">{money(plan.monthlyPrice)}<span className="text-sm font-normal text-slate-500"> /md.</span></p><p className="mt-1 text-xs text-slate-500">{money(plan.monthlyPrice*10)} /år</p><div className="my-5 h-px bg-slate-100"/><ul className="space-y-3 text-sm">{[[`${limit(plan.maxDocuments)} bilag/md.`],[`${limit(plan.maxEntries)} posteringer/md.`],[plan.maxCompanies===1?"1 virksomhed":`${limit(plan.maxCompanies)} virksomheder`],[`${limit(plan.maxIntegrations)} integrationer`]].map(([x])=><li className="flex gap-2" key={x}><Check className="h-4 w-4 text-emerald-700"/>{x}</li>)}</ul><Button asChild className="mt-7 w-full" variant={i===1?"default":"outline"}><Link href="/tilmeld">Start gratis</Link></Button></article>)}</div></section><Callout/></Layout>;
+  return <Layout>
+    <section className="border-b bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:py-20">
+        <p className="text-sm font-semibold text-emerald-700">PAKKER OG PRISER</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight">Start med ét CVR – udvid når virksomheden vokser</h1>
+        <p className="mx-auto mt-4 max-w-3xl leading-7 text-slate-600">Grundprisen gælder én kundeorganisation. Hvert juridisk selskab har sit eget regnskab. SE-numre oprettes som enheder under selskabet og koster ikke ekstra.</p>
+        <div className="mx-auto mt-7 grid max-w-4xl gap-3 text-left text-sm sm:grid-cols-3">
+          <div className="rounded-xl bg-emerald-50 p-4"><strong>Priser</strong><span className="mt-1 block text-slate-600">Pr. måned ekskl. moms</span></div>
+          <div className="rounded-xl bg-emerald-50 p-4"><strong>Årsbetaling</strong><span className="mt-1 block text-slate-600">Betal for 10 måneder</span></div>
+          <div className="rounded-xl bg-emerald-50 p-4"><strong>Prøveperiode</strong><span className="mt-1 block text-slate-600">14 dage uden betalingskort</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+      {isLoading ? <p className="rounded-2xl border bg-white p-8 text-center text-slate-600">Henter pakker…</p> : isError ? <p className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-red-800">Pakkerne kunne ikke hentes. Prøv igen om lidt.</p> : <div className="grid gap-5 text-left md:grid-cols-2 xl:grid-cols-4">{data.map((plan) => {
+        const recommended = plan.slug === "virksomhed" || plan.slug === "drift";
+        return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-white p-6 shadow-sm ${recommended ? "ring-2 ring-emerald-700" : ""}`}>
+          <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-semibold">{plan.name}</h2><p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{planAudience[plan.slug] ?? plan.description}</p></div>{recommended && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800">POPULÆR</span>}</div>
+          <p className="mt-5 text-3xl font-semibold">{money(plan.monthlyPrice)}<span className="text-sm font-normal text-slate-500"> /md.</span></p>
+          <p className="mt-1 text-xs text-slate-500">{money(plan.monthlyPrice * 10)} ved årsbetaling</p>
+          <div className="my-5 h-px bg-slate-100" />
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Det får du</p>
+          <ul className="mt-3 flex-1 space-y-3 text-sm">
+            {[`${limit(plan.maxDocuments)} bilag pr. måned`, `${limit(plan.maxEntries)} posteringer pr. måned`, `${limit(plan.maxIntegrations)} aktive integrationer`, `${plan.includedCompanies || 1} juridisk CVR inkluderet`, "Ubegrænsede brugere, kunder og leverandører"].map((item) => <li className="flex gap-2" key={item}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><span>{item}</span></li>)}
+          </ul>
+          <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-950"><Sparkles className="mr-1 inline h-4 w-4" /><strong>AI:</strong> {aiSummary(plan)}</div>
+          {plan.additionalCompanyPrice > 0 && <p className="mt-3 text-xs leading-5 text-slate-600"><strong>Flere selskaber:</strong> +{money(plan.additionalCompanyPrice)} pr. ekstra CVR. Hvert ekstra CVR giver {limit(plan.aiCreditsPerAdditionalCompany)} ekstra AI-handlinger.</p>}
+          <Button asChild className="mt-6 w-full" variant={recommended ? "default" : "outline"}><Link href={`/tilmeld?pakke=${encodeURIComponent(plan.slug)}`}>Prøv {plan.name} gratis</Link></Button>
+        </article>;
+      })}</div>}
+    </section>
+
+    <section className="bg-white">
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-[.8fr_1.2fr]">
+          <div><p className="text-sm font-semibold text-emerald-700">SÅDAN BEREGNES PRISEN</p><h2 className="mt-3 text-3xl font-semibold">Ingen skjulte selskabspriser</h2><p className="mt-4 leading-7 text-slate-600">Et CVR er et selvstændigt juridisk regnskab. Et SE-nummer er en driftsenhed under et CVR og udløser derfor ikke et ekstra abonnement.</p></div>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-xl border p-5"><div className="flex items-center justify-between gap-4"><strong>Én almindelig virksomhed</strong><span className="font-semibold">Pakkens grundpris</span></div><p className="mt-2 text-slate-600">Ét CVR og eventuelle SE-numre.</p></div>
+            <div className="rounded-xl border p-5"><div className="flex items-center justify-between gap-4"><strong>Koncern med 3 CVR på Professionel</strong><span className="font-semibold">1.547 kr./md.</span></div><p className="mt-2 text-slate-600">549 kr. + 2 × 499 kr. · 6.000 AI-handlinger · SE-numre inkluderet.</p></div>
+            <div className="rounded-xl border p-5"><div className="flex items-center justify-between gap-4"><strong>Start eller Drift med AI</strong><span className="font-semibold">Valgfrit tilkøb</span></div><p className="mt-2 text-slate-600">AI lægges kun til abonnementet, hvis virksomhedens administrator vælger det.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6"><h2 className="text-center text-3xl font-semibold">Hvad betyder ordene?</h2><div className="mt-8 grid gap-4 md:grid-cols-3"><article className="rounded-2xl border bg-white p-6"><Building2 className="h-5 w-5 text-emerald-700"/><h3 className="mt-3 font-semibold">Juridisk CVR</h3><p className="mt-2 text-sm leading-6 text-slate-600">Et selvstændigt selskab med separat bogføring, moms og årsafslutning.</p></article><article className="rounded-2xl border bg-white p-6"><Gauge className="h-5 w-5 text-emerald-700"/><h3 className="mt-3 font-semibold">SE-nummer</h3><p className="mt-2 text-sm leading-6 text-slate-600">En enhed under et CVR. Den kan bruges som dimension og koster ikke ekstra.</p></article><article className="rounded-2xl border bg-white p-6"><Sparkles className="h-5 w-5 text-emerald-700"/><h3 className="mt-3 font-semibold">AI-handling</h3><p className="mt-2 text-sm leading-6 text-slate-600">Én målt AI-opgave. Kritisk bogføring, betaling, moms og skat kræver fortsat godkendelse.</p></article></div></section>
+    <Callout />
+  </Layout>;
 }
 
 function Integrations() { useSeo("Integrationer", "Forbind ADD SmartRegnskab med bankdata, e-fakturering, import og sikre API'er.", "integrationer"); return <Layout><Hero eyebrow="Integrationer" title="Forbind de vigtigste dele af økonomiflowet" lead="Her vises kun forbindelser, som kunden kan tilslutte eller bruge i sit regnskabsarbejde."/><section className="mx-auto max-w-5xl px-4 py-20 sm:px-6"><div className="grid gap-4 sm:grid-cols-2">{integrations.map(([name,text,status])=><article key={name} className="rounded-2xl border bg-white p-6"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold">{name}</h2><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium">{status}</span></div><p className="mt-3 text-sm leading-6 text-slate-600">{text}</p></article>)}</div><p className="mt-8 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">Systemmail, abonnementbetaling og ekstern backup er interne driftsydelser. De overvåges af ADD SmartRegnskab og er derfor ikke integrationer, som kunden skal opsætte.</p></section></Layout>; }

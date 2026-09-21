@@ -137,7 +137,10 @@ export function Tilmeld() {
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
-  const [selectedPlan, setSelectedPlan] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState(() => {
+    const hashQuery = window.location.hash.includes("?") ? window.location.hash.split("?")[1] : "";
+    return new URLSearchParams(hashQuery || window.location.search).get("pakke") ?? "";
+  });
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [result, setResult] = useState<ApiResult | null>(null);
@@ -263,8 +266,10 @@ export function Tilmeld() {
                         <span className="font-medium text-sm text-foreground truncate">{plan.name}</span>
                         {index === 0 && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Første pakke</span>}
                       </div>
-                      <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{money(plan.monthlyPrice)} <span className="font-normal text-xs text-muted-foreground">/ md.</span></p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">+ {money(plan.pricePerEmployee)} pr. ansat / md.</p>
+                      <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{money(plan.monthlyPrice)} <span className="font-normal text-xs text-muted-foreground">/ md. ekskl. moms</span></p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{plan.includedCompanies || 1} CVR inkluderet · SE-numre gratis</p>
+                      <p className="text-xs leading-5 text-muted-foreground">{plan.includedAiCredits > 0 ? `${new Intl.NumberFormat("da-DK").format(plan.includedAiCredits)} AI-handlinger inkluderet` : `AI er valgfrit tilkøb: ${money(plan.aiAddonPrice)}/md.`}</p>
+                      {plan.additionalCompanyPrice > 0 && <p className="text-xs leading-5 text-muted-foreground">Ekstra CVR: +{money(plan.additionalCompanyPrice)}/md.</p>}
                     </button>
                   );
                 })}
