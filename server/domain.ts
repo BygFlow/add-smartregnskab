@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import type { Task, Customer, Absence } from "@shared/schema";
+import { postingPriceTier } from "@shared/posting-pricing";
 
 // ══════════════════════════════════════════════════
 //  Geofence — var medarbejderen faktisk på adressen?
@@ -289,9 +290,56 @@ export interface BillingPreview {
   aiAddonCharge: number;
   aiCreditsIncluded: number;
   aiCostCapDkk: number;
+  annualPostings: number;
+  postingPeriodStart: string;
+  postingPeriodEnd: string;
+  postingTierLimit: number;
+  postingMonthlySurcharge: number;
+  postingContactRequired: boolean;
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
+}
+
+function accountingYearBounds(fiscalYearStart: string | null | undefined, reference = new Date()): { start: string; end: string } {
+  const today = reference.toISOString().slice(0, 10);
+  const match = String(fiscalYearStart ?? "").match(/^\d{4}-(\d{2})-(\d{2})$/);
+  const monthDay = match ? `${match[1]}-${match[2]}` : "01-01";
+  const currentYear = reference.getUTCFullYear();
+  const startYear = today >= `${currentYear}-${monthDay}` ? currentYear : currentYear - 1;
+  return {
+    start: `${startYear}-${monthDay}`,
+    end: addDays(`${startYear + 1}-${monthDay}`, -1),
+  };
+}
+
+export async function organizationPostingUsage(companyId: number) {
+  const currentCompany = await storage.getCompany(companyId);
+  const ownerId = currentCompany?.subscriptionOwnerId || companyId;
+  const organizationCompanies = (await storage.getCompanies()).filter(
+    (company) => (company.subscriptionOwnerId || company.id) === ownerId && company.kind !== "platform",
+  );
+  const profile = (await storage.all("business_profiles", ownerId))[0] as { fiscalYearStart?: string | null } | undefined;
+  const period = accountingYearBounds(profile?.fiscalYearStart);
+  let annualPostings = 0;
+  for (const company of organizationCompanies) {
+    const entries = (await storage.all("journal_entries", company.id)).filter((entry: any) => {
+      const date = String(entry.date ?? entry.createdAt ?? "").slice(0, 10);
+      return date >= period.start && date <= period.end;
+    });
+    const entryIds = new Set(entries.map((entry: any) => Number(entry.id)));
+    const lines = await storage.all("journal_lines", company.id);
+    const lineCountByEntry = new Map<number, number>();
+    for (const line of lines as any[]) {
+      const entryId = Number(line.journalEntryId);
+      if (!entryIds.has(entryId)) continue;
+      lineCountByEntry.set(entryId, (lineCountByEntry.get(entryId) ?? 0) + 1);
+    }
+    // Ældre importer kan mangle linjer. De tæller mindst én postering, så
+    // forbruget aldrig bliver kunstigt nul.
+    annualPostings += entries.reduce((sum: number, entry: any) => sum + Math.max(1, lineCountByEntry.get(Number(entry.id)) ?? 0), 0);
+  }
+  return { annualPostings, period, tier: postingPriceTier(annualPostings) };
 }
 
 /**
@@ -325,10 +373,15 @@ export async function previewBilling(companyId: number): Promise<BillingPreview 
   const aiCostCapDkk = plan.aiCostCap
     + additionalCompanyCount * plan.aiCostCapPerAdditionalCompany
     + (aiAddonEnabled ? Math.max(10, round2(plan.aiAddonPrice * 0.25)) : 0);
-  let net = round2(plan.monthlyPrice + employeeCharge + additionalCompanyCharge + aiAddonCharge);
+  const postingUsage = await organizationPostingUsage(ownerId);
+  const recurringMonthly = round2(plan.monthlyPrice + employeeCharge + additionalCompanyCharge + aiAddonCharge);
+  let net = round2(recurringMonthly + postingUsage.tier.monthlySurcharge);
 
-  // Årlig betaling: 12 måneder med 2 måneders rabat
-  if (sub.billingCycle === "aarlig") net = round2(net * 10);
+  // Årlig betaling: grundabonnementet får 2 måneders rabat. Det variable
+  // posteringstillæg faktureres for alle 12 måneder.
+  if (sub.billingCycle === "aarlig") {
+    net = round2(recurringMonthly * 10 + postingUsage.tier.monthlySurcharge * 12);
+  }
 
   const vat = round2(net * 0.25);
   return {
@@ -349,6 +402,12 @@ export async function previewBilling(companyId: number): Promise<BillingPreview 
     aiAddonCharge,
     aiCreditsIncluded,
     aiCostCapDkk,
+    annualPostings: postingUsage.annualPostings,
+    postingPeriodStart: postingUsage.period.start,
+    postingPeriodEnd: postingUsage.period.end,
+    postingTierLimit: postingUsage.tier.annualLimit,
+    postingMonthlySurcharge: postingUsage.tier.monthlySurcharge,
+    postingContactRequired: postingUsage.tier.contactRequired,
     netAmount: net,
     vatAmount: vat,
     totalAmount: round2(net + vat),
@@ -428,13 +487,10 @@ export async function platformMetrics(today: string) {
     if (sub.status !== "aktiv") continue;
     activeCount++;
 
-    const additionalCompanies = Math.max(0, organizationIds.length - Math.max(1, plan.includedCompanies));
-    const monthly = plan.monthlyPrice
-      + employees * plan.pricePerEmployee
-      + additionalCompanies * plan.additionalCompanyPrice
-      + (sub.aiAddonEnabled && plan.aiAddonCredits > 0 ? plan.aiAddonPrice : 0);
-    // Årsabonnementer regnes om til en månedlig værdi (10 mdr. betalt over 12)
-    mrr += sub.billingCycle === "aarlig" ? (monthly * 10) / 12 : monthly;
+    const charge = await previewBilling(c.id);
+    if (!charge) continue;
+    // Årsabonnementets faktiske fakturaværdi fordeles over 12 måneder.
+    mrr += sub.billingCycle === "aarlig" ? charge.netAmount / 12 : charge.netAmount;
   }
 
   const invoices = await storage.getPlatformInvoices();

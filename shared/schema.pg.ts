@@ -435,10 +435,10 @@ export const plans = pgTable("plans", {
   maxUsers: integer("max_users").notNull().default(1), // -1 = ubegrænset
   maxEmployees: integer("max_employees").notNull().default(10), // -1 = ubegrænset
   maxCustomers: integer("max_customers").notNull().default(25),
-  maxDocuments: integer("max_documents").notNull().default(500),
-  maxEntries: integer("max_entries").notNull().default(5000),
+  maxDocuments: integer("max_documents").notNull().default(-1),
+  maxEntries: integer("max_entries").notNull().default(1000), // inkluderede posteringer pr. regnskabsår
   maxCompanies: integer("max_companies").notNull().default(1),
-  maxIntegrations: integer("max_integrations").notNull().default(2),
+  maxIntegrations: integer("max_integrations").notNull().default(-1),
   includedCompanies: integer("included_companies").notNull().default(1),
   additionalCompanyPrice: doublePrecision("additional_company_price").notNull().default(0),
   includedAiCredits: integer("included_ai_credits").notNull().default(0),

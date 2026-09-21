@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeader, SectionCard, StatusChip } from "@/components/premium";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { POSTING_PRICE_TIERS, estimatedMonthlyDocuments } from "@shared/posting-pricing";
 
 type Plan = {
   id: number;
@@ -43,10 +44,12 @@ type SubscriptionOverview = {
   usage: {
     documents: number; maxDocuments: number;
     entries: number; maxEntries: number;
+    postingMonthlySurcharge?: number; postingContactRequired?: boolean;
+    postingPeriodStart?: string; postingPeriodEnd?: string;
     companies: number; maxCompanies: number;
     integrations: number; maxIntegrations: number;
   };
-  nextCharge?: { totalAmount?: number; netAmount?: number; additionalCompanyCount?: number; additionalCompanyCharge?: number; aiAddonEnabled?: boolean; aiAddonCharge?: number; aiCreditsIncluded?: number } | null;
+  nextCharge?: { totalAmount?: number; netAmount?: number; additionalCompanyCount?: number; additionalCompanyCharge?: number; aiAddonEnabled?: boolean; aiAddonCharge?: number; aiCreditsIncluded?: number; postingMonthlySurcharge?: number; postingTierLimit?: number } | null;
   invoices: Array<{ id: number; invoiceNumber?: string; issueDate?: string; dueDate?: string; totalAmount?: number; status?: string }>;
 };
 
@@ -172,7 +175,8 @@ export default function Abonnement() {
         {overview.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="space-y-3">
           <div className="flex items-start justify-between gap-3"><div><p className="text-xl font-semibold">{currentPlan?.name ?? "Ingen pakke"}</p><p className="text-sm text-muted-foreground">{currentPlan ? `${money(currentPlan.monthlyPrice)} pr. måned ekskl. moms` : "Kontakt support"}</p></div><StatusChip status={subscription?.status ?? "ukendt"} /></div>
           <div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-3"><span className="block text-muted-foreground">Fakturering</span><strong>{subscription?.billingCycle === "aarlig" ? "Årlig" : "Månedlig"}</strong></div><div className="rounded-lg bg-muted p-3"><span className="block text-muted-foreground">Næste periode</span><strong>{subscription?.currentPeriodEnd ?? "—"}</strong></div></div>
-          {overview.data?.usage && <div className="grid grid-cols-2 gap-2 text-[11px]"><div>Bilag denne måned: <strong>{overview.data.usage.documents}/{limit(overview.data.usage.maxDocuments)}</strong></div><div>Posteringer: <strong>{overview.data.usage.entries}/{limit(overview.data.usage.maxEntries)}</strong></div><div>Virksomheder: <strong>{overview.data.usage.companies}/{limit(overview.data.usage.maxCompanies)}</strong></div><div>Integrationer: <strong>{overview.data.usage.integrations}/{limit(overview.data.usage.maxIntegrations)}</strong></div></div>}
+          {overview.data?.usage && <div className="grid grid-cols-2 gap-2 text-[11px]"><div>Bilag i regnskabsåret: <strong>{overview.data.usage.documents} · fri opbevaring</strong></div><div>Posteringer i regnskabsåret: <strong>{overview.data.usage.entries}/{limit(overview.data.usage.maxEntries)}</strong></div><div>Virksomheder: <strong>{overview.data.usage.companies}/{limit(overview.data.usage.maxCompanies)}</strong></div><div>Integrationer: <strong>{overview.data.usage.integrations} · ubegrænset</strong></div></div>}
+          {overview.data?.usage && <div className={`rounded-lg border p-3 text-xs ${overview.data.usage.postingContactRequired ? "border-amber-300 bg-amber-50 text-amber-950" : "bg-muted/40"}`}><strong>Posteringstillæg: {money(overview.data.usage.postingMonthlySurcharge ?? 0)}/md.</strong><span className="mt-1 block">Regnskabsår {overview.data.usage.postingPeriodStart ?? "—"} – {overview.data.usage.postingPeriodEnd ?? "—"}. {overview.data.usage.postingContactRequired ? "Kontakt os for en individuel aftale." : "Trinnet reguleres automatisk efter årsforbruget."}</span></div>}
         </div>}
       </SectionCard>
 
@@ -207,7 +211,7 @@ export default function Abonnement() {
         return <div key={plan.id} className={`flex flex-col rounded-xl border p-4 ${selected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-background"}`}>
           <div className="flex items-start justify-between gap-2"><div><p className="font-semibold">{plan.name}</p><p className="mt-1 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md.</span></p><p className="text-[11px] text-muted-foreground">{money(plan.monthlyPrice * 10)} / år · ekskl. moms</p></div>{selected && <StatusChip status="valgt" />}</div>
           <p className="mt-3 min-h-10 text-xs text-muted-foreground">{plan.description}</p>
-          <div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]"><div className="rounded-md bg-muted p-2">Bilag/md.<strong className="block">{limit(plan.maxDocuments)}</strong></div><div className="rounded-md bg-muted p-2">Posteringer/md.<strong className="block">{limit(plan.maxEntries)}</strong></div><div className="rounded-md bg-muted p-2">Virksomheder<strong className="block">{limit(plan.maxCompanies)}</strong></div><div className="rounded-md bg-muted p-2">Integrationer<strong className="block">{limit(plan.maxIntegrations)}</strong></div></div>
+          <div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]"><div className="rounded-md bg-muted p-2">Bilag<strong className="block">Ubegrænset</strong></div><div className="rounded-md bg-muted p-2">Posteringer/år<strong className="block">1.000 inkl.</strong></div><div className="rounded-md bg-muted p-2">Virksomheder<strong className="block">{limit(plan.maxCompanies)}</strong></div><div className="rounded-md bg-muted p-2">Integrationer<strong className="block">Ubegrænset</strong></div></div>
           <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-[11px]">{plan.includedAiCredits > 0 ? <><strong>{new Intl.NumberFormat("da-DK").format(plan.includedAiCredits)} AI-handlinger inkluderet</strong>{plan.aiCreditsPerAdditionalCompany > 0 && <span className="block text-muted-foreground">+{new Intl.NumberFormat("da-DK").format(plan.aiCreditsPerAdditionalCompany)} pr. ekstra CVR</span>}</> : <><strong>AI som tilkøb</strong><span className="block text-muted-foreground">{new Intl.NumberFormat("da-DK").format(plan.aiAddonCredits)} handlinger for {money(plan.aiAddonPrice)}/md.</span></>}</div>
           {plan.additionalCompanyPrice > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{plan.includedCompanies} CVR inkluderet · +{money(plan.additionalCompanyPrice)} pr. ekstra CVR. SE-numre er inkluderet.</p>}
           <ul className="my-4 flex-1 space-y-1.5 text-xs">{included.slice(0, 6).map((feature) => <li key={feature} className="flex gap-2"><Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" /><span>{featureLabels[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>
@@ -215,6 +219,12 @@ export default function Abonnement() {
         </div>;
       })}</div>}
       {!canManage && <p className="mt-4 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">Kun virksomhedens administrator kan skifte pakke. Alle brugere kan se priser og indhold.</p>}
+    </SectionCard>
+
+    <SectionCard title="Posteringstrin" icon={<FileText className="h-4 w-4" />}>
+      <p className="mb-3 text-xs leading-5 text-muted-foreground">Prisen følger det samlede antal posteringer i kundeorganisationens regnskabsår. Bilag, brugere og integrationer begrænses ikke.</p>
+      <div className="divide-y sm:hidden">{POSTING_PRICE_TIERS.map((tier) => <div className="grid grid-cols-[1fr_auto] gap-2 py-3 text-xs" key={tier.annualLimit}><div><strong>Op til {limit(tier.annualLimit)}</strong><span className="mt-1 block text-muted-foreground">ca. {limit(estimatedMonthlyDocuments(tier.annualLimit))} bilag/md.</span></div><strong>{tier.monthlySurcharge ? `+${money(tier.monthlySurcharge)}/md.` : "Inkluderet"}</strong></div>)}</div>
+      <div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[520px] text-left text-xs"><thead><tr className="border-b text-muted-foreground"><th className="py-2 pr-3 font-medium">Posteringer/år</th><th className="py-2 pr-3 font-medium">Ca. bilag/md.</th><th className="py-2 font-medium">Tillæg/md.</th></tr></thead><tbody className="divide-y">{POSTING_PRICE_TIERS.map((tier) => <tr key={tier.annualLimit}><td className="py-2 pr-3 font-medium">Op til {limit(tier.annualLimit)}</td><td className="py-2 pr-3">ca. {limit(estimatedMonthlyDocuments(tier.annualLimit))}</td><td className="py-2">{tier.monthlySurcharge ? `+${money(tier.monthlySurcharge)}` : "Inkluderet"}</td></tr>)}</tbody></table></div>
     </SectionCard>
 
     <SectionCard title="Abonnementsfakturaer" icon={<FileText className="h-4 w-4" />} noPadding>

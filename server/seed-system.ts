@@ -8,7 +8,7 @@ const DEFAULT_PLANS = [
     name: "Start", slug: "start",
     description: "En enkel grundpakke til selvstændige, der vil i gang med digital bogføring.",
     monthlyPrice: 199, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
-    maxDocuments: 500, maxEntries: 5000, maxCompanies: 1, maxIntegrations: 2,
+    maxDocuments: -1, maxEntries: 1000, maxCompanies: 1, maxIntegrations: -1,
     includedCompanies: 1, additionalCompanyPrice: 0,
     includedAiCredits: 0, aiAddonPrice: 99, aiAddonCredits: 250,
     aiCreditsPerAdditionalCompany: 0, aiCostCap: 0, aiCostCapPerAdditionalCompany: 0,
@@ -19,7 +19,7 @@ const DEFAULT_PLANS = [
     name: "Drift", slug: "virksomhed",
     description: "Automatiseret bogføring, bank, betalinger og økonomistyring til virksomheder i vækst.",
     monthlyPrice: 349, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
-    maxDocuments: 2500, maxEntries: 25000, maxCompanies: 1, maxIntegrations: 5,
+    maxDocuments: -1, maxEntries: 1000, maxCompanies: 1, maxIntegrations: -1,
     includedCompanies: 1, additionalCompanyPrice: 0,
     includedAiCredits: 0, aiAddonPrice: 149, aiAddonCredits: 1000,
     aiCreditsPerAdditionalCompany: 0, aiCostCap: 0, aiCostCapPerAdditionalCompany: 0,
@@ -34,7 +34,7 @@ const DEFAULT_PLANS = [
     name: "Professionel", slug: "professionel",
     description: "Fuld økonomifunktion med avanceret kontrol, revision, integrationer og sikker backup.",
     monthlyPrice: 549, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
-    maxDocuments: 10000, maxEntries: 100000, maxCompanies: 5, maxIntegrations: 15,
+    maxDocuments: -1, maxEntries: 1000, maxCompanies: 5, maxIntegrations: -1,
     includedCompanies: 1, additionalCompanyPrice: 499,
     includedAiCredits: 3000, aiAddonPrice: 0, aiAddonCredits: 0,
     aiCreditsPerAdditionalCompany: 1500, aiCostCap: 150, aiCostCapPerAdditionalCompany: 100,
@@ -50,7 +50,7 @@ const DEFAULT_PLANS = [
     name: "Enterprise", slug: "enterprise",
     description: "Alle funktioner, koncernregnskab, udvidet API, kontrolspor og prioriteret SLA.",
     monthlyPrice: 749, pricePerEmployee: 0, maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
-    maxDocuments: -1, maxEntries: -1, maxCompanies: -1, maxIntegrations: -1,
+    maxDocuments: -1, maxEntries: 1000, maxCompanies: -1, maxIntegrations: -1,
     includedCompanies: 5, additionalCompanyPrice: 399,
     includedAiCredits: 5000, aiAddonPrice: 0, aiAddonCredits: 0,
     aiCreditsPerAdditionalCompany: 1500, aiCostCap: 250, aiCostCapPerAdditionalCompany: 100,
@@ -173,6 +173,9 @@ export function seedSystemData(): void {
           sortOrder: plan.sortOrder,
         }).where(eq(plans.id, current.id)).run();
       }
+      // Bilag og integrationer er ikke selvstændige forbrugsgrænser. Alle
+      // pakker inkluderer samme første årlige posteringstrin.
+      tx.update(plans).set({ maxDocuments: -1, maxEntries: 1000, maxIntegrations: -1 }).run();
     });
   }
 

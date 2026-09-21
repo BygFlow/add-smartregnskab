@@ -71,7 +71,7 @@ import { EXPORT_FORMATS, getFormat, buildPayrollFile, buildAccountingFile } from
 import {
   evaluateGeofence, generateRecurrences, absenceHours, absenceOnDate, ABSENCE_WAGE_CODES,
   computeTotals, dueDateFrom, overdueInvoices, daysBetween, round2, addDays,
-  previewBilling, issueSubscriptionInvoice, platformMetrics,
+  previewBilling, issueSubscriptionInvoice, organizationPostingUsage, platformMetrics,
   vatSetupFor, VAT_MODE_LABELS, contractCharge, PRICING_MODEL_LABELS,
   scoreInspection, INSPECTION_AREAS, INSPECTION_RESULT_LABELS,
 } from "./domain";
@@ -1950,9 +1950,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const userCount = (await Promise.all(organizationIds.map((id) => storage.getUsers(id)))).flat().filter((user) => user.active === 1).length;
     const employeeCount = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
     const customerCount = (await Promise.all(organizationIds.map((id) => storage.getCustomers(id)))).flat().length;
-    const month = nowIso().slice(0, 7);
     const organizationVouchers = (await Promise.all(organizationIds.map((id) => storage.all("vouchers", id)))).flat();
-    const organizationEntries = (await Promise.all(organizationIds.map((id) => storage.all("journal_entries", id)))).flat();
+    const postingUsage = await organizationPostingUsage(cid);
     const organizationIntegrations = (await Promise.all(organizationIds.map(async (id) => [
       ...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id)),
     ]))).flat();
@@ -1967,10 +1966,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         maxEmployees: plan?.maxEmployees ?? -1,
         customers: customerCount,
         maxCustomers: plan?.maxCustomers ?? -1,
-        documents: organizationVouchers.filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length,
+        documents: organizationVouchers.filter((item: any) => {
+          const date = String(item.createdAt ?? item.date ?? "").slice(0, 10);
+          return date >= postingUsage.period.start && date <= postingUsage.period.end;
+        }).length,
         maxDocuments: plan?.maxDocuments ?? -1,
-        entries: organizationEntries.filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length,
-        maxEntries: plan?.maxEntries ?? -1,
+        entries: postingUsage.annualPostings,
+        maxEntries: postingUsage.tier.annualLimit,
+        postingMonthlySurcharge: postingUsage.tier.monthlySurcharge,
+        postingContactRequired: postingUsage.tier.contactRequired,
+        postingPeriodStart: postingUsage.period.start,
+        postingPeriodEnd: postingUsage.period.end,
         companies: organizationCompanyCount,
         maxCompanies: plan?.maxCompanies ?? -1,
         integrations: organizationIntegrations.filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length,
@@ -2016,23 +2022,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const sub = await storage.getSubscriptionByCompany(cid);
     if (!sub) return res.status(400).json({ error: "Virksomheden har ikke et abonnement." });
 
-    // Nedgradering må ikke efterlade et forbrug over de regnskabsfaglige pakkegrænser.
-    const month = nowIso().slice(0, 7);
+    // Posteringstrinnet følger årsforbruget uafhængigt af grundpakken. Ved
+    // pakkeskift kontrolleres derfor kun antallet af juridiske selskaber.
     const currentCompany = await storage.getCompany(cid);
     const ownerId = currentCompany?.subscriptionOwnerId || cid;
     const organizationIds = (await storage.getCompanies())
       .filter((company) => (company.subscriptionOwnerId || company.id) === ownerId)
       .map((company) => company.id);
-    const documentCount = (await Promise.all(organizationIds.map((id) => storage.all("vouchers", id)))).flat()
-      .filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
-    const entryCount = (await Promise.all(organizationIds.map((id) => storage.all("journal_entries", id)))).flat()
-      .filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
-    const integrationCount = (await Promise.all(organizationIds.map(async (id) => [
-      ...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id)),
-    ]))).flat().filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
-    for (const [count, limit, label] of [[documentCount, plan.maxDocuments, "bilag denne måned"], [entryCount, plan.maxEntries, "posteringer denne måned"], [integrationCount, plan.maxIntegrations, "aktive integrationer"]] as const) {
-      if (limit !== -1 && count > limit) return res.status(409).json({ error: `${plan.name} tillader ${limit} ${label}, og I bruger allerede ${count}. Vælg en større pakke.` });
-    }
     const companyCount = organizationIds.length;
     if (plan.maxCompanies !== -1 && companyCount > plan.maxCompanies) {
       return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og I har allerede ${companyCount}. Vælg en større pakke.` });
@@ -2066,7 +2062,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const organizationIds = allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id).map((company) => company.id);
       const employees = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
       const charge = await previewBilling(c.id);
-      const monthly = charge ? charge.netAmount / (sub?.billingCycle === "aarlig" ? 10 : 1) : 0;
+      const monthly = charge ? charge.netAmount / (sub?.billingCycle === "aarlig" ? 12 : 1) : 0;
       out.push({
         id: c.id,
         name: c.name,
@@ -2104,7 +2100,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // AI-insigt: virksomhedens sundhed
     const unpaidInvoices = invoices.filter((i) => i.status !== "betalt");
     const outstanding = unpaidInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
-    const monthlyValue = nextCharge ? nextCharge.netAmount / (sub?.billingCycle === "aarlig" ? 10 : 1) : 0;
+    const monthlyValue = nextCharge ? nextCharge.netAmount / (sub?.billingCycle === "aarlig" ? 12 : 1) : 0;
     const healthScore = company.status === "aktiv" ? 100 : company.status === "proeve" ? 70 : company.status === "i_restance" ? 40 : company.status === "spaerret" ? 15 : 5;
     res.json({
       company: {
@@ -2462,22 +2458,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!sub) return res.status(404).json({ error: "Virksomheden har ikke et abonnement." });
     const plan = await storage.getPlan(Number(req.body?.planId));
     if (!plan) return res.status(400).json({ error: "Vælg en gyldig pakke." });
-    const month = nowIso().slice(0, 7);
     const company = await storage.getCompany(id);
     const ownerId = company?.subscriptionOwnerId || id;
     const organizationIds = (await storage.getCompanies())
       .filter((item) => (item.subscriptionOwnerId || item.id) === ownerId)
       .map((item) => item.id);
-    const documentCount = (await Promise.all(organizationIds.map((companyId) => storage.all("vouchers", companyId)))).flat()
-      .filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
-    const entryCount = (await Promise.all(organizationIds.map((companyId) => storage.all("journal_entries", companyId)))).flat()
-      .filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
-    const integrationCount = (await Promise.all(organizationIds.map(async (companyId) => [
-      ...(await storage.getIntegrations(companyId)), ...(await storage.all("accounting_integrations", companyId)),
-    ]))).flat().filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
-    for (const [count, limit, label] of [[documentCount, plan.maxDocuments, "bilag denne måned"], [entryCount, plan.maxEntries, "posteringer denne måned"], [integrationCount, plan.maxIntegrations, "aktive integrationer"]] as const) {
-      if (limit !== -1 && count > limit) return res.status(409).json({ error: `${plan.name} tillader ${limit} ${label}, og virksomheden bruger allerede ${count}.` });
-    }
     if (plan.maxCompanies !== -1 && organizationIds.length > plan.maxCompanies) {
       return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og kundeorganisationen har allerede ${organizationIds.length}.` });
     }
@@ -4310,18 +4295,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/journal-entries", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const limit = await checkAccountingLimit(tenantId(req), "entries");
     if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
-    const data = validate(insertJournalEntrySchema, { ...req.body, companyId: tenantId(req) });
+    const cid = tenantId(req);
+    const usageBefore = await organizationPostingUsage(cid);
+    const data = validate(insertJournalEntrySchema, { ...req.body, companyId: cid });
     const lines = (req.body as any)?.lines || [];
     if (["bogført", "bogfort", "afstemt"].includes(String(data.status || "kladde"))) {
       const debit = lines.reduce((sum: number, line: any) => sum + Number(line.debit || 0), 0);
       const credit = lines.reduce((sum: number, line: any) => sum + Number(line.credit || 0), 0);
       if (lines.length < 2 || Math.abs(debit - credit) > 0.005) return res.status(400).json({ error: "En bogført postering skal have mindst to linjer og balancere i debet/kredit." });
     }
-    const item = await storage.insert("journal_entries", { ...data, companyId: tenantId(req), createdAt: new Date().toISOString() });
+    const item = await storage.insert("journal_entries", { ...data, companyId: cid, createdAt: new Date().toISOString() });
     await audit(req, "opret", "journal_entry", item.id, data.entryNumber);
     // Bogfør linjer hvis medsendt
     for (const line of lines) {
-      await storage.insert("journal_lines", { ...line, companyId: tenantId(req), journalEntryId: item.id });
+      await storage.insert("journal_lines", { ...line, companyId: cid, journalEntryId: item.id });
+    }
+    const usageAfter = await organizationPostingUsage(cid);
+    const crossedTier = usageAfter.tier.annualLimit > usageBefore.tier.annualLimit
+      || usageAfter.tier.contactRequired !== usageBefore.tier.contactRequired;
+    const warningThreshold = [0.8, 0.95]
+      .map((ratio) => ({ ratio, count: Math.ceil(usageBefore.tier.annualLimit * ratio) }))
+      .find(({ count }) => usageBefore.annualPostings < count && usageAfter.annualPostings >= count);
+    if (crossedTier) {
+      await storage.createNotification({
+        companyId: cid,
+        title: usageAfter.tier.contactRequired ? "Posteringsforbrug kræver en individuel aftale" : "Posteringstrinnet er opgraderet",
+        message: usageAfter.tier.contactRequired
+          ? `Organisationen har nu ${usageAfter.annualPostings} posteringer i regnskabsåret. Kontakt ADD SmartRegnskab om næste pristrin.`
+          : `Organisationen er automatisk flyttet til op til ${usageAfter.tier.annualLimit} posteringer pr. regnskabsår. Tillægget er ${usageAfter.tier.monthlySurcharge} kr. pr. måned ekskl. moms.`,
+        type: "warning",
+        read: false,
+        createdAt: nowIso(),
+      });
+    } else if (warningThreshold) {
+      await storage.createNotification({
+        companyId: cid,
+        title: `${Math.round(warningThreshold.ratio * 100)} % af posteringstrinnet er brugt`,
+        message: `Organisationen har brugt ${usageAfter.annualPostings} af ${usageAfter.tier.annualLimit} posteringer i det aktuelle regnskabsår.`,
+        type: "warning",
+        read: false,
+        createdAt: nowIso(),
+      });
     }
     res.json(item);
   }));

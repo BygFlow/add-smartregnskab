@@ -151,23 +151,26 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.deepEqual([startPlan.monthlyPrice, businessPlan.monthlyPrice, professionalPlan.monthlyPrice, enterprisePlan.monthlyPrice], [199, 349, 549, 749]);
     assert.deepEqual(
       [startPlan.maxDocuments, startPlan.maxEntries, startPlan.maxCompanies, startPlan.maxIntegrations],
-      [500, 5000, 1, 2],
+      [-1, 1000, 1, -1],
     );
     assert.deepEqual(
       [businessPlan.maxDocuments, businessPlan.maxEntries, businessPlan.maxCompanies, businessPlan.maxIntegrations],
-      [2500, 25000, 1, 5],
+      [-1, 1000, 1, -1],
     );
     assert.deepEqual(
       [professionalPlan.maxDocuments, professionalPlan.maxEntries, professionalPlan.maxCompanies, professionalPlan.maxIntegrations],
-      [10000, 100000, 5, 15],
+      [-1, 1000, 5, -1],
     );
     assert.deepEqual(
       [enterprisePlan.maxDocuments, enterprisePlan.maxEntries, enterprisePlan.maxCompanies, enterprisePlan.maxIntegrations],
-      [-1, -1, -1, -1],
+      [-1, 1000, -1, -1],
     );
     assert.ok(plans.every((plan) => plan.maxUsers === -1));
     assert.ok(plans.every((plan) => plan.maxEmployees === -1));
     assert.ok(plans.every((plan) => plan.maxCustomers === -1));
+    assert.ok(plans.every((plan) => plan.maxIntegrations === -1));
+    assert.ok(plans.every((plan) => plan.maxDocuments === -1));
+    assert.ok(plans.every((plan) => plan.maxEntries === 1000));
     assert.ok(startFeatures.includes("fakturering"));
     assert.ok(startFeatures.includes("revisoradgang"));
     assert.ok(enterpriseFeatures.includes("konsolidering"));

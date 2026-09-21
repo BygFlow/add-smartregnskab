@@ -7,7 +7,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 test("ordinary companies and groups share one safe organization model", () => {
   const schema = read("shared/schema.ts");
   const routes = read("server/organization-routes.ts");
-  const auth = read("server/auth.ts");
+  const domain = read("server/domain.ts");
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const page = read("client/src/pages/regnskab-tabs/selskabsstruktur.tsx");
   const migration = read("migrations/0009_flawless_darkstar.sql");
@@ -17,8 +17,8 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(schema, /companyUnits/);
   assert.match(routes, /Pakken tillader.*virksomhed/);
   assert.match(routes, /SE-nummeret er allerede registreret/);
-  assert.match(auth, /organizationCompanyIds/);
-  assert.match(auth, /Promise\.all\(organizationCompanyIds/);
+  assert.match(domain, /organizationPostingUsage/);
+  assert.match(domain, /organizationCompanies\.map/);
   assert.match(shell, /Selskaber & SE-enheder/);
   assert.match(page, /Ét ApS eller A\/S er ét juridisk regnskab/);
   assert.match(page, /Afdelinger og SE-numre hører under det valgte CVR/);

@@ -5989,8 +5989,8 @@ function PlatformRegnskabssystemPage() {
       name: planForm.name, slug: planForm.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), description: planForm.description || null,
       monthlyPrice: Number(planForm.monthlyPrice), pricePerEmployee: Number(planForm.pricePerEmployee),
       maxUsers: -1, maxEmployees: -1, maxCustomers: -1,
-      maxDocuments: Number(planForm.maxDocuments), maxEntries: Number(planForm.maxEntries),
-      maxCompanies: Number(planForm.maxCompanies), maxIntegrations: Number(planForm.maxIntegrations),
+      maxDocuments: -1, maxEntries: 1000,
+      maxCompanies: Number(planForm.maxCompanies), maxIntegrations: -1,
       includedCompanies: Number(planForm.includedCompanies), additionalCompanyPrice: Number(planForm.additionalCompanyPrice),
       includedAiCredits: Number(planForm.includedAiCredits), aiAddonPrice: Number(planForm.aiAddonPrice),
       aiAddonCredits: Number(planForm.aiAddonCredits), aiCreditsPerAdditionalCompany: Number(planForm.aiCreditsPerAdditionalCompany),
@@ -6024,8 +6024,8 @@ function PlatformRegnskabssystemPage() {
     setPlanForm({
       name: plan.name ?? "", slug: plan.slug ?? "", description: plan.description ?? "",
       monthlyPrice: String(plan.monthlyPrice ?? 0), pricePerEmployee: String(plan.pricePerEmployee ?? 0),
-      maxDocuments: String(plan.maxDocuments ?? 500), maxEntries: String(plan.maxEntries ?? 5000),
-      maxCompanies: String(plan.maxCompanies ?? 1), maxIntegrations: String(plan.maxIntegrations ?? 2),
+      maxDocuments: "-1", maxEntries: "1000",
+      maxCompanies: String(plan.maxCompanies ?? 1), maxIntegrations: "-1",
       includedCompanies: String(plan.includedCompanies ?? 1), additionalCompanyPrice: String(plan.additionalCompanyPrice ?? 0),
       includedAiCredits: String(plan.includedAiCredits ?? 0), aiAddonPrice: String(plan.aiAddonPrice ?? 0),
       aiAddonCredits: String(plan.aiAddonCredits ?? 0), aiCreditsPerAdditionalCompany: String(plan.aiCreditsPerAdditionalCompany ?? 0),
@@ -6035,7 +6035,7 @@ function PlatformRegnskabssystemPage() {
     setEditingPlan(plan);
   };
   const openNewPlan = () => {
-    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxDocuments: "500", maxEntries: "5000", maxCompanies: "1", maxIntegrations: "2", includedCompanies: "1", additionalCompanyPrice: "0", includedAiCredits: "0", aiAddonPrice: "0", aiAddonCredits: "0", aiCreditsPerAdditionalCompany: "0", aiCostCap: "0", aiCostCapPerAdditionalCompany: "0", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
+    setPlanForm({ name: "", slug: "", description: "", monthlyPrice: "0", pricePerEmployee: "0", maxDocuments: "-1", maxEntries: "1000", maxCompanies: "1", maxIntegrations: "-1", includedCompanies: "1", additionalCompanyPrice: "0", includedAiCredits: "0", aiAddonPrice: "0", aiAddonCredits: "0", aiCreditsPerAdditionalCompany: "0", aiCostCap: "0", aiCostCapPerAdditionalCompany: "0", features: ["regnskab", "kontoplan", "bilag", "fakturering", "moms", "rapporter"], sortOrder: String((plansQuery.data?.length ?? 0) + 1), active: true });
     setEditingPlan({ id: null });
   };
   const togglePlanFeature = (feature: string, checked: boolean) => setPlanForm((form) => ({
@@ -6121,8 +6121,8 @@ function PlatformRegnskabssystemPage() {
           <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md. ekskl. moms</span></p>
           <p className="mt-1 text-[11px] text-muted-foreground">{money(Number(plan.monthlyPrice) * 10)} / år · 2 måneder inkluderet</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg bg-muted p-2">Bilag / md.<br/><strong>{plan.maxDocuments === -1 ? "Ubegrænset" : num(plan.maxDocuments)}</strong></div>
-            <div className="rounded-lg bg-muted p-2">Posteringer / md.<br/><strong>{plan.maxEntries === -1 ? "Ubegrænset" : num(plan.maxEntries)}</strong></div>
+            <div className="rounded-lg bg-muted p-2">Bilag<br/><strong>Ubegrænset</strong></div>
+            <div className="rounded-lg bg-muted p-2">Posteringer / år<br/><strong>1.000 inkl.</strong></div>
             <div className="rounded-lg bg-muted p-2">Virksomheder<br/><strong>{plan.maxCompanies === -1 ? "Ubegrænset" : num(plan.maxCompanies)}</strong></div>
             <div className="rounded-lg bg-muted p-2">Integrationer<br/><strong>{plan.maxIntegrations === -1 ? "Ubegrænset" : num(plan.maxIntegrations)}</strong></div>
           </div>
@@ -6226,10 +6226,9 @@ function PlatformRegnskabssystemPage() {
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="plan-description">Beskrivelse</Label><Textarea id="plan-description" value={planForm.description} onChange={(event) => setPlanForm((form) => ({ ...form, description: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-price">Pris pr. måned, kr.</Label><Input id="plan-price" type="number" min="0" step="0.01" value={planForm.monthlyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, monthlyPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-employee-price">Pris pr. ansat, kr.</Label><Input id="plan-employee-price" type="number" min="0" step="0.01" value={planForm.pricePerEmployee} onChange={(event) => setPlanForm((form) => ({ ...form, pricePerEmployee: event.target.value }))}/></div>
-          <div className="space-y-2"><Label htmlFor="plan-documents">Bilag pr. måned (-1 = fri)</Label><Input id="plan-documents" type="number" min="-1" value={planForm.maxDocuments} onChange={(event) => setPlanForm((form) => ({ ...form, maxDocuments: event.target.value }))}/></div>
-          <div className="space-y-2"><Label htmlFor="plan-entries">Posteringer pr. måned (-1 = fri)</Label><Input id="plan-entries" type="number" min="-1" value={planForm.maxEntries} onChange={(event) => setPlanForm((form) => ({ ...form, maxEntries: event.target.value }))}/></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Forbrugsmodel</Label><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm"><strong>Ubegrænsede bilag · 1.000 posteringer pr. regnskabsår inkluderet</strong><span className="mt-1 block text-xs text-muted-foreground">Posteringstillæg reguleres automatisk efter den fælles pristabel og ændres ikke pr. grundpakke.</span></div></div>
           <div className="space-y-2"><Label htmlFor="plan-companies">Virksomheder (-1 = fri)</Label><Input id="plan-companies" type="number" min="-1" value={planForm.maxCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, maxCompanies: event.target.value }))}/></div>
-          <div className="space-y-2"><Label htmlFor="plan-integrations">Aktive integrationer (-1 = fri)</Label><Input id="plan-integrations" type="number" min="-1" value={planForm.maxIntegrations} onChange={(event) => setPlanForm((form) => ({ ...form, maxIntegrations: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Integrationer</Label><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm"><strong>Ubegrænset</strong><span className="ml-2 text-xs text-muted-foreground">Integrationer begrænses ikke af pakken.</span></div></div>
           <div className="space-y-2"><Label>Inkluderede CVR-numre</Label><Input type="number" min="1" value={planForm.includedCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, includedCompanies: event.target.value }))}/></div>
           <div className="space-y-2"><Label>Pris pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.additionalCompanyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, additionalCompanyPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label>Inkluderede AI-handlinger</Label><Input type="number" min="0" value={planForm.includedAiCredits} onChange={(event) => setPlanForm((form) => ({ ...form, includedAiCredits: event.target.value }))}/></div>

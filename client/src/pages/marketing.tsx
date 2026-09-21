@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import type { Plan } from "@shared/schema";
+import { POSTING_PRICE_TIERS, estimatedMonthlyDocuments } from "@shared/posting-pricing";
 
 type MarketingPage = "home" | "features" | "pricing" | "integrations" | "security" | "faq" | "about" | "contact" | "demo" | "help" | "guides" | "guide" | "privacy" | "terms" | "cookies" | "landing";
 
@@ -255,7 +256,7 @@ function Callout() { return <section className="mx-auto max-w-7xl px-4 py-20 sm:
 function Features() { useSeo("Funktioner", "Se funktionerne i ADD SmartRegnskab: bilag, bogføring, fakturaer, bank, moms, rapporter og sikker fagadgang.", "funktioner"); return <Layout><Hero eyebrow="Funktioner" title="Regnskabsarbejde med en tydelig næste handling" lead="Fra første bilag til rapportering og årsafslutning — med kontrol, forklaringer og rollebaseret adgang." /><section className="mx-auto max-w-7xl px-4 py-20 sm:px-6"><div className="grid gap-5 md:grid-cols-2">{features.concat([{icon: CreditCard,title:"Betaling og abonnement",text:"QuickPay-betalingsaftale, fakturaoversigt og selvbetjent pakkeskift."},{icon: FileCheck2,title:"Revision og afslutning",text:"Kontrolspor, afstemninger, periodeafslutning, SAF-T og dokumenteret godkendelse."}]).map(({icon:Icon,title,text})=><article key={title} className="flex gap-4 rounded-2xl border bg-white p-6"><Icon className="h-6 w-6 shrink-0 text-emerald-700"/><div><h2 className="font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></div></article>)}</div></section><Callout/></Layout>; }
 
 function Pricing() {
-  useSeo("Priser", "Vælg ADD SmartRegnskab-pakke efter bilag, posteringer, virksomheder og integrationer.", "priser");
+  useSeo("Priser", "Vælg ADD SmartRegnskab-pakke efter bilag, posteringer, virksomheder og AI-behov. Integrationer og brugere er ubegrænsede.", "priser");
   const { data = [], isLoading, isError } = useQuery<Plan[]>({ queryKey: ["/api/plans"], queryFn: async () => (await apiRequest("GET", "/api/plans")).json() });
   useEffect(() => track("view_pricing"), []);
   return <Layout>
@@ -282,13 +283,19 @@ function Pricing() {
           <div className="my-5 h-px bg-slate-100" />
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Det får du</p>
           <ul className="mt-3 flex-1 space-y-3 text-sm">
-            {[`${limit(plan.maxDocuments)} bilag pr. måned`, `${limit(plan.maxEntries)} posteringer pr. måned`, `${limit(plan.maxIntegrations)} aktive integrationer`, `${plan.includedCompanies || 1} juridisk CVR inkluderet`, "Ubegrænsede brugere, kunder og leverandører"].map((item) => <li className="flex gap-2" key={item}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><span>{item}</span></li>)}
+            {["Ubegrænset bilagsopbevaring", "1.000 posteringer pr. regnskabsår inkluderet", "Ubegrænsede integrationer", `${plan.includedCompanies || 1} juridisk CVR inkluderet`, "Ubegrænsede brugere, kunder og leverandører"].map((item) => <li className="flex gap-2" key={item}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><span>{item}</span></li>)}
           </ul>
           <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-950"><Sparkles className="mr-1 inline h-4 w-4" /><strong>AI:</strong> {aiSummary(plan)}</div>
           {plan.additionalCompanyPrice > 0 && <p className="mt-3 text-xs leading-5 text-slate-600"><strong>Flere selskaber:</strong> +{money(plan.additionalCompanyPrice)} pr. ekstra CVR. Hvert ekstra CVR giver {limit(plan.aiCreditsPerAdditionalCompany)} ekstra AI-handlinger.</p>}
           <Button asChild className="mt-6 w-full" variant={recommended ? "default" : "outline"}><Link href={`/tilmeld?pakke=${encodeURIComponent(plan.slug)}`}>Prøv {plan.name} gratis</Link></Button>
         </article>;
       })}</div>}
+      <div className="mt-10 overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <div className="border-b p-6"><h2 className="text-xl font-semibold">Pris efter årlige posteringer</h2><p className="mt-2 text-sm leading-6 text-slate-600">Alle pakker inkluderer 1.000 posteringer pr. regnskabsår. Når forbruget passerer et trin, opgraderes posteringstillægget automatisk. Du får besked og kan følge forbruget i programmet.</p></div>
+        <div className="divide-y sm:hidden">{POSTING_PRICE_TIERS.map((tier) => <div className="grid grid-cols-[1fr_auto] gap-2 px-6 py-4 text-sm" key={tier.annualLimit}><div><strong>Op til {limit(tier.annualLimit)} posteringer</strong><span className="mt-1 block text-xs text-slate-500">ca. {limit(estimatedMonthlyDocuments(tier.annualLimit))} bilag pr. måned</span></div><strong className="text-right text-emerald-800">{tier.monthlySurcharge === 0 ? "Inkluderet" : `+${money(tier.monthlySurcharge)}/md.`}</strong></div>)}</div>
+        <div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-6 py-3 font-medium">Posteringer pr. regnskabsår</th><th className="px-6 py-3 font-medium">Ca. bilag pr. måned</th><th className="px-6 py-3 font-medium">Tillæg pr. måned</th></tr></thead><tbody className="divide-y">{POSTING_PRICE_TIERS.map((tier) => <tr key={tier.annualLimit}><td className="px-6 py-3 font-medium">Op til {limit(tier.annualLimit)}</td><td className="px-6 py-3 text-slate-600">ca. {limit(estimatedMonthlyDocuments(tier.annualLimit))}</td><td className="px-6 py-3">{tier.monthlySurcharge === 0 ? "Inkluderet" : `+${money(tier.monthlySurcharge)}`}</td></tr>)}</tbody></table></div>
+        <p className="border-t bg-slate-50 px-6 py-4 text-xs leading-5 text-slate-600">Et bilag giver typisk flere posteringer. Over 100.000 posteringer pr. regnskabsår aftales en individuel pris. Alle priser er ekskl. moms.</p>
+      </div>
     </section>
 
     <section className="bg-white">

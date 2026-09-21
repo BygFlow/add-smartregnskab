@@ -346,39 +346,14 @@ export async function checkLimit(
   return { ok: true };
 }
 
-/** Håndhæver de regnskabsfaglige pakkegrænser. Bilag og posteringer tælles pr. kalendermåned. */
+/**
+ * Bevarer kompatibilitet med kaldestederne. Bilag og integrationer er frie,
+ * mens posteringer prisreguleres automatisk efter årsforbrug og derfor ikke
+ * må blokere den løbende bogføring.
+ */
 export async function checkAccountingLimit(
-  companyId: number,
-  kind: "documents" | "entries" | "integrations",
+  _companyId: number,
+  _kind: "documents" | "entries" | "integrations",
 ): Promise<{ ok: true } | { ok: false; message: string; limit: number; planName: string }> {
-  const plan = await storage.getCompanyPlan(companyId);
-  if (!plan) return { ok: true };
-  const limit = kind === "documents" ? plan.maxDocuments : kind === "entries" ? plan.maxEntries : plan.maxIntegrations;
-  if (limit < 0) return { ok: true };
-
-  const month = new Date().toISOString().slice(0, 7);
-  const company = await storage.getCompany(companyId);
-  const ownerId = company?.subscriptionOwnerId || companyId;
-  const organizationCompanyIds = (await storage.getCompanies())
-    .filter((item) => (item.subscriptionOwnerId || item.id) === ownerId)
-    .map((item) => item.id);
-  let current = 0;
-  if (kind === "documents") {
-    const rows = await Promise.all(organizationCompanyIds.map((id) => storage.all("vouchers", id)));
-    current = rows.flat().filter((item: any) => String(item.createdAt ?? item.date ?? "").startsWith(month)).length;
-  } else if (kind === "entries") {
-    const rows = await Promise.all(organizationCompanyIds.map((id) => storage.all("journal_entries", id)));
-    current = rows.flat().filter((item: any) => String(item.date ?? item.createdAt ?? "").startsWith(month)).length;
-  } else {
-    const rows = await Promise.all(organizationCompanyIds.map(async (id) => [
-      ...(await storage.getIntegrations(id)), ...(await storage.all("accounting_integrations", id)),
-    ]));
-    current = rows.flat().filter((item: any) => !["inaktiv", "frakoblet", "slettet"].includes(String(item.status ?? "").toLowerCase())).length;
-  }
-
-  if (current >= limit) {
-    const label = kind === "documents" ? "bilag pr. måned" : kind === "entries" ? "posteringer pr. måned" : "aktive integrationer";
-    return { ok: false, limit, planName: plan.name, message: `Pakken ${plan.name} tillader højst ${limit} ${label}. Opgradér pakken for at fortsætte.` };
-  }
   return { ok: true };
 }
