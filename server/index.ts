@@ -14,7 +14,7 @@ import { assertDatabaseReady } from "./storage";
 import { emailConfigured } from "./messaging";
 import { externalBackupConfigured } from "./backup-service";
 
-const APP_VERSION = "3.15.2";
+const APP_VERSION = "3.15.3";
 
 const app = express();
 const httpServer = createServer(app);
