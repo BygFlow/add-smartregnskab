@@ -618,6 +618,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/workflow-runs", "/year-end-closes",
   ];
   app.use("/api", (req, res, next) => {
+    if (req.path === "/ai/assist") return next();
     if (regnskabApiPrefixes.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
     return res.status(404).json({ error: "API-ruten findes ikke i SmartRegnskab." });
   });

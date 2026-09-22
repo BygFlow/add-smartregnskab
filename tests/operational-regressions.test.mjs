@@ -69,5 +69,6 @@ test("accounting assistant is mounted for company users with accounting guidance
   assert.match(chat, /bilag, bogføring eller rapporter/);
   assert.doesNotMatch(chat, /opgaver, ansatte eller tilbud/);
   assert.match(routes, /Bilagsindbakke, Bilag & udgifter og Bogføring/);
+  assert.match(routes, /req\.path === "\/ai\/assist"/);
   assert.doesNotMatch(routes, /AI auto-planlægning til at fordele opgaver/);
 });
