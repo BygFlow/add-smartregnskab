@@ -2,6 +2,9 @@
 
 ## 3.15.4 — 2026-09-22
 
+- Tilføjet rigtig AI-leverandørintegration via OpenAI Responses API med `store: false`, pseudonymt sikkerheds-ID, dataminimering, tokenmåling og omkostningsloft.
+- Bevarer regelbaserede, verificerede svar, når AI-nøglen mangler, leverandøren fejler, eller kundeorganisationens forbrugsgrænse er nået.
+- Tilføjet signeret Mastercard/AiiA-webhook med dubletbeskyttelse, samtykkestatus og automatisk synkronisering af nye bankdata.
 - Rettet QuickPay-aktivering, så signeret callback kan finde en afventende aftale og håndtere numeriske QuickPay-ID'er.
 - Tilføjet callback-header på QuickPay API-kald, sikker kortudskiftning og fælles betalingsaftale for hele kundeorganisationen.
 - Tilføjet opsigelse ved periodens udløb med mulighed for at fortryde samt automatisk afslutning uden ny opkrævning.

@@ -21,6 +21,7 @@ import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import { registerPublicAddConnectRoutes } from "./add-connect";
 import { aiUsageOverview } from "./ai-usage";
+import { generateAiAssistantReply } from "./ai-provider";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
@@ -2304,7 +2305,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       else {
         insights.push("Jeg forstod ikke helt dit spørgsmål. Prøv at spørge om fakturaer, kunder, opgaver, ansatte eller tilbud.");
       }
-      res.json({ insights, risks: [], summary: "" });
+      try {
+        const generated = await generateAiAssistantReply({
+          companyId: cid,
+          userId: req.auth!.user.id,
+          prompt: String(req.body?.prompt ?? ""),
+          verifiedFacts: insights,
+        });
+        if (generated) {
+          return res.json({
+            insights: [generated.text], risks: [], summary: "",
+            provider: "openai", model: generated.model,
+            usage: { inputTokens: generated.inputTokens, outputTokens: generated.outputTokens },
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "AI-tjenesten kunne ikke kontaktes.";
+        insights.push(`AI-tjenesten er midlertidigt utilgængelig: ${message} Det verificerede standardsvar vises i stedet.`);
+      }
+      res.json({ insights, risks: [], summary: "", provider: "rules" });
     }
 
     else if (contextType === "auto_schedule") {
