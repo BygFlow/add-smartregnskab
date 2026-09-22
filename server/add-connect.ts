@@ -238,6 +238,32 @@ export function registerPublicAddConnectRoutes(app: Express) {
     res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name } : null, scopes: auth.scopes });
   });
 
+  app.get("/api/add-connect/payments", requireAddConnect("read"), async (req: AddConnectRequest, res) => {
+    const companyId = req.addConnect!.companyId;
+    const sourceProduct = text(req.query.sourceProduct, 40);
+    if (!PRODUCTS.includes(sourceProduct as any)) return res.status(400).json({ error: "Ukendt ADD-produkt." });
+    const mappings = db.select().from(platformSyncMappings).where(and(
+      eq(platformSyncMappings.companyId, companyId),
+      eq(platformSyncMappings.sourcePlatform, sourceProduct),
+      eq(platformSyncMappings.syncType, "invoice"),
+    )).all().slice(0, 2000);
+    const payments = mappings.flatMap((mapping) => {
+      const invoice = db.select().from(invoices).where(and(
+        eq(invoices.id, Number(mapping.targetId)),
+        eq(invoices.companyId, companyId),
+      )).get();
+      if (!invoice) return [];
+      return [{
+        sourceId: mapping.sourceId,
+        status: invoice.status,
+        paidAmount: invoice.paidAmount,
+        totalAmount: invoice.totalAmount,
+        paidAt: invoice.paidAt,
+      }];
+    });
+    res.json({ ok: true, sourceProduct, payments });
+  });
+
   app.post("/api/add-connect/sync", requireAddConnect("write"), async (req: AddConnectRequest, res) => {
     const companyId = req.addConnect!.companyId;
     const sourceProduct = text(req.body?.sourceProduct, 40);
