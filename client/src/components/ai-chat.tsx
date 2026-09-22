@@ -17,7 +17,7 @@ type ChatMessage = {
 
 const WELCOME: ChatMessage = {
   role: "assistant",
-  text: "Hej! Jeg er din AI-assistent. Spørg mig om fakturaer, kunder, opgaver, ansatte eller tilbud.",
+  text: "Hej! Jeg er din regnskabsassistent. Spørg mig om fakturaer, bilag, bogføring eller rapporter. Jeg ændrer ikke dit regnskab.",
 };
 
 /**
@@ -58,7 +58,7 @@ export function AiChatAssistant() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", text: "Jeg kunne ikke finde noget at sige om det. Prøv at spørge om fakturaer, kunder, opgaver, ansatte eller tilbud." },
+          { role: "assistant", text: "Jeg kunne ikke svare på det. Prøv at spørge om fakturaer, bilag, bogføring eller rapporter." },
         ]);
       }
     },
@@ -100,7 +100,7 @@ export function AiChatAssistant() {
         data-testid="button-ai-chat-open"
         onClick={() => setOpen((v) => !v)}
         size="icon"
-        className="fixed bottom-28 right-4 md:bottom-6 md:right-6 z-50 hidden md:flex h-11 w-11 rounded-full shadow-lg hover:shadow-xl transition-shadow"
+        className="fixed bottom-28 right-4 md:bottom-6 md:right-6 z-50 flex h-11 w-11 rounded-full shadow-lg hover:shadow-xl transition-shadow"
         aria-label={open ? "Luk AI-assistent" : "Åbn AI-assistent"}
       >
         {open ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}

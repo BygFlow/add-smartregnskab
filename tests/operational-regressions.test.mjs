@@ -59,3 +59,15 @@ test("client avoids known privacy and accessibility regressions", () => {
   assert.doesNotMatch(html, /maximum-scale/);
   assert.doesNotMatch(html, /fonts\.googleapis\.com|api\.fontshare\.com/);
 });
+
+test("accounting assistant is mounted for company users with accounting guidance", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const chat = read("client/src/components/ai-chat.tsx");
+  const routes = read("server/routes.ts");
+  assert.match(shell, /!isPlatformAdmin && <AiChatAssistant \/>/);
+  assert.match(chat, /contextType: "chat"/);
+  assert.match(chat, /bilag, bogføring eller rapporter/);
+  assert.doesNotMatch(chat, /opgaver, ansatte eller tilbud/);
+  assert.match(routes, /Bilagsindbakke, Bilag & udgifter og Bogføring/);
+  assert.doesNotMatch(routes, /AI auto-planlægning til at fordele opgaver/);
+});

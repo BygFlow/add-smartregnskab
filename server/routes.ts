@@ -2266,44 +2266,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const overdue = unpaid.filter((i: any) => i.dueDate && new Date(i.dueDate) < new Date());
         insights.push(`Du har ${unpaid.length} ubetalte fakturaer hvoraf ${overdue.length} er forfaldne.`);
         if (overdue.length > 0) insights.push(`Forfaldne beløb: ${Math.round(overdue.reduce((s: number, i: any) => s + (i.totalAmount ?? 0), 0))} kr.`);
-        insights.push("Tip: Du kan sende rykkere fra Fakturering-siden eller lade AI'en generere dem automatisk.");
+        insights.push("Rykkerflow findes under Flere funktioner. Kontrollér altid beløb og forfald før afsendelse.");
       }
-      else if (prompt.includes("kunde") || prompt.includes("lead")) {
+      else if (prompt.includes("kunde")) {
         const customers = await storage.getCustomers(cid);
         insights.push(`Du har ${customers.length} kunder i systemet.`);
-        const highValue = customers.filter((c: any) => (c.hourlyRate ?? 0) > 350);
-        if (highValue.length > 0) insights.push(`${highValue.length} kunder har en timepris over 350 kr. — gode kandidater til flere opgaver.`);
-        insights.push("Tip: Brug AI lead-scoring til at prioritere nye leads baseret på potentiale.");
+        insights.push("Kundekartoteket findes under Salg og køb. Gennemgå altid kundens oplysninger før fakturering.");
       }
-      else if (prompt.includes("opgave") || prompt.includes("plan")) {
-        const tasks = await storage.getTasks(cid);
-        const employees = await storage.getEmployees(cid);
-        const unassigned = tasks.filter((t: any) => !t.employeeId);
-        insights.push(`Du har ${tasks.length} opgaver hvoraf ${unassigned.length} ikke har en tildelt ansat.`);
-        insights.push(`Du har ${employees.length} ansatte, hvoraf ${employees.filter((e: any) => e.status === "ledig").length} er ledige.`);
-        insights.push("Tip: Brug AI auto-planlægning til at fordele opgaver optimalt mellem ansatte.");
+      else if (prompt.includes("bilag") || prompt.includes("bogfør") || prompt.includes("postering")) {
+        insights.push("Bilag og posteringer håndteres under Bilagsindbakke, Bilag & udgifter og Bogføring. Jeg kan forklare arbejdsgangen, men foretager ikke bogføring eller ændringer for dig.");
       }
-      else if (prompt.includes("ansat") || prompt.includes("medarbejder")) {
-        const employees = await storage.getEmployees(cid);
-        const busy = employees.filter((e: any) => e.status === "optaget");
-        const onLeave = employees.filter((e: any) => e.status === "orlov");
-        insights.push(`Du har ${employees.length} ansatte: ${busy.length} optaget, ${onLeave.length} på orlov, ${employees.length - busy.length - onLeave.length} ledig.`);
-      }
-      else if (prompt.includes("tilbud")) {
-        const customers = await storage.getCustomers(cid);
-        insights.push(`Jeg kan generere tilbudsforslag baseret på dine ${customers.length} kunders timepriser og opgavehistorik.`);
-        insights.push("Gå til Tilbud-siden og vælg en kunde for at generere et tilbudsforslag.");
+      else if (prompt.includes("rapport") || prompt.includes("moms") || prompt.includes("skat")) {
+        insights.push("Rapporter findes under Afslutning. Moms- og skatteoplysninger skal kontrolleres og godkendes af en ansvarlig person før indberetning.");
       }
       else if (prompt.includes("hej") || prompt.includes("hallo") || prompt.includes("help") || prompt.includes("hjælp")) {
         insights.push("Hej! Jeg er din AI-assistent i ADD SmartRegnskab. Jeg kan hjælpe med:");
         insights.push("• Fakturaer og betalinger — spørg om ubetalte fakturaer");
-        insights.push("• Kunder og leads — spørg om kundeantal og lead-scoring");
-        insights.push("• Opgaver og planlægning — spørg om ubesatte opgaver");
-        insights.push("• Ansatte — spørg om medarbejderstatus");
-        insights.push("• Tilbud — spørg om at generere tilbud");
+        insights.push("• Bilag og bogføring — spørg om arbejdsgangen");
+        insights.push("• Rapporter og moms — spørg om, hvor du finder dem");
       }
       else {
-        insights.push("Jeg forstod ikke helt dit spørgsmål. Prøv at spørge om fakturaer, kunder, opgaver, ansatte eller tilbud.");
+        insights.push("Jeg har ikke verificerede regnskabsoplysninger til at besvare det konkret. Prøv at spørge om fakturaer, bilag, bogføring eller rapporter.");
       }
       try {
         const generated = await generateAiAssistantReply({

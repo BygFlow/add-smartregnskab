@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { SMARTREGNSKAB_BRAND } from "@/components/smartregnskab-brand";
+import { AiChatAssistant } from "@/components/ai-chat";
 
 type NavItem = { path: string; label: string; icon: typeof Building2 };
 type NavGroup = { label: string; items: NavItem[] };
@@ -211,5 +212,6 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
       <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4"><div className="flex items-center gap-2.5"><Logo className="h-8 w-8 text-sidebar-primary" /><div><p className="text-sm font-bold text-sidebar-foreground">ADD SmartRegnskab</p><p className="text-[10px] text-sidebar-foreground/45">{isPlatformAdmin ? "Platformadministration" : companyName}</p></div></div><button onClick={() => setMobileNavOpen(false)} className="rounded-lg p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent/60" aria-label="Luk menu"><X className="h-5 w-5" /></button></div>
       {navigation(true)}{userFooter}
     </aside></div>}
+    {!isPlatformAdmin && <AiChatAssistant />}
   </div>;
 }
