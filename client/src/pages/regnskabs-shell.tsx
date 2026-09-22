@@ -69,6 +69,7 @@ const COMPANY_GROUPS: NavGroup[] = [
   { label: "Automatisering", items: [
     item("ai_styring", "AI-styring", BrainCircuit),
     item("automatisering", "Automatisering", Zap),
+    item("appmarked", "Appmarked", Package),
     item("integrationer", "Integrationer", Link2),
   ] },
   { label: "Konto", items: [

@@ -98,6 +98,7 @@ const Revisorportal = lazy(() => import("@/pages/regnskab-tabs/revisorportal"));
 const RollerKontrol = lazy(() => import("@/pages/regnskab-tabs/roller-kontrol"));
 const Importguide = lazy(() => import("@/pages/regnskab-tabs/importguide"));
 const ApiWebhooks = lazy(() => import("@/pages/regnskab-tabs/api-webhooks"));
+const Appmarked = lazy(() => import("@/pages/regnskab-tabs/appmarked"));
 // ── Ruge 2 SmartRegnskab tabs ──
 const IntegrationConfigs = lazy(() => import("@/pages/regnskab-tabs/integration-configs"));
 const ComplianceChecks = lazy(() => import("@/pages/regnskab-tabs/compliance-checks"));
@@ -5601,6 +5602,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               </TabsContent>
               <TabsContent value="api_webhooks" className="space-y-4">
                 <ApiWebhooks companyId={effectiveCompanyId} />
+              </TabsContent>
+              <TabsContent value="appmarked" className="space-y-4">
+                <Appmarked companyId={effectiveCompanyId} />
               </TabsContent>
 
               {/* ── Ruge 2 SmartRegnskab tabs ── */}

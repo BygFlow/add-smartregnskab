@@ -19,6 +19,7 @@ import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice
 import { registerProfessionalRoutes } from "./professional-routes";
 import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
+import { registerPublicAddConnectRoutes } from "./add-connect";
 import { aiUsageOverview } from "./ai-usage";
 import {
   insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
@@ -587,6 +588,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   registerPublicEInvoiceRoutes(app);
   registerPublicAiiaRoutes(app);
+  registerPublicAddConnectRoutes(app);
 
   app.use("/api", requireAuth);
   app.use("/api", platformCustomerDataGuard);
