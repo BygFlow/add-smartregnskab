@@ -51,6 +51,7 @@ function Root() {
         <Route path="/databehandleraftale" component={() => <Marketing page="dpa" />} />
         <Route path="/underdatabehandlere" component={() => <Marketing page="subprocessors" />} />
         <Route path="/dataopbevaring-og-sletning" component={() => <Marketing page="retention" />} />
+        <Route path="/abonnementsbetingelser" component={() => <Marketing page="subscriptionTerms" />} />
         <Route path="/cookies" component={() => <Marketing page="cookies" />} />
         <Route path="/regnskabsprogram-smaa-virksomheder" component={() => <Marketing page="landing" landingSlug="regnskabsprogram-smaa-virksomheder" />} />
         <Route path="/fakturaprogram-virksomheder" component={() => <Marketing page="landing" landingSlug="fakturaprogram-virksomheder" />} />

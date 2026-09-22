@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, CreditCard, FileText, Loader2, Package, ShieldCheck, Sparkles } from "lucide-react";
 import { SiMastercard, SiVisa } from "react-icons/si";
@@ -105,6 +106,7 @@ export default function Abonnement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const canManage = user?.role === "leder";
+  const [subscriptionTermsAccepted, setSubscriptionTermsAccepted] = useState(false);
   const overview = useQuery<SubscriptionOverview>({
     queryKey: ["/api/subscription"],
     queryFn: async () => (await apiRequest("GET", "/api/subscription")).json(),
@@ -133,7 +135,7 @@ export default function Abonnement() {
   }, []);
 
   const changePlan = useMutation({
-    mutationFn: async (planId: number) => (await apiRequest("POST", "/api/subscription/plan", { planId })).json(),
+    mutationFn: async (planId: number) => (await apiRequest("POST", "/api/subscription/plan", { planId, termsAccepted: subscriptionTermsAccepted, termsVersion: "2026-09-22" })).json(),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/subscription"] }),
@@ -146,7 +148,7 @@ export default function Abonnement() {
   });
 
   const startQuickPay = useMutation({
-    mutationFn: async () => (await apiRequest("POST", "/api/billing/create-checkout-session", {})).json(),
+    mutationFn: async () => (await apiRequest("POST", "/api/billing/create-checkout-session", { termsAccepted: subscriptionTermsAccepted, termsVersion: "2026-09-22" })).json(),
     onSuccess: (result) => {
       if (!result?.url) throw new Error("QuickPay returnerede ikke et betalingslink.");
       window.location.assign(result.url);
@@ -188,6 +190,21 @@ export default function Abonnement() {
   return <div className="space-y-5">
     <PageHeader title="Abonnement og betaling" description="Vælg pakke, administrér betalingsaftalen og hent abonnementsfakturaer." />
 
+    {canManage && <section className="rounded-xl border border-primary/20 bg-primary/5 p-4" aria-labelledby="subscription-acceptance-heading">
+      <h2 id="subscription-acceptance-heading" className="text-sm font-semibold">Accept før køb af abonnement</h2>
+      <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm leading-6">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4 shrink-0 accent-primary"
+          checked={subscriptionTermsAccepted}
+          onChange={(event) => setSubscriptionTermsAccepted(event.target.checked)}
+          data-testid="subscription-terms-checkbox"
+        />
+        <span>Jeg accepterer <Link className="font-semibold text-primary underline underline-offset-2" href="/abonnementsbetingelser" target="_blank">abonnementsbetingelserne</Link>, herunder månedlig automatisk fornyelse og betaling, indtil abonnementet opsiges.</span>
+      </label>
+      <p className="mt-2 text-xs text-muted-foreground">Afkrydsningen er obligatorisk og er ikke valgt på forhånd. Accepten registreres med bruger, tidspunkt og vilkårsversion.</p>
+    </section>}
+
     <div className="grid gap-4 lg:grid-cols-3">
       <SectionCard title="Aktuel pakke" icon={<Package className="h-4 w-4" />}>
         {overview.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="space-y-3">
@@ -204,7 +221,7 @@ export default function Abonnement() {
           <div className="flex items-center justify-between"><div><p className="font-medium">QuickPay</p><p className="text-xs text-muted-foreground">Sikker, tilbagevendende kortbetaling</p></div><StatusChip status={paymentMethod ? "aktiv" : billing.data?.quickpayConfigured ? "mangler" : "ikke konfigureret"} /></div>
           <div className="flex items-center gap-4" aria-label="Accepterede betalingskort"><SiVisa className="h-7 w-14 text-[#1434CB]" title="Visa"/><SiMastercard className="h-8 w-12 text-[#EB001B]" title="Mastercard"/></div>
           {paymentMethod?.last4 && <p className="text-sm">Kort, der slutter på <strong>{paymentMethod.last4}</strong></p>}
-          {canManage ? <Button className="w-full" disabled={!billing.data?.quickpayConfigured || startQuickPay.isPending} onClick={() => startQuickPay.mutate()}>{startQuickPay.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{paymentMethod ? "Skift betalingskort" : "Opret betalingsaftale"}</Button> : <p className="text-xs text-muted-foreground">Kun virksomhedens administrator kan ændre betalingsaftalen.</p>}
+          {canManage ? <Button className="w-full" disabled={!subscriptionTermsAccepted || !billing.data?.quickpayConfigured || startQuickPay.isPending} onClick={() => startQuickPay.mutate()}>{startQuickPay.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{paymentMethod ? "Skift betalingskort" : "Opret betalingsaftale"}</Button> : <p className="text-xs text-muted-foreground">Kun virksomhedens administrator kan ændre betalingsaftalen.</p>}
         </div>}
       </SectionCard>
 
@@ -235,7 +252,7 @@ export default function Abonnement() {
           <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-[11px]">{plan.includedAiCredits > 0 ? <><strong>{new Intl.NumberFormat("da-DK").format(plan.includedAiCredits)} AI-handlinger inkluderet</strong>{plan.aiCreditsPerAdditionalCompany > 0 && <span className="block text-muted-foreground">+{new Intl.NumberFormat("da-DK").format(plan.aiCreditsPerAdditionalCompany)} pr. ekstra CVR</span>}</> : <><strong>AI som tilkøb</strong><span className="block text-muted-foreground">{new Intl.NumberFormat("da-DK").format(plan.aiAddonCredits)} handlinger for {money(plan.aiAddonPrice)}/md.</span></>}</div>
           {plan.additionalCompanyPrice > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{plan.includedCompanies} CVR inkluderet · +{money(plan.additionalCompanyPrice)} pr. ekstra CVR. SE-numre er inkluderet.</p>}
           <ul className="my-4 flex-1 space-y-1.5 text-xs">{included.slice(0, 6).map((feature) => <li key={feature} className="flex gap-2"><Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" /><span>{featureLabels[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>
-          <Button variant={selected ? "outline" : "default"} disabled={selected || !canManage || changePlan.isPending} onClick={() => { if (window.confirm(`Skift abonnement til ${plan.name} for ${money(plan.monthlyPrice)} pr. måned ekskl. moms?`)) changePlan.mutate(plan.id); }}>{changePlan.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{selected ? "Aktuel pakke" : "Vælg pakke"}</Button>
+          <Button variant={selected ? "outline" : "default"} disabled={selected || !canManage || !subscriptionTermsAccepted || changePlan.isPending} onClick={() => { if (window.confirm(`Skift abonnement til ${plan.name} for ${money(plan.monthlyPrice)} pr. måned ekskl. moms?`)) changePlan.mutate(plan.id); }}>{changePlan.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{selected ? "Aktuel pakke" : "Vælg pakke"}</Button>
         </div>;
       })}</div>}
       {!canManage && <p className="mt-4 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">Kun virksomhedens administrator kan skifte pakke. Alle brugere kan se priser og indhold.</p>}

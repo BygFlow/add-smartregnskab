@@ -2023,6 +2023,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /** Virksomheden vælger selv en anden pakke. */
   app.post("/api/subscription/plan", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
+    if (req.body?.termsAccepted !== true || req.body?.termsVersion !== "2026-09-22") {
+      return res.status(400).json({ error: "Du skal acceptere abonnementsbetingelserne, før du vælger en pakke." });
+    }
     const plan = await storage.getPlan(Number(req.body?.planId));
     if (!plan || !plan.active) return res.status(400).json({ error: "Vælg en gyldig pakke." });
     const sub = await storage.getSubscriptionByCompany(cid);
@@ -2040,7 +2043,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og I har allerede ${companyCount}. Vælg en større pakke.` });
     }
     const updated = await storage.updateSubscription(sub.id, { planId: plan.id });
-    await audit(req, "skift_pakke", "subscription", sub.id, plan.name);
+    await audit(req, "skift_pakke", "subscription", sub.id, `${plan.name}; abonnementsbetingelser accepteret, version ${req.body.termsVersion}`);
     res.json({ subscription: updated, plan, nextCharge: await previewBilling(cid) });
   }));
 

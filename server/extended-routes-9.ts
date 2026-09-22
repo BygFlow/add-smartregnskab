@@ -24,6 +24,9 @@ export function registerExtendedRoutes9(app: Express) {
   //  QUICKPAY ABONNEMENTSLINK
   // ════════════════════════════════════════
   app.post("/api/billing/create-checkout-session", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    if (req.body?.termsAccepted !== true || req.body?.termsVersion !== "2026-09-22") {
+      return res.status(400).json({ error: "Du skal acceptere abonnementsbetingelserne, før betalingsaftalen oprettes." });
+    }
     if (!quickpayConfigured()) {
       return res.status(503).json({
         error: "QuickPay er ikke konfigureret. Sæt QUICKPAY_API_KEY og QUICKPAY_PRIVATE_KEY.",
@@ -39,6 +42,16 @@ export function registerExtendedRoutes9(app: Express) {
     if (!setup.ok || !setup.redirectUrl) {
       return res.status(400).json({ error: setup.failureReason ?? "Kunne ikke oprette QuickPay-aftale" });
     }
+    const auth = (req as any).auth;
+    db.insert(schema.auditLogs).values({
+      companyId: cid,
+      userId: auth?.user?.id ?? null,
+      userEmail: auth?.user?.email ?? null,
+      action: "abonnementsbetingelser_accepteret",
+      target: `paymentMethod#${setup.paymentMethodId ?? "quickpay"}`,
+      detail: `Version ${req.body.termsVersion}; QuickPay-betalingsaftale startet`,
+      createdAt: new Date().toISOString(),
+    }).run();
     res.json({ url: setup.redirectUrl, sessionId: setup.providerRef, paymentMethodId: setup.paymentMethodId });
   }));
 
