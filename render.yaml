@@ -113,3 +113,5 @@ services:
         value: "false"
       - key: S3_BACKUP_PREFIX
         value: smartregnskab/backups
+      - key: S3_BACKUP_RETENTION_DAYS
+        value: "35"

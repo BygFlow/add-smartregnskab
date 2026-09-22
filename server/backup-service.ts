@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { basename, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
-type BackupResult = { key: string; size: number; checksum: string; verified: boolean; localPath: string };
+type BackupResult = { key: string; size: number; checksum: string; verified: boolean; localPath: string; retentionDays: number; prunedSnapshots: number; prunedObjects: number };
 type ManifestFile = { key: string; relativePath: string; size: number; checksum: string };
 
 function required(name: string): string {
@@ -58,6 +58,51 @@ function filesBelow(root: string, current = root): string[] {
   });
 }
 
+export function backupRetentionDays() {
+  const parsed = Number.parseInt(process.env.S3_BACKUP_RETENTION_DAYS || "35", 10);
+  if (!Number.isFinite(parsed) || parsed < 7 || parsed > 365) throw new Error("S3_BACKUP_RETENTION_DAYS skal være mellem 7 og 365 dage.");
+  return parsed;
+}
+
+async function pruneExpiredSnapshots(s3: S3Client, bucket: string, snapshotsPrefix: string, currentSnapshotPrefix: string) {
+  const cutoff = Date.now() - backupRetentionDays() * 86_400_000;
+  const snapshots = new Map<string, { newest: number; keys: string[] }>();
+  let continuationToken: string | undefined;
+  do {
+    const page = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: `${snapshotsPrefix}/`, ContinuationToken: continuationToken }));
+    for (const object of page.Contents || []) {
+      if (!object.Key) continue;
+      const relative = object.Key.slice(snapshotsPrefix.length + 1);
+      const snapshotId = relative.split("/", 1)[0];
+      if (!snapshotId) continue;
+      const snapshotPrefix = `${snapshotsPrefix}/${snapshotId}`;
+      const current = snapshots.get(snapshotPrefix) || { newest: 0, keys: [] };
+      current.keys.push(object.Key);
+      current.newest = Math.max(current.newest, object.LastModified?.getTime() || 0);
+      snapshots.set(snapshotPrefix, current);
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  const expired = Array.from(snapshots.entries()).filter(([snapshotPrefix, value]) => snapshotPrefix !== currentSnapshotPrefix && value.newest > 0 && value.newest < cutoff);
+  const keys = expired.flatMap(([, value]) => value.keys);
+  for (let index = 0; index < keys.length; index += 1000) {
+    const result = await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.slice(index, index + 1000).map((Key) => ({ Key })), Quiet: true } }));
+    if (result.Errors?.length) throw new Error(`Backupretention kunne ikke slette ${result.Errors.length} objekt(er).`);
+  }
+  return { prunedSnapshots: expired.length, prunedObjects: keys.length };
+}
+
+function pruneExpiredLocalBackups(backupDir: string, currentLocalPath: string) {
+  const cutoff = Date.now() - backupRetentionDays() * 86_400_000;
+  for (const entry of readdirSync(backupDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.startsWith("smartregnskab-") || !entry.name.endsWith(".db")) continue;
+    const path = join(backupDir, entry.name);
+    if (path === currentLocalPath || statSync(path).mtimeMs >= cutoff) continue;
+    rmSync(path, { force: true });
+  }
+}
+
 export async function createExternalBackup(): Promise<BackupResult> {
   if (!externalBackupConfigured()) throw new Error("Ekstern S3-backup er ikke konfigureret.");
   const databasePath = resolve(process.env.DATABASE_PATH || "data.db");
@@ -107,7 +152,9 @@ export async function createExternalBackup(): Promise<BackupResult> {
   const manifestHead = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
   const verified = Number(head.ContentLength) === size && head.Metadata?.sha256 === checksum && Number(manifestHead.ContentLength) === manifestBytes.length && manifestHead.Metadata?.sha256 === manifestChecksum;
   if (!verified) throw new Error("Backup blev uploadet, men fjernverifikationen fejlede.");
-  return { key, size, checksum, verified, localPath };
+  const retention = await pruneExpiredSnapshots(s3, bucket, `${prefix}/snapshots`, snapshotPrefix);
+  pruneExpiredLocalBackups(backupDir, localPath);
+  return { key, size, checksum, verified, localPath, retentionDays: backupRetentionDays(), ...retention };
 }
 
 export async function verifyExternalBackup(key: string) {

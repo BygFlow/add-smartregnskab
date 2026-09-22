@@ -29,6 +29,15 @@ produktionsadgangspunkt er ikke tilsluttet, før aftale og nøgler er sat.
 
 ## Anbefalet produktionsadapter: Sproom
 
+Den modtagne kommercielle afklaring beskriver én ISV Parent-aftale, hvor alle
+kundeprofiler kan oprettes som child-companies. Der kan kun være én Sproom-
+profil pr. CVR-nummer, og både afsendelse og modtagelse tæller som en
+transaktion. Registrering på NemHandel/Peppol samt integration service til
+oprettelse af child-companies er oplyst uden særskilt gebyr. Aftalen er oplyst
+med 12 måneders binding og derefter tre måneders opsigelse til udgangen af en
+kalendermåned. Disse oplysninger er tilbudsgrundlag og må først behandles som
+bindende, når den endelige kontrakt er underskrevet.
+
 Sæt `EINVOICE_PROVIDER=sproom`, `SPROOM_API_TOKEN` og
 `SPROOM_COMPANY_MAP`. Kortet er JSON fra ADD SmartRegnskabs interne
 virksomheds-ID til Sprooms child-company UUID, eksempel:

@@ -52,6 +52,9 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(legalDocuments, /Render Services, Inc\./);
   assert.match(legalDocuments, /Hetzner Online GmbH/);
   assert.match(legalDocuments, /Visma e-conomic A\/S \(Sproom\)/);
+  assert.match(legalDocuments, /35 dage rullende/);
+  assert.match(legalDocuments, /retentionSchedule/);
+  assert.match(marketing, /Standardtidsplan/);
   assert.doesNotMatch(legalDocuments, /vagtplan|geofence|rengøring/i);
   assert.match(gdpr, /return dpaPlainText\(\)/);
   assert.doesNotMatch(gdpr, /Tidligere produktskabelon/);

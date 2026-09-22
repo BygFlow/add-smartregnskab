@@ -41,6 +41,17 @@ test("customer backup screen exposes status instead of simulated production acti
   assert.doesNotMatch(page, /restore-dry-run|\/api\/backups|openAuthedFile/);
 });
 
+test("external backup retention only prunes expired controlled snapshots", () => {
+  const service = read("server/backup-service.ts");
+  const env = read(".env.example");
+  assert.match(service, /S3_BACKUP_RETENTION_DAYS/);
+  assert.match(service, /parsed < 7 \|\| parsed > 365/);
+  assert.match(service, /snapshotPrefix !== currentSnapshotPrefix/);
+  assert.match(service, /await pruneExpiredSnapshots/);
+  assert.match(service, /if \(!entry\.isFile\(\) \|\| !entry\.name\.startsWith\("smartregnskab-"\)/);
+  assert.match(env, /S3_BACKUP_RETENTION_DAYS=35/);
+});
+
 test("client avoids known privacy and accessibility regressions", () => {
   const nativeBridge = read("client/src/lib/native-bridge.ts");
   const html = read("client/index.html");

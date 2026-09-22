@@ -1,5 +1,5 @@
 export const LEGAL_UPDATED_AT = "22. september 2026";
-export const DPA_VERSION = "1.0-2026-09-22";
+export const DPA_VERSION = "1.1-2026-09-22";
 
 export type LegalSection = readonly [heading: string, body: string];
 
@@ -42,10 +42,26 @@ export const retentionSections: readonly LegalSection[] = [
   ["Mens abonnementet er aktivt", "Regnskabsdata og bilag opbevares, mens tjenesten leveres, medmindre kunden sletter eller anonymiserer data efter en lovlig instruks. Sikkerheds- og revisionslog opbevares så længe, det er nødvendigt for dokumentation, fejlsøgning og beskyttelse mod misbrug."],
   ["Lovpligtigt regnskabsmateriale", "Regnskabsmateriale skal som udgangspunkt opbevares i fem år fra udgangen af det regnskabsår, materialet vedrører. En anmodning om sletning gennemføres derfor ikke, hvis materialet fortsat skal bevares efter bogføringsloven eller anden bindende ret. Personoplysninger, som ikke længere er nødvendige, skal slettes eller anonymiseres."],
   ["Eksport", "En virksomhedsadministrator kan eksportere regnskabsdata gennem de tilgængelige eksportfunktioner, herunder relevante rapporter, CSV/JSON og SAF-T, afhængigt af datatypen. Før opsigelse skal kunden kontrollere eksporten og sikre, at den kan læses og opbevares forsvarligt. En persondataanmodning kan udleveres i JSON eller CSV."],
-  ["Ved opsigelse", "Opsigelse stopper ikke straks adgangen: kunden beholder adgang til udløbet af den betalte periode. Inden ophør skal kunden hente nødvendige data. Den endelige afviklingsfrist og slettefrist skal fremgå af ordrebekræftelsen eller en særskilt skriftlig aftale; systemet må ikke love en automatisk frist, før den tekniske sletteproces er aktiveret og testet."],
+  ["Ved opsigelse", "Opsigelse stopper ikke straks adgangen: kunden beholder adgang til udløbet af den betalte periode. Inden ophør skal kunden hente nødvendige data. Når perioden er udløbet og kundens identitet og instruks er kontrolleret, påbegyndes afvikling efter tidsplanen nedenfor. Lovpligtigt regnskabsmateriale og dokumentation for retskrav undtages fra sletning, så længe opbevaring er nødvendig."],
   ["Sletning og anonymisering", "Sletning udføres først efter kontrol af identitet, rettigheder, lovkrav og berørte data. Hvor en postering eller et bilag ikke lovligt kan slettes, begrænses adgangen eller personoplysninger anonymiseres, når det er muligt. En almindelig deaktivering eller skjult markering regnes ikke i sig selv som permanent sletning."],
-  ["Backup", "Slettede oplysninger fjernes fra aktiv drift. Kopier i beskyttede backups slettes ved udløbet af den fastsatte backupcyklus og bruges ikke til andre formål end gendannelse. Ved gendannelse skal tidligere sletteinstrukser genanvendes, så slettede oplysninger ikke vender tilbage til normal drift."],
+  ["Backup", "Slettede oplysninger fjernes fra aktiv drift. Krypterede backup-snapshots har en rullende standardperiode på 35 dage og beskæres automatisk efter en verificeret ny backup. De bruges ikke til andre formål end gendannelse. Ved gendannelse skal tidligere sletteinstrukser genanvendes, så slettede oplysninger ikke vender tilbage til normal drift."],
   ["Anmodninger og kontakt", "Anmodninger om eksport, rettelse eller sletning sendes af virksomhedens administrator til regnskab@addsmartregnskab.dk. ADD SmartDrift ApS registrerer anmodningen og udførelsen i revisionssporet. Registrerede personer skal som udgangspunkt kontakte den virksomhed, der er dataansvarlig for regnskabet."],
+] as const;
+
+export type RetentionScheduleEntry = {
+  category: string;
+  standardPeriod: string;
+  action: string;
+  control: string;
+};
+
+export const retentionSchedule: readonly RetentionScheduleEntry[] = [
+  { category: "Regnskabsmateriale, bilag og bogføringsspor", standardPeriod: "Som udgangspunkt 5 år fra udgangen af det regnskabsår, materialet vedrører", action: "Slettes eller anonymiseres efter udløb, medmindre anden lovlig opbevaring gælder", control: "Lovkrav og virksomhedens dokumenterede instruks kontrolleres før handling" },
+  { category: "Konto-, kontakt- og adgangsdata efter ophør", standardPeriod: "Mål: højst 30 dage efter udløbet af den betalte periode og en valideret sletteinstruks", action: "Slettes eller anonymiseres, når data ikke indgår i lovpligtigt materiale eller et retskrav", control: "Manuel identitets-, rettigheds- og lovkontrol med revisionslog" },
+  { category: "Sikkerheds- og adgangslog", standardPeriod: "12 måneder fra hændelsen", action: "Slettes efter perioden, medmindre en sikkerhedssag eller et retskrav kræver længere opbevaring", control: "Periodisk driftskontrol; relevante bogføringsspor følger den længere lovpligtige periode" },
+  { category: "Afsluttede supporthenvendelser", standardPeriod: "24 måneder efter seneste aktivitet", action: "Slettes eller anonymiseres; dokumentation for aftale eller retskrav kan bevares længere", control: "Kontrolleres i supportsystem og mail ved den planlagte oprydning" },
+  { category: "Betalings- og abonnementsdokumentation", standardPeriod: "Som udgangspunkt 5 år fra udgangen af det relevante regnskabsår", action: "Slettes efter udløb af bogførings- og dokumentationskrav", control: "Kortnummer og kontrolcifre lagres ikke i ADD SmartRegnskab" },
+  { category: "Krypterede backup-snapshots", standardPeriod: "35 dage rullende", action: "Gamle snapshots og tilhørende filer slettes efter en verificeret ny backup", control: "Automatisk retention i backupjobbet; restore-test og slettekontrol dokumenteres" },
 ] as const;
 
 export function dpaPlainText(): string {
