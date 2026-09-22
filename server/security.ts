@@ -317,7 +317,10 @@ export async function issueToken(
 ): Promise<{ token: string; expiresAt: string }> {
   const normaliseretEmail = normaliserEmail(email);
   const bruger = opts.userId === undefined ? await storage.getUserByEmail(normaliseretEmail) : undefined;
-  const levetidMs = kind === "aiia_oauth" ? 10 * 60_000 : kind === "nulstil_kode" ? 60 * 60_000 : 24 * 60 * 60_000;
+  // AiiA's bank consent can include email verification and several bank-side
+  // screens. Ten minutes is too short for a normal user to finish that flow,
+  // which makes the otherwise valid callback fail when its state is consumed.
+  const levetidMs = kind === "aiia_oauth" ? 30 * 60_000 : kind === "nulstil_kode" ? 60 * 60_000 : 24 * 60 * 60_000;
   const expiresAt = new Date(Date.now() + levetidMs).toISOString();
   const token = randomBytes(32).toString("hex");
 
