@@ -1,7 +1,7 @@
 // Service Worker for ADD SmartRegnskab PWA
 // Feature-detected registration — fails gracefully in sandboxed iframes
 
-const CACHE_NAME = "smartregnskab-v3.15.2";
+const CACHE_NAME = "smartregnskab-v3.15.4";
 const STATIC_ASSETS = ["/manifest.json", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {

@@ -15,7 +15,7 @@ test("S3-compatible file storage honors the configured endpoint", () => {
 test("PWA updates do not pin authenticated users to an old shell", () => {
   const sw = read("public/sw.js");
   const main = read("client/src/main.tsx");
-  assert.match(sw, /smartregnskab-v3\.15\.2/);
+  assert.match(sw, /smartregnskab-v3\.15\.4/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
   assert.match(sw, /cache: "no-store"/);
   assert.match(main, /updateViaCache: "none"/);
@@ -30,7 +30,7 @@ test("API documentation links to real key management instead of a sandbox mock",
 
 test("SAF-T export reports the deployed application version", () => {
   const saft = read("server/saft.ts");
-  assert.match(saft, /process\.env\.APP_VERSION \|\| "3\.15\.2"/);
+  assert.match(saft, /process\.env\.APP_VERSION \|\| "3\.15\.4"/);
   assert.match(saft, /<SoftwareVersion>\$\{SOFTWARE_VERSION\}<\/SoftwareVersion>/);
   assert.doesNotMatch(saft, /<SoftwareVersion>3\.5\.1<\/SoftwareVersion>/);
 });

@@ -13,6 +13,11 @@ function quickpayConfigured(): boolean {
   return Boolean(process.env.QUICKPAY_API_KEY && process.env.QUICKPAY_PRIVATE_KEY);
 }
 
+async function billingCompanyId(companyId: number): Promise<number> {
+  const company = await storage_getCompany(companyId);
+  return company?.subscriptionOwnerId || companyId;
+}
+
 export function registerExtendedRoutes9(app: Express) {
 
   // ════════════════════════════════════════
@@ -26,7 +31,7 @@ export function registerExtendedRoutes9(app: Express) {
       });
     }
 
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const company = await storage_getCompany(cid);
     if (!company) return res.status(404).json({ error: "Virksomhed ikke fundet" });
 
@@ -45,7 +50,7 @@ export function registerExtendedRoutes9(app: Express) {
       return res.status(503).json({ error: "QuickPay er ikke konfigureret", configured: false });
     }
 
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const company = await storage_getCompany(cid);
     if (!company) return res.status(404).json({ error: "Virksomhed ikke fundet" });
 
@@ -65,7 +70,7 @@ export function registerExtendedRoutes9(app: Express) {
   //  BILLING STATUS
   // ════════════════════════════════════════
   app.get("/api/billing/status", h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const sub = await storage_getSubscription(cid);
     const plan = sub ? await storage_getPlan(sub.planId) : null;
     const paymentMethods = db.select().from(schema.paymentMethods)
@@ -83,7 +88,7 @@ export function registerExtendedRoutes9(app: Express) {
         dunningStage: sub.dunningStage,
       } : null,
       plan: plan ? { name: plan.name, monthlyPrice: plan.monthlyPrice } : null,
-      hasPaymentMethod: paymentMethods.length > 0,
+      hasPaymentMethod: paymentMethods.some(pm => pm.status === "aktiv"),
       paymentMethods: paymentMethods.map(pm => ({
         provider: pm.provider,
         brand: pm.brand,

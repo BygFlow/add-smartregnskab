@@ -723,8 +723,10 @@ export class DatabaseStorage implements IStorage {
   // ══════════════════════════════════════════════════
   //  BETALING
   // ══════════════════════════════════════════════════
-  async getPaymentMethods(companyId: number): Promise<PaymentMethod[]> {
-    return db.select().from(paymentMethods).where(and(byCompany(paymentMethods, companyId), eq(paymentMethods.status, "aktiv"))).all();
+  async getPaymentMethods(companyId: number, includeInactive = false): Promise<PaymentMethod[]> {
+    return includeInactive
+      ? db.select().from(paymentMethods).where(byCompany(paymentMethods, companyId)).all()
+      : db.select().from(paymentMethods).where(and(byCompany(paymentMethods, companyId), eq(paymentMethods.status, "aktiv"))).all();
   }
   async getPaymentMethod(id: number, companyId?: number): Promise<PaymentMethod | undefined> {
     return db.select().from(paymentMethods).where(byIdInCompany(paymentMethods, id, companyId)).get();

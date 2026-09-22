@@ -547,7 +547,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(saftExport.status, 200);
     const saftXml = await saftExport.text();
     assert.match(saftXml, /<AuditFileVersion>2\.1<\/AuditFileVersion>/);
-    assert.match(saftXml, /<SoftwareVersion>3\.15\.2<\/SoftwareVersion>/);
+    assert.match(saftXml, /<SoftwareVersion>3\.15\.4<\/SoftwareVersion>/);
     assert.match(saftXml, /<TransactionID>SMOKE-1<\/TransactionID>/);
     const saftPreview = await fetch(`${base}/api/saft/import/preview`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/xml" }, body: saftXml });
     assert.equal(saftPreview.status, 200);
@@ -559,7 +559,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.15.2");
+    assert.equal(operations.version, "3.15.4");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     const backupProtectionResponse = await fetch(`${base}/api/backup-protection/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(backupProtectionResponse.status, 200);

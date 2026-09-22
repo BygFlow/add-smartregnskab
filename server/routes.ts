@@ -195,6 +195,11 @@ async function audit(
   });
 }
 
+async function billingCompanyId(companyId: number): Promise<number> {
+  const company = await storage.getCompany(companyId);
+  return company?.subscriptionOwnerId || companyId;
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // ════════════════════════════════════════════════
   //  OFFENTLIGE RUTER — registreres før auth-vagten
@@ -1937,7 +1942,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════════
 
   app.get("/api/subscription", h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const currentCompany = await storage.getCompany(cid);
     const subscriptionOwnerId = currentCompany?.subscriptionOwnerId || cid;
     const organizationCompanies = (await storage.getCompanies()).filter((company) =>
@@ -3315,7 +3320,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════════
 
   app.get("/api/payment/status", h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const methods = await storage.getPaymentMethods(cid);
     const sub = await storage.getSubscriptionByCompany(cid);
     res.json({
@@ -3331,11 +3336,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.get("/api/payment/history", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    res.json(await storage.getPayments(tenantId(req), 100));
+    res.json(await storage.getPayments(await billingCompanyId(tenantId(req)), 100));
   }));
 
   app.post("/api/payment/methods", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const cid = tenantId(req);
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Betalingsmidler skal oprettes gennem udbyderens sikre betalingsvindue." });
+    }
+    const cid = await billingCompanyId(tenantId(req));
     const provider = String(req.body?.provider ?? "stripe");
     if (!["quickpay", "stripe", "mobilepay", "betalingsservice"].includes(provider)) {
       return res.status(400).json({ error: "Ukendt betalingsudbyder." });
@@ -3358,7 +3366,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.post("/api/payment/methods/:id/default", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const method = await storage.getPaymentMethod(Number(req.params.id), cid);
     if (!method) return res.status(404).json({ error: "Betalingsmidlet blev ikke fundet." });
     for (const m of await storage.getPaymentMethods(cid)) {
@@ -3370,7 +3378,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.delete("/api/payment/methods/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const method = await storage.getPaymentMethod(Number(req.params.id), cid);
     if (!method) return res.status(404).json({ error: "Betalingsmidlet blev ikke fundet." });
     const updated = await storage.updatePaymentMethod(method.id, { status: "fjernet", isDefault: 0 });
@@ -3379,21 +3387,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.post("/api/payment/autorenew", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const sub = await storage.getSubscriptionByCompany(cid);
     if (!sub) return res.status(404).json({ error: "Der er ikke noget abonnement på virksomheden." });
     const on = req.body?.autoRenew !== false;
     if (on && !(await storage.getDefaultPaymentMethod(cid))) {
       return res.status(400).json({ error: "Tilføj et betalingsmiddel, før automatisk fornyelse slås til." });
     }
-    const updated = await storage.updateSubscription(sub.id, { autoRenew: on ? 1 : 0 });
+    const updated = await storage.updateSubscription(sub.id, {
+      autoRenew: on ? 1 : 0,
+      cancelledAt: on ? null : nowIso(),
+      ...(on && sub.status === "opsagt" ? { status: "aktiv" } : {}),
+    });
     await audit(req, on ? "automatisk_fornyelse_til" : "automatisk_fornyelse_fra", "subscription", sub.id);
     res.json(updated);
   }));
 
   /** Virksomheden betaler selv en forfalden abonnementsfaktura. */
   app.post("/api/payment/pay/:invoiceId", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const cid = tenantId(req);
+    const cid = await billingCompanyId(tenantId(req));
     const inv = (await storage.getPlatformInvoices(cid)).find((i) => i.id === Number(req.params.invoiceId));
     if (!inv) return res.status(404).json({ error: "Abonnementsfakturaen blev ikke fundet." });
     const result = await chargeInvoice(inv.id, {
@@ -4064,7 +4076,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   app.post("/api/payment/setup/:provider", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const result = await createPaymentProviderSetup(tenantId(req), String(req.params.provider));
+    const result = await createPaymentProviderSetup(await billingCompanyId(tenantId(req)), String(req.params.provider));
     await audit(req, result.ok ? "betalingsopsætning_startet" : "betalingsopsætning_fejlet", "paymentProvider", null, String(req.params.provider));
     res.status(result.ok ? 201 : 503).json(result);
   }));
@@ -4873,7 +4885,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   // SYSTEMOPDATERINGER — auto-notifikation ved opdatering
   // ═══════════════════════════════════════════════════════════════
-  const currentVersion = "3.15.2";
+  const currentVersion = "3.15.4";
   const existingReleases = await storage.all("system_releases");
   const hasCurrentVersion = existingReleases.some((r: any) => r.version === currentVersion);
   if (!hasCurrentVersion) {

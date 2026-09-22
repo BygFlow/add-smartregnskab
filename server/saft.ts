@@ -5,7 +5,7 @@ import { accounts, companies, journalEntries, journalLines } from "@shared/schem
 
 export const SAFT_VERSION = "2.1";
 export const STANDARD_ACCOUNT_VERSION = "20260101";
-const SOFTWARE_VERSION = process.env.APP_VERSION || "3.15.2";
+const SOFTWARE_VERSION = process.env.APP_VERSION || "3.15.4";
 const NS = "urn:StandardAuditFile-Taxation-Financial:DK";
 
 type Row = Record<string, any>;

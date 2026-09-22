@@ -39,6 +39,7 @@ type SubscriptionOverview = {
     currentPeriodEnd?: string | null;
     trialEndsAt?: string | null;
     autoRenew?: number;
+    cancelledAt?: string | null;
   } | null;
   plan: Plan | null;
   usage: {
@@ -166,6 +167,22 @@ export default function Abonnement() {
   const currentPlan = overview.data?.plan;
   const subscription = overview.data?.subscription;
   const paymentMethod = billing.data?.paymentMethods?.find((method) => method.provider === "quickpay" && method.status === "aktiv");
+  const toggleRenewal = useMutation({
+    mutationFn: async (autoRenew: boolean) => (await apiRequest("POST", "/api/payment/autorenew", { autoRenew })).json(),
+    onSuccess: async (_result, autoRenew) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/subscription"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] }),
+      ]);
+      toast({
+        title: autoRenew ? "Abonnementet fortsætter" : "Opsigelsen er registreret",
+        description: autoRenew
+          ? "Automatisk fornyelse er slået til igen."
+          : `Adgangen fortsætter til og med ${subscription?.currentPeriodEnd ?? "den betalte periodes udløb"}.`,
+      });
+    },
+    onError: (error: unknown) => toast({ title: "Abonnementet kunne ikke opdateres", description: error instanceof Error ? error.message : "Prøv igen.", variant: "destructive" }),
+  });
 
   return <div className="space-y-5">
     <PageHeader title="Abonnement og betaling" description="Vælg pakke, administrér betalingsaftalen og hent abonnementsfakturaer." />
@@ -174,7 +191,8 @@ export default function Abonnement() {
       <SectionCard title="Aktuel pakke" icon={<Package className="h-4 w-4" />}>
         {overview.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="space-y-3">
           <div className="flex items-start justify-between gap-3"><div><p className="text-xl font-semibold">{currentPlan?.name ?? "Ingen pakke"}</p><p className="text-sm text-muted-foreground">{currentPlan ? `${money(currentPlan.monthlyPrice)} pr. måned ekskl. moms` : "Kontakt support"}</p></div><StatusChip status={subscription?.status ?? "ukendt"} /></div>
-          <div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-3"><span className="block text-muted-foreground">Fakturering</span><strong>{subscription?.billingCycle === "aarlig" ? "Årlig" : "Månedlig"}</strong></div><div className="rounded-lg bg-muted p-3"><span className="block text-muted-foreground">Næste periode</span><strong>{subscription?.currentPeriodEnd ?? "—"}</strong></div></div>
+          <div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-3"><span className="block text-muted-foreground">Fakturering</span><strong>{subscription?.billingCycle === "aarlig" ? "Årlig" : "Månedlig"}</strong></div><div className="rounded-lg bg-muted p-3"><span className="block text-muted-foreground">{subscription?.autoRenew === 0 ? "Adgang til" : "Næste periode"}</span><strong>{subscription?.currentPeriodEnd ?? "—"}</strong></div></div>
+          {canManage && subscription && <div className="rounded-lg border p-3 text-xs"><p className="mb-2 text-muted-foreground">{subscription.autoRenew === 0 ? "Abonnementet er opsagt til periodens udløb. Der trækkes ikke automatisk igen." : "Abonnementet fornyes automatisk med det aktive betalingsmiddel."}</p><Button size="sm" variant="outline" disabled={toggleRenewal.isPending} onClick={() => { const next = subscription.autoRenew === 0; if (next || window.confirm(`Opsig abonnementet ved periodens udløb ${subscription.currentPeriodEnd ?? ""}?`)) toggleRenewal.mutate(next); }}>{toggleRenewal.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}{subscription.autoRenew === 0 ? "Fortryd opsigelse" : "Opsig ved periodens udløb"}</Button></div>}
           {overview.data?.usage && <div className="grid grid-cols-2 gap-2 text-[11px]"><div>Bilag i regnskabsåret: <strong>{overview.data.usage.documents} · fri opbevaring</strong></div><div>Posteringer i regnskabsåret: <strong>{overview.data.usage.entries}/{limit(overview.data.usage.maxEntries)}</strong></div><div>Virksomheder: <strong>{overview.data.usage.companies}/{limit(overview.data.usage.maxCompanies)}</strong></div><div>Integrationer: <strong>{overview.data.usage.integrations} · ubegrænset</strong></div></div>}
           {overview.data?.usage && <div className={`rounded-lg border p-3 text-xs ${overview.data.usage.postingContactRequired ? "border-amber-300 bg-amber-50 text-amber-950" : "bg-muted/40"}`}><strong>Posteringstillæg: {money(overview.data.usage.postingMonthlySurcharge ?? 0)}/md.</strong><span className="mt-1 block">Regnskabsår {overview.data.usage.postingPeriodStart ?? "—"} – {overview.data.usage.postingPeriodEnd ?? "—"}. {overview.data.usage.postingContactRequired ? "Kontakt os for en individuel aftale." : "Trinnet reguleres automatisk efter årsforbruget."}</span></div>}
         </div>}

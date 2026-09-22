@@ -9,7 +9,7 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 - Adresse: Lynæs Søpark 49, 3390 Hundested
 - Produkt: ADD SmartRegnskab
 - Produktionsadresse: https://app.addsmartregnskab.dk
-- Release: 3.15.2
+- Release: 3.15.4
 
 ## Før indsendelse
 

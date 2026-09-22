@@ -317,18 +317,22 @@ function mobilePayWebhookVerification(
   }
 }
 
-async function quickpayRequest(
+export async function quickpayRequest(
   method: "GET" | "POST" | "PUT",
   path: string,
   body?: Record<string, unknown>,
 ): Promise<{ ok: boolean; payload: Record<string, unknown>; error?: string }> {
   try {
+    const callbackBase = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
     const response = await fetch(`${QUICKPAY_API_BASE}${path}`, {
       method,
       headers: {
         Authorization: `Basic ${Buffer.from(`:${process.env.QUICKPAY_API_KEY!}`).toString("base64")}`,
         "Accept-Version": "v10",
         Accept: "application/json",
+        ...(callbackBase && method !== "GET"
+          ? { "QuickPay-Callback-Url": `${callbackBase}/api/webhooks/quickpay` }
+          : {}),
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -346,7 +350,7 @@ async function quickpayRequest(
   }
 }
 
-function quickpayWebhookVerification(
+export function quickpayWebhookVerification(
   rawBody: string,
   signatureHeader: string | undefined,
 ): { valid: boolean; eventId: string; eventType: string; data: Record<string, unknown> } {
@@ -723,7 +727,7 @@ export async function createPaymentProviderSetup(companyId: number, providerId: 
   if (providerId !== "quickpay") throw new Error("Det automatiske opsætningsflow er kun aktiveret for QuickPay.");
   const result = await provider.createSetupIntent({ companyId });
   if (!result.ok || !result.providerRef) return result;
-  const existing = await storage.getPaymentMethods(companyId);
+  const existing = await storage.getPaymentMethods(companyId, true);
   const duplicate = existing.find((method) => method.provider === providerId && method.providerRef === result.providerRef);
   const method = duplicate ?? await storage.createPaymentMethod({
     companyId,
@@ -976,16 +980,21 @@ export async function chargeInvoice(
     settledAt: result.status === "gennemfoert" ? now() : null,
   }))!;
   if (result.status === "afventer") {
+    const isQuickpay = provider.id === "quickpay";
     await writeAudit(
       company.id,
-      "betalingsservice_afventer",
+      isQuickpay ? "quickpay_betaling_afventer" : "betalingsservice_afventer",
       `platform_invoice:${invoice.id}`,
-      "Betalingsoplysning er oprettet til Nets/BS-fil; den er ikke betalt endnu.",
+      isQuickpay
+        ? "QuickPay-opkrævningen er oprettet og afventer en signeret callback."
+        : "Betalingsoplysning er oprettet til Nets/BS-fil; den er ikke betalt endnu.",
     );
     await notify(
       company.id,
-      "Betaling afventer bankfil",
-      `Opkrævningen for ${invoice.invoiceNumber} er klargjort til Betalingsservice og afventer bankfilens retur.`,
+      isQuickpay ? "QuickPay-betaling afventer" : "Betaling afventer bankfil",
+      isQuickpay
+        ? `Opkrævningen for ${invoice.invoiceNumber} er sendt til QuickPay og afventer bekræftelse.`
+        : `Opkrævningen for ${invoice.invoiceNumber} er klargjort til Betalingsservice og afventer bankfilens retur.`,
       "info",
     );
     return {
@@ -993,7 +1002,9 @@ export async function chargeInvoice(
       pending: true,
       simulated: false,
       payment: savedPayment,
-      message: "Betalingsoplysningen afventer bankfilens retur.",
+      message: isQuickpay
+        ? "QuickPay-opkrævningen afventer en signeret callback."
+        : "Betalingsoplysningen afventer bankfilens retur.",
     };
   }
 
@@ -1140,7 +1151,20 @@ export async function renewSubscriptions(
   const subscriptions = await storage.getSubscriptions();
 
   for (const subscription of subscriptions) {
-    if (subscription.autoRenew !== 1 || subscription.status === "opsagt") continue;
+    if (subscription.status === "opsagt") continue;
+    if (subscription.autoRenew !== 1) {
+      if (subscription.currentPeriodEnd <= todayIso) {
+        await storage.updateSubscription(subscription.id, { status: "opsagt" });
+        await storage.updateCompany(subscription.companyId, { status: "opsagt" });
+        await writeAudit(
+          subscription.companyId,
+          "abonnement_afsluttet",
+          `subscription:${subscription.id}`,
+          `Abonnementet er afsluttet ved periodens udløb ${subscription.currentPeriodEnd}.`,
+        );
+      }
+      continue;
+    }
     if (subscription.currentPeriodEnd > todayIso) continue;
     if (subscription.status === "proeve" && subscription.trialEndsAt && subscription.trialEndsAt > todayIso) {
       result.skippedTrial++;
@@ -1180,12 +1204,14 @@ function webhookObject(data: Record<string, unknown>): Record<string, unknown> {
 
 function webhookProviderReference(data: Record<string, unknown>): string | undefined {
   const object = webhookObject(data);
+  const referenceValue = (value: unknown): string | undefined =>
+    stringValue(value) ?? numberValue(value)?.toString();
   return (
-    stringValue(object.payment_intent) ??
-    stringValue(object.paymentIntentId) ??
-    stringValue(object.paymentId) ??
-    stringValue(object.reference) ??
-    stringValue(object.id)
+    referenceValue(object.payment_intent) ??
+    referenceValue(object.paymentIntentId) ??
+    referenceValue(object.paymentId) ??
+    referenceValue(object.reference) ??
+    referenceValue(object.id)
   );
 }
 
@@ -1253,10 +1279,32 @@ async function activateQuickpayMethod(providerRef: string): Promise<number> {
   const companies = await storage.getCompanies();
   let activated = 0;
   for (const company of companies) {
-    const methods = await storage.getPaymentMethods(company.id);
+    const methods = await storage.getPaymentMethods(company.id, true);
     for (const method of methods) {
       if (method.provider !== "quickpay" || method.providerRef !== providerRef) continue;
-      await storage.updatePaymentMethod(method.id, { status: "aktiv" });
+      // Ved kortskifte skal den netop godkendte aftale være den eneste
+      // standardaftale, så et gammelt kort ikke fortsat bliver opkrævet.
+      await storage.clearDefaultPaymentMethods(company.id);
+      for (const previous of methods) {
+        if (previous.provider === "quickpay" && previous.id !== method.id && previous.status === "aktiv") {
+          await storage.updatePaymentMethod(previous.id, { status: "fjernet", isDefault: 0 });
+        }
+      }
+      await storage.updatePaymentMethod(method.id, { status: "aktiv", isDefault: 1 });
+      const subscription = await storage.getSubscriptionByCompany(company.id);
+      if (subscription) {
+        await storage.updateSubscription(subscription.id, {
+          paymentMethodId: method.id,
+          autoRenew: 1,
+          cancelledAt: null,
+        });
+      }
+      await writeAudit(
+        company.id,
+        "quickpay_aftale_aktiveret",
+        `payment_method:${method.id}`,
+        "QuickPay-aftalen er signeret, aktiveret og valgt som standardbetalingsmiddel.",
+      );
       activated += 1;
     }
   }

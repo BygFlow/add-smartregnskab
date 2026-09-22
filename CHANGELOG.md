@@ -1,5 +1,13 @@
 # Ændringslog
 
+## 3.15.4 — 2026-09-22
+
+- Rettet QuickPay-aktivering, så signeret callback kan finde en afventende aftale og håndtere numeriske QuickPay-ID'er.
+- Tilføjet callback-header på QuickPay API-kald, sikker kortudskiftning og fælles betalingsaftale for hele kundeorganisationen.
+- Tilføjet opsigelse ved periodens udløb med mulighed for at fortryde samt automatisk afslutning uden ny opkrævning.
+- Lukket manuel oprettelse af betalingsreferencer i produktion og tilføjet målrettede QuickPay-regressionstests.
+- Synkroniseret server-, PWA-, SAF-T- og Android-version til 3.15.4.
+
 ## 3.15.3 — 2026-09-21
 
 - Rettet OIOUBL-endpoint-koder til `DK:CVR` og `GLN`, mens Peppol fortsat
