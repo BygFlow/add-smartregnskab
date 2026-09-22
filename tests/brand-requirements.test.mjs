@@ -15,6 +15,9 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   const marketing = read("client/src/pages/marketing.tsx");
   const sitemap = read("public/sitemap.xml");
   const robots = read("public/robots.txt");
+  const legalDocuments = read("shared/legal-documents.ts");
+  const gdpr = read("server/gdpr.ts");
+  const routes = read("server/routes.ts");
 
   assert.match(brand, /ADD SmartRegnskab/);
   assert.match(brand, /TIL DIN VIRKSOMHED/);
@@ -42,8 +45,22 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(marketing, /SiMastercard/);
   assert.match(marketing, /\+45 42 75 13 41/);
   assert.doesNotMatch(marketing, /Simply\.com mail|S3-kompatibel backup/);
+  assert.match(marketing, /Databehandleraftale/);
+  assert.match(marketing, /Underdatabehandlere/);
+  assert.match(marketing, /Dataopbevaring, eksport og sletning/);
+  assert.match(legalDocuments, /DPA_VERSION/);
+  assert.match(legalDocuments, /Render Services, Inc\./);
+  assert.match(legalDocuments, /Hetzner Online GmbH/);
+  assert.match(legalDocuments, /Visma e-conomic A\/S \(Sproom\)/);
+  assert.doesNotMatch(legalDocuments, /vagtplan|geofence|rengøring/i);
+  assert.match(gdpr, /return dpaPlainText\(\)/);
+  assert.doesNotMatch(gdpr, /Tidligere produktskabelon/);
+  assert.match(routes, /Boolean\(c\.dpaAcceptedAt\)/);
   assert.match(sitemap, /regnskab-haandvaerkere/);
   assert.match(sitemap, /guide\/professionelle-fakturaer/);
   assert.match(sitemap, /betaling-og-refusion/);
+  assert.match(sitemap, /databehandleraftale/);
+  assert.match(sitemap, /underdatabehandlere/);
+  assert.match(sitemap, /dataopbevaring-og-sletning/);
   assert.match(robots, /Disallow: \/api\//);
 });

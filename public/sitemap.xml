@@ -19,6 +19,9 @@
   <url><loc>https://app.addsmartregnskab.dk/privatliv</loc><priority>0.4</priority></url>
   <url><loc>https://app.addsmartregnskab.dk/vilkaar</loc><priority>0.4</priority></url>
   <url><loc>https://app.addsmartregnskab.dk/betaling-og-refusion</loc><priority>0.5</priority></url>
+  <url><loc>https://app.addsmartregnskab.dk/databehandleraftale</loc><priority>0.5</priority></url>
+  <url><loc>https://app.addsmartregnskab.dk/underdatabehandlere</loc><priority>0.5</priority></url>
+  <url><loc>https://app.addsmartregnskab.dk/dataopbevaring-og-sletning</loc><priority>0.5</priority></url>
   <url><loc>https://app.addsmartregnskab.dk/cookies</loc><priority>0.4</priority></url>
   <url><loc>https://app.addsmartregnskab.dk/regnskabsprogram-smaa-virksomheder</loc><priority>0.9</priority></url>
   <url><loc>https://app.addsmartregnskab.dk/fakturaprogram-virksomheder</loc><priority>0.8</priority></url>

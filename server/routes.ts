@@ -56,6 +56,7 @@ import {
   insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
+import { DPA_VERSION } from "@shared/legal-documents";
 type SafeParse<T> = {
   safeParse(data: unknown): { success: true; data: T } | { success: false; error: { issues: unknown } };
 };
@@ -3448,6 +3449,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       defaults: retentionDefaults(),
       dpaAcceptedAt: company?.dpaAcceptedAt ?? null,
       dpaAcceptedBy: company?.dpaAcceptedBy ?? null,
+      dpaVersion: DPA_VERSION,
       requests: await storage.getDataRequests(cid),
       consents: await storage.getConsents(cid),
       lagring: storageBackend(),
@@ -3478,12 +3480,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       dpaAcceptedAt: nowIso(),
       dpaAcceptedBy: req.auth!.user.name,
     });
-    await audit(req, "databehandleraftale_accepteret", "company", cid);
-    res.json({ ok: true, company: updated });
+    await audit(req, "databehandleraftale_accepteret", "company", cid, `version=${DPA_VERSION}`);
+    res.json({ ok: true, company: updated, version: DPA_VERSION });
   }));
 
   app.get("/api/gdpr/databehandleraftale/tekst", requireRole("leder", "platform_admin"), h(async (_req, res) => {
-    res.json({ tekst: dpaText(), privatliv: privacyPolicyText() });
+    res.json({ tekst: dpaText(), privatliv: privacyPolicyText(), version: DPA_VERSION });
   }));
 
   /** Registrerer og behandler en anmodning om indsigt, sletning eller udlevering. */
@@ -3650,8 +3652,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const plans = new Map((await storage.getPlans()).map((p) => [p.id, p]));
     const companyGdpr: any[] = [];
     for (const c of allCompanies) {
-      const consents = await storage.getConsents(c.id);
-      const dpaConsent = consents.find((cn: any) => cn.kind === "databehandling" && cn.granted);
       const sub = subs.find((s) => s.companyId === c.id);
       const plan = sub ? plans.get(sub.planId) : undefined;
       const userCount = (await storage.getUsers(c.id)).length;
@@ -3666,8 +3666,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         userCount,
         employeeCount,
         customerCount,
-        dpaAccepted: !!dpaConsent,
-        dpaAcceptedAt: dpaConsent?.grantedAt ?? null,
+        dpaAccepted: Boolean(c.dpaAcceptedAt),
+        dpaAcceptedAt: c.dpaAcceptedAt ?? null,
+        dpaAcceptedBy: c.dpaAcceptedBy ?? null,
+        dpaVersion: DPA_VERSION,
         createdAt: c.createdAt,
       });
     }
