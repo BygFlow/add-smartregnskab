@@ -47,6 +47,7 @@ function Root() {
         <Route path="/guide/regnskabsworkflow-mindre-virksomheder" component={() => <Marketing page="guide" guideSlug="regnskabsworkflow-mindre-virksomheder" />} />
         <Route path="/privatliv" component={() => <Marketing page="privacy" />} />
         <Route path="/vilkaar" component={() => <Marketing page="terms" />} />
+        <Route path="/betaling-og-refusion" component={() => <Marketing page="payment" />} />
         <Route path="/cookies" component={() => <Marketing page="cookies" />} />
         <Route path="/regnskabsprogram-smaa-virksomheder" component={() => <Marketing page="landing" landingSlug="regnskabsprogram-smaa-virksomheder" />} />
         <Route path="/fakturaprogram-virksomheder" component={() => <Marketing page="landing" landingSlug="fakturaprogram-virksomheder" />} />

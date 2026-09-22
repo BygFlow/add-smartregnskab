@@ -37,8 +37,13 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(marketing, /regnskabsprogram-smaa-virksomheder/);
   assert.match(marketing, /Guides og checklister/);
   assert.match(marketing, /VITE_GA_MEASUREMENT_ID/);
+  assert.match(marketing, /Betaling, opsigelse og refusion/);
+  assert.match(marketing, /SiVisa/);
+  assert.match(marketing, /SiMastercard/);
+  assert.match(marketing, /\+45 42 75 13 41/);
   assert.doesNotMatch(marketing, /Simply\.com mail|S3-kompatibel backup/);
   assert.match(sitemap, /regnskab-haandvaerkere/);
   assert.match(sitemap, /guide\/professionelle-fakturaer/);
+  assert.match(sitemap, /betaling-og-refusion/);
   assert.match(robots, /Disallow: \/api\//);
 });

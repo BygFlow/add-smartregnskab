@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, CreditCard, FileText, Loader2, Package, ShieldCheck, Sparkles } from "lucide-react";
+import { SiMastercard, SiVisa } from "react-icons/si";
 import { apiRequest, openAuthedFile } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -201,6 +202,7 @@ export default function Abonnement() {
       <SectionCard title="Betalingsaftale" icon={<CreditCard className="h-4 w-4" />}>
         {billing.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="space-y-3">
           <div className="flex items-center justify-between"><div><p className="font-medium">QuickPay</p><p className="text-xs text-muted-foreground">Sikker, tilbagevendende kortbetaling</p></div><StatusChip status={paymentMethod ? "aktiv" : billing.data?.quickpayConfigured ? "mangler" : "ikke konfigureret"} /></div>
+          <div className="flex items-center gap-4" aria-label="Accepterede betalingskort"><SiVisa className="h-7 w-14 text-[#1434CB]" title="Visa"/><SiMastercard className="h-8 w-12 text-[#EB001B]" title="Mastercard"/></div>
           {paymentMethod?.last4 && <p className="text-sm">Kort, der slutter på <strong>{paymentMethod.last4}</strong></p>}
           {canManage ? <Button className="w-full" disabled={!billing.data?.quickpayConfigured || startQuickPay.isPending} onClick={() => startQuickPay.mutate()}>{startQuickPay.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{paymentMethod ? "Skift betalingskort" : "Opret betalingsaftale"}</Button> : <p className="text-xs text-muted-foreground">Kun virksomhedens administrator kan ændre betalingsaftalen.</p>}
         </div>}
