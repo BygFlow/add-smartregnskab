@@ -1,4 +1,5 @@
 import type { Express, NextFunction, Request, Response } from "express";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import { decryptField, encryptField } from "./crypto";
 import { requireRole, tenantId } from "./auth";
@@ -10,6 +11,7 @@ type AiiaTokenSet = {
   refreshToken: string | null;
   expiresAt: string;
   scope: string | null;
+  consentId?: string | null;
 };
 
 type AiiaIntegration = {
@@ -25,6 +27,50 @@ type AiiaIntegration = {
 
 const TIMEOUT_MS = 20_000;
 const DEFAULT_SCOPES = "accounts offline_access";
+
+type AiiaWebhookPayload = {
+  consentId: string;
+  event: string;
+  data: unknown;
+};
+
+function jwtPayload(token: string | null): Record<string, unknown> {
+  if (!token) return {};
+  const parts = token.split(".");
+  if (parts.length < 2) return {};
+  try {
+    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function tokenConsentId(accessToken: string, refreshToken: string | null): string | null {
+  const refresh = jwtPayload(refreshToken);
+  const access = jwtPayload(accessToken);
+  const value = refresh.consentId ?? access.consentId;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function verifyAiiaWebhookSignature(rawBody: string, signature: string | undefined, secret: string): boolean {
+  if (!rawBody || !signature || !secret) return false;
+  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const actual = signature.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(actual)) return false;
+  return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(actual, "hex"));
+}
+
+export function parseAiiaWebhook(body: unknown): AiiaWebhookPayload | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const envelope = Object.values(body as Record<string, unknown>).find(
+    (value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)),
+  );
+  if (!envelope) return null;
+  const event = typeof envelope.event === "string" ? envelope.event.trim() : "";
+  const consentId = typeof envelope.consentId === "string" ? envelope.consentId.trim() : "";
+  if (!event || !consentId) return null;
+  return { event, consentId, data: envelope.data ?? null };
+}
 
 function h(fn: (req: Request, res: Response) => Promise<unknown>) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -97,6 +143,7 @@ async function exchangeToken(body: Record<string, string>): Promise<AiiaTokenSet
     refreshToken: payload.refresh_token ? String(payload.refresh_token) : null,
     expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
     scope: payload.scope ? String(payload.scope) : null,
+    consentId: tokenConsentId(String(payload.access_token), payload.refresh_token ? String(payload.refresh_token) : null),
   };
 }
 
@@ -115,6 +162,36 @@ function readTokens(integration: AiiaIntegration): AiiaTokenSet {
 async function findIntegration(companyId: number): Promise<AiiaIntegration | undefined> {
   const rows = await storage.all("bank_integrations", companyId) as AiiaIntegration[];
   return rows.find((row) => row.type === "aiia");
+}
+
+async function findIntegrationByConsent(consentId: string): Promise<AiiaIntegration | undefined> {
+  const rows = await storage.all("bank_integrations") as AiiaIntegration[];
+  return rows.find((row) => {
+    if (row.type !== "aiia" || !row.config) return false;
+    try {
+      const tokens = readTokens(row);
+      return (tokens.consentId || tokenConsentId(tokens.accessToken, tokens.refreshToken)) === consentId;
+    } catch {
+      return false;
+    }
+  });
+}
+
+async function recordAiiaWebhook(rawBody: string, signatureValid: boolean, eventType: string): Promise<{ id: number; duplicate: boolean }> {
+  const eventId = `aiia:${createHash("sha256").update(rawBody, "utf8").digest("hex")}`;
+  const existing = await storage.getWebhookEvent(eventId);
+  if (existing) return { id: existing.id, duplicate: true };
+  const row = await storage.createWebhookEvent({
+    provider: "aiia",
+    eventId,
+    eventType,
+    payload: rawBody,
+    signatureValid: signatureValid ? 1 : 0,
+    processed: 0,
+    error: signatureValid ? null : "Ugyldig AiiA-webhooksignatur.",
+    receivedAt: new Date().toISOString(),
+  });
+  return { id: row.id, duplicate: false };
 }
 
 async function usableToken(integration: AiiaIntegration): Promise<AiiaTokenSet> {
@@ -227,6 +304,72 @@ export async function syncAllAiia(): Promise<{ imported: number; companies: numb
 }
 
 export function registerPublicAiiaRoutes(app: Express): void {
+  app.post("/api/bank/aiia/webhook", h(async (req, res) => {
+    const secret = process.env.AIIA_WEBHOOK_SECRET?.trim() || "";
+    if (!secret) return res.status(503).json({ error: "AiiA-webhook er ikke konfigureret." });
+    const rawBody = Buffer.isBuffer(req.rawBody)
+      ? req.rawBody.toString("utf8")
+      : typeof req.rawBody === "string"
+        ? req.rawBody
+        : JSON.stringify(req.body ?? {});
+    const rawSignature = req.headers["x-viia-signature"];
+    const signature = Array.isArray(rawSignature) ? rawSignature[0] : rawSignature;
+    const parsed = parseAiiaWebhook(req.body);
+    const valid = verifyAiiaWebhookSignature(rawBody, signature, secret);
+    const saved = await recordAiiaWebhook(rawBody, valid, parsed?.event || "ukendt");
+    if (!valid) return res.status(401).json({ error: "Webhooksignaturen kunne ikke bekræftes." });
+    if (saved.duplicate) return res.status(200).json({ ok: true, duplicate: true });
+    if (!parsed) {
+      await storage.updateWebhookEvent(saved.id, { error: "Ukendt AiiA-webhookformat." });
+      return res.status(400).json({ error: "Ukendt webhookformat." });
+    }
+
+    const integration = await findIntegrationByConsent(parsed.consentId);
+    if (!integration) {
+      await storage.updateWebhookEvent(saved.id, { error: "Intet AiiA-samtykke matcher webhookpen." });
+      // Kvitter for en autentisk, men ukendt/udfaset samtykkehændelse for at undgå retry-storme.
+      return res.status(202).json({ ok: true, matched: false });
+    }
+
+    const event = parsed.event.toLowerCase();
+    const now = new Date().toISOString();
+    let action = "aiia_webhook_modtaget";
+    if (event === "consentrevoked" || event === "connectionremoved") {
+      await storage.update("bank_integrations", integration.id, {
+        status: "afbrudt",
+        notes: "Banksamtykket er tilbagekaldt hos AiiA. Forbind banken igen for at fortsætte.",
+      }, integration.companyId);
+      action = "aiia_samtykke_tilbagekaldt";
+    } else if (event === "consentneedsupdate" || event === "connectionupdaterequired") {
+      await storage.update("bank_integrations", integration.id, {
+        status: "fejl",
+        notes: "AiiA kræver, at bankbrugeren fornyer forbindelsen eller samtykket.",
+      }, integration.companyId);
+      action = "aiia_samtykke_skal_fornyes";
+    } else if (event === "accountsupdated" || event === "syncdone") {
+      action = "aiia_bankdata_opdateret";
+      setImmediate(() => {
+        void syncAiiaCompany(integration.companyId).catch(async (error: unknown) => {
+          await storage.update("bank_integrations", integration.id, {
+            status: "fejl",
+            notes: (error instanceof Error ? error.message : "AiiA-synkronisering fejlede").slice(0, 300),
+          }, integration.companyId);
+        });
+      });
+    }
+    await storage.createAuditLog({
+      companyId: integration.companyId,
+      userId: null,
+      userEmail: null,
+      action,
+      target: `bankIntegration#${integration.id}`,
+      detail: `AiiA-webhook ${parsed.event} modtaget og signaturvalideret.`,
+      createdAt: now,
+    });
+    await storage.updateWebhookEvent(saved.id, { processed: 1, error: null });
+    return res.status(200).json({ ok: true });
+  }));
+
   app.get("/api/bank/aiia/callback", h(async (req, res) => {
     const state = String(req.query.state || "");
     const code = String(req.query.code || "");
