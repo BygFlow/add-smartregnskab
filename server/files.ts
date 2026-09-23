@@ -9,7 +9,7 @@ import { db } from "./storage";
 // ── Persistent file storage path ──
 // I produktion sættes FILE_STORAGE_DIR til en persistent disk.
 // Lokalt fallback til projektets uploads-mappe.
-const UPLOAD_ROOT = process.env.FILE_STORAGE_DIR || "/home/user/workspace/addsmartregnskab/uploads";
+const UPLOAD_ROOT = path.resolve(process.env.FILE_STORAGE_DIR || path.join(process.cwd(), "uploads"));
 try { mkdirSync(UPLOAD_ROOT, { recursive: true }); } catch {}
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const S3_EXPIRY_SECONDS = 15 * 60;

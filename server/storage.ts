@@ -46,6 +46,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import Database from "better-sqlite3";
 import { eq, desc, and, lte, gte, isNull, lt, sql } from "drizzle-orm";
 import { mkdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 
 // ── Persistent database path ──
@@ -202,6 +203,17 @@ if (!hasApplicationSchema) {
     addColumn("companies", "subscription_owner_id", "integer");
     addColumn("companies", "group_role", "text DEFAULT 'standalone' NOT NULL");
     addColumn("companies", "ownership_percent", "real");
+    addColumn("companies", "document_inbox_token", "text");
+    addColumn("companies", "document_auto_post", "integer DEFAULT 0 NOT NULL");
+    addColumn("companies", "document_payables_account_id", "integer");
+    addColumn("companies", "document_input_vat_account_id", "integer");
+    addColumn("document_inbox", "storage", "text");
+    addColumn("document_inbox", "storage_key", "text");
+    addColumn("document_inbox", "size_bytes", "integer");
+    addColumn("document_inbox", "content_hash", "text");
+    addColumn("document_inbox", "sender_email", "text");
+    addColumn("document_inbox", "external_message_id", "text");
+    addColumn("document_inbox", "posted_journal_entry_id", "integer");
     addColumn("subscriptions", "ai_addon_enabled", "integer DEFAULT 0 NOT NULL");
   })();
 
@@ -222,6 +234,8 @@ if (!hasApplicationSchema) {
     "CREATE UNIQUE INDEX IF NOT EXISTS quotes_company_number_unique ON quotes (company_id, quote_number)",
     "CREATE UNIQUE INDEX IF NOT EXISTS einvoice_company_provider_message_unique ON einvoice_queue (company_id, provider_message_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS bank_transactions_company_external_unique ON bank_transactions (company_id, external_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS companies_document_inbox_token_unique ON companies (document_inbox_token)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS document_inbox_company_message_unique ON document_inbox (company_id, external_message_id)",
   ]) {
     try { sqlite.exec(statement); } catch (error) {
       console.warn("Legacy database index could not be created:", error instanceof Error ? error.message : error);
@@ -387,7 +401,9 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(companies).where(eq(companies.id, id)).get();
   }
   async createCompany(data: InsertCompany): Promise<Company> {
-    return db.insert(companies).values(data).returning().get();
+    return db.insert(companies).values({ ...data,
+      documentInboxToken: data.kind === "platform" ? null : (data.documentInboxToken || randomBytes(16).toString("hex")),
+    }).returning().get();
   }
   async updateCompany(id: number, data: Partial<InsertCompany>): Promise<Company | undefined> {
     return db.update(companies).set(data).where(eq(companies.id, id)).returning().get();

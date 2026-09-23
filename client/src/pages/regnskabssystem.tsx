@@ -421,6 +421,7 @@ type AccountingIntegration = {
 type DocumentInboxItem = {
   id: number;
   fileName?: string | null;
+  storageKey?: string | null;
   source?: string | null;
   supplier?: string | null;
   amount?: number | null;
@@ -430,6 +431,8 @@ type DocumentInboxItem = {
   ocrStatus?: string | null;
   isDuplicate?: number | null;
   status?: string | null;
+  postedJournalEntryId?: number | null;
+  matchedVoucherId?: number | null;
 };
 
 type PayrollEntry = {
@@ -1022,21 +1025,6 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
-  const postVoucherMut = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("PATCH", `/api/vouchers/${id}`, { status: "bogfoert" });
-      return await res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      toast({ title: "Bilag bogført", description: "Bilaget er nu bogført." });
-    },
-    onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : "Ukendt fejl";
-      toast({ title: "Kunne ikke bogføre", description: message, variant: "destructive" });
-    },
-  });
-
   const deleteVoucherMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("DELETE", `/api/vouchers/${id}`);
@@ -1482,23 +1470,69 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
   const documentInbox = documentInboxQuery.data ?? [];
 
+  const documentReceivingQuery = useQuery<{ address: string | null; emailReady: boolean; autoPost: boolean;
+    payablesAccountId: number | null; inputVatAccountId: number | null;
+    accounts: Array<{ id: number; accountNumber: string; name: string; type: string }> }>({
+    queryKey: ["/api/document-receiving/settings"],
+    enabled: !!effectiveCompanyId,
+    queryFn: async () => (await apiRequest("GET", "/api/document-receiving/settings")).json(),
+  });
+  const [payablesAccountId, setPayablesAccountId] = useState(0);
+  const [inputVatAccountId, setInputVatAccountId] = useState(0);
+  useEffect(() => {
+    if (!documentReceivingQuery.data) return;
+    setPayablesAccountId(documentReceivingQuery.data.payablesAccountId ?? 0);
+    setInputVatAccountId(documentReceivingQuery.data.inputVatAccountId ?? 0);
+  }, [documentReceivingQuery.data]);
+  const saveDocumentSettingsMut = useMutation({
+    mutationFn: async (autoPost: boolean) => (await apiRequest("PATCH", "/api/document-receiving/settings", {
+      autoPost, payablesAccountId, inputVatAccountId,
+    })).json(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/document-receiving/settings"] });
+      toast({ title: "Bilagsindstillinger gemt" });
+    },
+    onError: (error: unknown) => toast({ title: "Kunne ikke gemme", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
+  });
+  const processDocumentMut = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/document-receiving/${id}/process`, {})).json(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/document-inbox"] }),
+    onError: (error: unknown) => toast({ title: "Kunne ikke behandle bilag", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
+  });
+  const approveDocumentMut = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/document-receiving/${id}/approve`, {})).json(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      qc.invalidateQueries({ queryKey: ["/api/vouchers"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      toast({ title: "Bilag bogført", description: "En balanceret postering er oprettet og knyttet til filen." });
+    },
+    onError: (error: unknown) => toast({ title: "Kunne ikke bogføre bilag", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
+  });
+
   const [inboxUploadOpen, setInboxUploadOpen] = useState(false);
-  const [inboxForm, setInboxForm] = useState({ fileName: "", source: "upload" });
+  const [inboxFile, setInboxFile] = useState<File | null>(null);
 
   const uploadInboxMut = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/document-inbox", {
-        fileName: inboxForm.fileName,
-        source: inboxForm.source,
-        companyId: effectiveCompanyId,
+      if (!inboxFile) throw new Error("Vælg en PDF eller et billede.");
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Kunne ikke læse filen."));
+        reader.readAsDataURL(inboxFile);
+      });
+      const res = await apiRequest("POST", "/api/document-receiving/upload", {
+        fileName: inboxFile.name,
+        dataUrl,
       });
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
-      toast({ title: "Bilag uploadet", description: "Dokumentet er tilføjet indbakken." });
+      toast({ title: "Bilag modtaget", description: "Filen er gemt i virksomhedens bilagsindbakke." });
       setInboxUploadOpen(false);
-      setInboxForm({ fileName: "", source: "upload" });
+      setInboxFile(null);
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
@@ -2521,16 +2555,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                 </td>
                                 <td className="px-3 py-1.5">
                                   <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      data-testid={`btn-bogfoer-bilag-${v.id}`}
-                                      onClick={() => postVoucherMut.mutate(v.id)}
-                                      disabled={postVoucherMut.isPending || status === "bogfoert" || status === "bogført"}
-                                    >
-                                      <FileCheck2 className="size-3.5" />
-                                      Bogfør
-                                    </Button>
+                                    {status !== "bogfoert" && status !== "bogført" && (
+                                      <span className="text-xs text-muted-foreground">Bogfør via bilagsindbakken</span>
+                                    )}
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -4082,6 +4109,38 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
               {/* ---------- BILAGSINDBAKKE ---------- */}
               <TabsContent value="bilagsindbakke" className="space-y-4">
+                <div className="rounded-md border p-3 text-sm space-y-1">
+                  <div className="font-medium">Virksomhedens bilagsadresse</div>
+                  {documentReceivingQuery.data?.address ? (
+                    <div className="font-mono break-all select-all">{documentReceivingQuery.data.address}</div>
+                  ) : (
+                    <div className="text-muted-foreground">E-mailmodtagelse er under opsætning. Brug filupload indtil mailudbyderen er tilsluttet.</div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Videresend leverandørfakturaer hertil, når mailmodtagelse er aktiveret. Bilag modtaget via e-mail kræver altid menneskelig godkendelse før bogføring.</p>
+                </div>
+                <div className="rounded-md border p-3 text-sm space-y-3">
+                  <div className="font-medium">AI-bogføring</div>
+                  <p className="text-xs text-muted-foreground">Som standard går bilag til kontrol. Ved tilvalg kan entydige leverandørfakturaer uploadet af virksomheden bogføres automatisk efter kontrol af bl.a. CVR, dubletter, moms og konti. E-mailbilag skal fortsat godkendes manuelt.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="space-y-1">Kreditorkonto
+                      <select className="w-full rounded-md border bg-background p-2" value={payablesAccountId} onChange={(e) => setPayablesAccountId(Number(e.target.value))}>
+                        <option value={0}>Vælg konto</option>
+                        {documentReceivingQuery.data?.accounts.filter((a) => a.type === "passiv" && /kreditor|leverandørgæld|leverandører/i.test(a.name)).map((a) => <option key={a.id} value={a.id}>{a.accountNumber} · {a.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1">Købsmomskonto
+                      <select className="w-full rounded-md border bg-background p-2" value={inputVatAccountId} onChange={(e) => setInputVatAccountId(Number(e.target.value))}>
+                        <option value={0}>Vælg konto</option>
+                        {documentReceivingQuery.data?.accounts.filter((a) => a.type === "aktiv" && /købsmoms|indgående moms|moms til gode/i.test(a.name)).map((a) => <option key={a.id} value={a.id}>{a.accountNumber} · {a.name}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => saveDocumentSettingsMut.mutate(false)} disabled={saveDocumentSettingsMut.isPending}>Gem · manuel kontrol</Button>
+                    <Button size="sm" onClick={() => saveDocumentSettingsMut.mutate(true)} disabled={saveDocumentSettingsMut.isPending || !payablesAccountId || !inputVatAccountId}>Aktivér AI-autobogføring</Button>
+                  </div>
+                  <p className="text-xs">Status: {documentReceivingQuery.data?.autoPost ? "AI-autobogføring er tilvalgt" : "Manuel godkendelse"}</p>
+                </div>
                 <SectionCard
                   title="Bilagsindbakke"
                   icon={<Inbox className="size-4" />}
@@ -4127,7 +4186,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                             const dup = !!item.isDuplicate;
                             return (
                               <tr key={item.id} className="border-b border-border/50 last:border-0">
-                                <td className="px-3 py-1.5 font-medium">{item.fileName ?? "—"}</td>
+                                <td className="px-3 py-1.5 font-medium">{item.storageKey ? <button type="button" className="underline" onClick={() => openAuthedFile(`/api/document-receiving/${item.id}/file`)}>{item.fileName}</button> : item.fileName ?? "—"}</td>
                                 <td className="px-3 py-1.5">{item.supplier ?? "—"}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{money(item.amount)}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{money(item.vatAmount)}</td>
@@ -4154,7 +4213,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                   </div>
                                 </td>
                                 <td className="px-3 py-1.5">
-                                  <Button
+                                  {item.postedJournalEntryId ? <span>Bogført som postering #{item.postedJournalEntryId}</span> : item.ocrStatus !== "behandlet" && <Button
+                                    size="sm" variant="outline" onClick={() => processDocumentMut.mutate(item.id)} disabled={processDocumentMut.isPending}>
+                                    <Sparkles className="size-3.5" /> Behandl med AI
+                                  </Button>}
+                                  {!item.postedJournalEntryId && !item.matchedVoucherId && item.ocrStatus === "behandlet" && <Button
+                                    size="sm" onClick={() => { if (window.confirm("Har du kontrolleret faktura, moms og konti? Bogfør bilaget nu?")) approveDocumentMut.mutate(item.id); }}
+                                    disabled={approveDocumentMut.isPending}>
+                                    Godkend og bogfør
+                                  </Button>}
+                                  {!item.postedJournalEntryId && !item.matchedVoucherId && item.ocrStatus !== "behandlet" && <Button
                                     size="sm"
                                     variant="outline"
                                     data-testid={`btn-konverter-bilag-${item.id}`}
@@ -4163,7 +4231,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                   >
                                     <FileCheck2 className="size-3.5" />
                                     Konverter til bilag
-                                  </Button>
+                                  </Button>}
                                 </td>
                               </tr>
                             );
@@ -4182,23 +4250,13 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </DialogHeader>
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <Label htmlFor="inbox-file">Filnavn</Label>
+                        <Label htmlFor="inbox-file">PDF eller billede</Label>
                         <Input
                           id="inbox-file"
                           data-testid="input-inbox-filename"
-                          value={inboxForm.fileName}
-                          onChange={(e) => setInboxForm((f) => ({ ...f, fileName: e.target.value }))}
-                          placeholder="faktura.pdf"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="inbox-source">Kilde</Label>
-                        <Input
-                          id="inbox-source"
-                          data-testid="input-inbox-source"
-                          value={inboxForm.source}
-                          onChange={(e) => setInboxForm((f) => ({ ...f, source: e.target.value }))}
-                          placeholder="upload / email / scan"
+                          type="file"
+                          accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                          onChange={(e) => setInboxFile(e.target.files?.[0] ?? null)}
                         />
                       </div>
                     </div>
@@ -4209,7 +4267,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       <Button
                         data-testid="btn-inbox-gem"
                         onClick={() => uploadInboxMut.mutate()}
-                        disabled={uploadInboxMut.isPending || !inboxForm.fileName}
+                        disabled={uploadInboxMut.isPending || !inboxFile}
                       >
                         {uploadInboxMut.isPending && <Loader2 className="size-4 animate-spin" />}
                         Upload

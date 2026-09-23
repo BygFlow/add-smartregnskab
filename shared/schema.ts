@@ -33,6 +33,10 @@ export const companies = sqliteTable("companies", {
   dpaAcceptedBy: text("dpa_accepted_by"),
   // AI-tilæg
   aiEnabled: integer("ai_enabled").notNull().default(0), // 0 = ikke aktiveret, 1 = aktiveret
+  documentInboxToken: text("document_inbox_token"), // Tilfældig, vedvarende e-mailalias pr. virksomhed
+  documentAutoPost: integer("document_auto_post").notNull().default(0), // Kun efter kundens udtrykkelige tilvalg
+  documentPayablesAccountId: integer("document_payables_account_id"),
+  documentInputVatAccountId: integer("document_input_vat_account_id"),
   notificationPrefs: text("notification_prefs"), // JSON: email/SMS notification preferences
   // Betalingsinformation
   website: text("website"),
@@ -1595,6 +1599,13 @@ export const documentInbox = sqliteTable("document_inbox", {
   companyId: integer("company_id").notNull(),
   fileName: text("file_name").notNull(),
   fileType: text("file_type"), // pdf, jpg, png
+  storage: text("storage"),
+  storageKey: text("storage_key"),
+  sizeBytes: integer("size_bytes"),
+  contentHash: text("content_hash"),
+  senderEmail: text("sender_email"),
+  externalMessageId: text("external_message_id"),
+  postedJournalEntryId: integer("posted_journal_entry_id"),
   source: text("source").notNull().default("upload"), // upload, email, scan
   supplier: text("supplier"), // AI-udtrukket
   amount: real("amount"),

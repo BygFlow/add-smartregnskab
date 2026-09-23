@@ -78,6 +78,20 @@
       "when": 1789896796757,
       "tag": "0010_rich_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790144315059,
+      "tag": "0011_lean_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790144845055,
+      "tag": "0012_striped_shocker",
+      "breakpoints": true
     }
   ]
 }

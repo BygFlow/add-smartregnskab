@@ -20,6 +20,7 @@ import { registerProfessionalRoutes } from "./professional-routes";
 import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import { registerPublicAddConnectRoutes } from "./add-connect";
+import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -590,6 +591,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerPublicEInvoiceRoutes(app);
   registerPublicAiiaRoutes(app);
   registerPublicAddConnectRoutes(app);
+  registerPublicDocumentIntakeRoutes(app);
 
   app.use("/api", requireAuth);
   app.use("/api", platformCustomerDataGuard);
@@ -651,6 +653,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // af kunde- eller assistentroller, heller ikke via en skjult URL.
   app.use("/api/regnskabssystem", requireRole("leder", "holdleder", "platform_admin"));
   app.use("/api/ai-regnskab", requireRole("leder", "holdleder", "platform_admin"));
+  registerDocumentIntakeRoutes(app);
 
   app.get("/api/auth/me", h(async (req, res) => {
     const a = req.auth!;
@@ -2420,6 +2423,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const company = await storage.getCompany(id);
     if (!company) return res.status(404).json({ error: "Virksomheden blev ikke fundet." });
     const data = validate(insertCompanySchema.partial(), req.body);
+    delete data.documentInboxToken;
+    delete data.documentAutoPost;
+    delete data.documentPayablesAccountId;
+    delete data.documentInputVatAccountId;
     const updated = await storage.updateCompany(id, data);
     await audit(req, "opdater_virksomhed", "company", id, company.name);
     res.json(updated);
@@ -5099,7 +5106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const limit = await checkAccountingLimit(cid, "documents");
     if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
-    const data = validate(insertVoucherSchema, { ...req.body, companyId: cid, createdAt: nowIso() });
+    const data = validate(insertVoucherSchema, { ...req.body, companyId: cid, status: "kladde", createdAt: nowIso() });
     res.status(201).json(await storage.insert("vouchers", data));
   }));
 
@@ -5108,7 +5115,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const existing = await storage.get("vouchers", Number(req.params.id), cid);
     if (!existing) return res.status(404).json({ error: "Bilaget findes ikke." });
     if (existing.status === "bogfoert") return res.status(409).json({ error: "Et bogført bilag er låst og må ikke ændres." });
-    res.json(await storage.update("vouchers", Number(req.params.id), req.body, cid));
+    if (["bogfoert", "bogført"].includes(String(req.body?.status ?? ""))) {
+      return res.status(409).json({ error: "Bogføring kræver en balanceret postering. Brug bilagsindbakken og godkend den faktiske bogføring." });
+    }
+    const updates: Record<string, unknown> = {};
+    for (const key of ["supplier", "date", "amount", "vatAmount", "vatRate", "description", "category", "accountId"]) {
+      if (req.body?.[key] !== undefined) updates[key] = req.body[key];
+    }
+    res.json(await storage.update("vouchers", Number(req.params.id), updates, cid));
   }));
 
   app.delete("/api/vouchers/:id", h(async (req, res) => {
@@ -5605,38 +5619,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.all("document_inbox", tenantId(req)));
   }));
   app.post("/api/document-inbox", h(async (req, res) => {
-    const data = validate(insertDocumentInboxSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
-    // Lokal kategorihjælp er kun et udviklingsværktøj. Production må ikke
-    // præsentere filnavnsgæt som et gennemført OCR-resultat.
-    if (data.fileName && process.env.NODE_ENV !== "production") {
-      const fn = data.fileName.toLowerCase();
-      const cats: Record<string, string> = { mobilepay: "gebyrer", skat: "moms_skat", loen: "lon", el: "forbrug", vand: "forbrug", leje: "leje", telia: "tele", ikea: "inventar" };
-      for (const [k, v] of Object.entries(cats)) { if (fn.includes(k)) { data.suggestedCategory = v; break; } }
-      if (!data.suggestedAccount) {
-        const acctMap: Record<string, string> = { gebyrer: "5820", moms_skat: "2400", lon: "7000", forbrug: "4300", leje: "5100", tele: "5310", inventar: "1200" };
-        data.suggestedAccount = acctMap[data.suggestedCategory || ""] || "4000";
-      }
-      data.ocrStatus = "behandlet";
-      data.ocrData = JSON.stringify({ simulated: true, extractedAt: nowIso() });
-    } else if (data.fileName) {
-      data.ocrStatus = "afventer";
-      data.ocrData = null;
-    }
-    // Dubletkontrol
-    const existing = await storage.all("document_inbox", tenantId(req));
-    const dup = existing.some((d: any) => d.supplier === data.supplier && d.amount === data.amount && d.invoiceNumber === data.invoiceNumber);
-    if (dup) data.isDuplicate = 1;
-    res.status(201).json(await storage.insert("document_inbox", data));
+    res.status(410).json({ error: "Brug filupload i bilagsindbakken. Filnavn alene opretter ikke et gyldigt bilag." });
   }));
   app.patch("/api/document-inbox/:id", h(async (req, res) => {
+    const existing = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
+    if (!existing) return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (existing.postedJournalEntryId || existing.matchedVoucherId) {
+      return res.status(409).json({ error: "Et tilknyttet bilag må ikke ændres her." });
+    }
     const updates: Record<string, any> = {};
-    for (const k of ["supplier", "amount", "vatAmount", "vatRate", "invoiceDate", "invoiceNumber", "suggestedAccount", "suggestedCategory", "status", "matchedVoucherId"]) {
+    for (const k of ["supplier", "amount", "vatAmount", "vatRate", "invoiceDate", "invoiceNumber", "suggestedAccount", "suggestedCategory"]) {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     }
     res.json(await storage.update("document_inbox", Number(req.params.id), updates, tenantId(req)));
   }));
   app.delete("/api/document-inbox/:id", h(async (req, res) => {
+    const document = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
+    if (!document) return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (document.postedJournalEntryId || document.matchedVoucherId) {
+      return res.status(409).json({ error: "Bilaget indgår i bogføringen og kan ikke slettes." });
+    }
     await storage.delete("document_inbox", Number(req.params.id), tenantId(req));
+    if (document.storage && document.storageKey) await deleteFile(document.storage, document.storageKey);
     res.status(204).send();
   }));
   // Konverter bilag til voucher
@@ -5644,9 +5648,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const docs = await storage.all("document_inbox", tenantId(req));
     const doc = docs.find((d: any) => d.id === Number(req.params.id));
     if (!doc) return res.status(404).json({ error: "Bilag ikke fundet" });
+    if (!doc.storageKey) return res.status(400).json({ error: "Et filnavn alene er ikke et gyldigt bilag. Upload PDF eller billede først." });
+    if (doc.matchedVoucherId) return res.status(409).json({ error: "Bilaget er allerede konverteret." });
     const voucher = await storage.insert("vouchers", {
-      companyId: tenantId(req), supplier: doc.supplier || "Ukendt", date: doc.invoiceDate || nowIso().substring(0, 10),
-      amount: doc.amount || 0, vatRate: doc.vatRate || 25, description: `Fra bilagsindbakke: ${doc.fileName}`,
+      companyId: tenantId(req), voucherNumber: `DOC-${doc.id}`,
+      supplier: doc.supplier || "Ukendt", date: doc.invoiceDate || nowIso().substring(0, 10),
+      amount: doc.amount || 0, vatAmount: doc.vatAmount || 0, vatRate: doc.vatRate || 0,
+      description: `Fra bilagsindbakke: ${doc.fileName}`,
       category: doc.suggestedCategory || "diverse", status: "kladde", createdAt: nowIso(),
     } as any);
     await storage.update("document_inbox", doc.id, { status: "behandlet", matchedVoucherId: voucher.id }, tenantId(req));
