@@ -22,13 +22,19 @@ function inboundReady(): boolean {
     && Boolean(inboundDomain() && process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET);
 }
 
+function inboundPilot(companyId: number): boolean {
+  const configuredId = process.env.DOCUMENT_INBOUND_TEST_COMPANY_ID?.trim();
+  return Boolean(configuredId && /^\d+$/.test(configuredId) && Number(configuredId) === companyId
+    && inboundDomain() && process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET);
+}
+
 function safeName(name: unknown): string {
   return String(name ?? "bilag").split(/[\\/]/).pop()!.replace(/[\r\n"<>]/g, "").slice(0, 180) || "bilag";
 }
 
-function emailAddress(companyId: number): string | null {
+export function emailAddress(companyId: number): string | null {
   const domain = inboundDomain();
-  if (!domain || !inboundReady()) return null;
+  if (!domain || (!inboundReady() && !inboundPilot(companyId))) return null;
   let company = db.select().from(companies).where(eq(companies.id, companyId)).get();
   if (!company) return null;
   if (!company.documentInboxToken) {
@@ -288,7 +294,7 @@ export function registerDocumentIntakeRoutes(app: Express) {
     const companyId = tenantId(req);
     const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
     const chart = db.select().from(accounts).where(eq(accounts.companyId, companyId)).all();
-    res.json({ address: emailAddress(companyId), emailReady: inboundReady(),
+    res.json({ address: emailAddress(companyId), emailReady: inboundReady(), emailPilot: !inboundReady() && inboundPilot(companyId),
       autoPost: Boolean(company?.documentAutoPost), payablesAccountId: company?.documentPayablesAccountId,
       inputVatAccountId: company?.documentInputVatAccountId,
       accounts: chart.filter((account) => account.active).map(({ id, accountNumber, name, type }) => ({ id, accountNumber, name, type })),

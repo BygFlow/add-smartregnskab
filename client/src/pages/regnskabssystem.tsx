@@ -1470,7 +1470,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
   const documentInbox = documentInboxQuery.data ?? [];
 
-  const documentReceivingQuery = useQuery<{ address: string | null; emailReady: boolean; autoPost: boolean;
+  const documentReceivingQuery = useQuery<{ address: string | null; emailReady: boolean; emailPilot: boolean; autoPost: boolean;
     payablesAccountId: number | null; inputVatAccountId: number | null;
     accounts: Array<{ id: number; accountNumber: string; name: string; type: string }> }>({
     queryKey: ["/api/document-receiving/settings"],
@@ -4115,6 +4115,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     <div className="font-mono break-all select-all">{documentReceivingQuery.data.address}</div>
                   ) : (
                     <div className="text-muted-foreground">E-mailmodtagelse er under opsætning. Brug filupload indtil mailudbyderen er tilsluttet.</div>
+                  )}
+                  {documentReceivingQuery.data?.emailPilot && (
+                    <p className="text-xs font-medium text-amber-700">Kun test: Send ikke rigtige leverandørfakturaer til denne adresse endnu.</p>
                   )}
                   <p className="text-xs text-muted-foreground">Videresend leverandørfakturaer hertil, når mailmodtagelse er aktiveret. Bilag modtaget via e-mail kræver altid menneskelig godkendelse før bogføring.</p>
                 </div>
