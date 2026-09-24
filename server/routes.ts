@@ -96,7 +96,7 @@ import {
   dpaText, privacyPolicyText,
 } from "./gdpr";
 import {
-  storageBackend, saveFile, readFile, deleteFile, presignedUrl, migrateLegacyAttachments,
+  storageBackend, saveFile, readFile, presignedUrl, migrateLegacyAttachments,
   decodeDataUrl,
 } from "./files";
 import { jobOverview, runJobNow } from "./scheduler";
@@ -5616,7 +5616,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Bilagsindbakke (OCR) ──
   app.get("/api/document-inbox", h(async (req, res) => {
-    res.json(await storage.all("document_inbox", tenantId(req)));
+    const documents = await storage.all("document_inbox", tenantId(req));
+    const trash = req.query.scope === "trash";
+    res.json(documents.filter((document: any) => trash ? document.status === "papirkurv" : document.status !== "papirkurv"));
   }));
   app.post("/api/document-inbox", h(async (req, res) => {
     res.status(410).json({ error: "Brug filupload i bilagsindbakken. Filnavn alene opretter ikke et gyldigt bilag." });
@@ -5624,6 +5626,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/document-inbox/:id", h(async (req, res) => {
     const existing = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
     if (!existing) return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (existing.status === "papirkurv") return res.status(409).json({ error: "Gendan bilaget fra papirkurven først." });
     if (existing.postedJournalEntryId || existing.matchedVoucherId) {
       return res.status(409).json({ error: "Et tilknyttet bilag må ikke ændres her." });
     }
@@ -5633,21 +5636,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     res.json(await storage.update("document_inbox", Number(req.params.id), updates, tenantId(req)));
   }));
-  app.delete("/api/document-inbox/:id", h(async (req, res) => {
+  app.delete("/api/document-inbox/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const document = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
     if (!document) return res.status(404).json({ error: "Bilaget findes ikke." });
     if (document.postedJournalEntryId || document.matchedVoucherId) {
-      return res.status(409).json({ error: "Bilaget indgår i bogføringen og kan ikke slettes." });
+      return res.status(409).json({ error: "Bilaget indgår i bogføringen og kan ikke flyttes til papirkurven." });
     }
-    await storage.delete("document_inbox", Number(req.params.id), tenantId(req));
-    if (document.storage && document.storageKey) await deleteFile(document.storage, document.storageKey);
+    if (document.status !== "papirkurv") await storage.update("document_inbox", document.id, { status: "papirkurv" }, tenantId(req));
     res.status(204).send();
+  }));
+  app.post("/api/document-inbox/:id/restore", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const document = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
+    if (!document) return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (document.status !== "papirkurv") return res.status(409).json({ error: "Bilaget ligger ikke i papirkurven." });
+    res.json(await storage.update("document_inbox", document.id, { status: "ny" }, tenantId(req)));
   }));
   // Konverter bilag til voucher
   app.post("/api/document-inbox/:id/convert", h(async (req, res) => {
     const docs = await storage.all("document_inbox", tenantId(req));
     const doc = docs.find((d: any) => d.id === Number(req.params.id));
     if (!doc) return res.status(404).json({ error: "Bilag ikke fundet" });
+    if (doc.status === "papirkurv") return res.status(409).json({ error: "Gendan bilaget fra papirkurven først." });
     if (!doc.storageKey) return res.status(400).json({ error: "Et filnavn alene er ikke et gyldigt bilag. Upload PDF eller billede først." });
     if (doc.matchedVoucherId) return res.status(409).json({ error: "Bilaget er allerede konverteret." });
     const voucher = await storage.insert("vouchers", {

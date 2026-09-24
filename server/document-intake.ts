@@ -166,7 +166,7 @@ async function processDocument(companyId: number, documentId: number) {
     eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId),
   )).get();
   const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
-  if (!document?.storage || !document.storageKey || !company?.aiEnabled || !process.env.OPENAI_API_KEY) return;
+  if (!document?.storage || !document.storageKey || document.status === "papirkurv" || !company?.aiEnabled || !process.env.OPENAI_API_KEY) return;
   if (document.ocrStatus === "behandlet" || document.postedJournalEntryId) return;
   const allowed = await authorizeAiUsage(companyId, 1, 1);
   if (!allowed.allowed) return;
@@ -214,7 +214,7 @@ async function processDocument(companyId: number, documentId: number) {
   const extracted = JSON.parse(extractOpenAiText(payload)) as Extraction;
   if (!validExtraction(extracted)) {
     db.update(documentInbox).set({ ocrStatus: "fejlet", ocrData: JSON.stringify(extracted) })
-      .where(eq(documentInbox.id, documentId)).run();
+      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
     return;
   }
   const supplier = extracted.supplier.trim().slice(0, 200);
@@ -226,7 +226,7 @@ async function processDocument(companyId: number, documentId: number) {
   db.update(documentInbox).set({ supplier, invoiceDate: date, invoiceNumber, amount: total,
     vatAmount: vat, vatRate: total > vat ? Math.round(vat / (total - vat) * 10000) / 100 : 0,
     suggestedAccount: expense?.accountNumber || null, ocrStatus: "behandlet", ocrData: JSON.stringify(extracted),
-  }).where(eq(documentInbox.id, documentId)).run();
+  }).where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
 
   const governance = db.select().from(aiGovernanceSettings).where(eq(aiGovernanceSettings.companyId, companyId)).get();
   const payable = companyAccounts.find((a) => a.id === company.documentPayablesAccountId && a.active && a.type === "passiv" && /kreditor|leverandørgæld|leverandører/i.test(a.name));
@@ -267,7 +267,7 @@ async function processReceivedDocument(companyId: number, documentId: number) {
   try { await processDocument(companyId, documentId); }
   catch (error) {
     db.update(documentInbox).set({ ocrStatus: "fejlet" })
-      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId))).run();
+      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
     console.warn("Bilag kræver manuel kontrol:", error instanceof Error ? error.message : "Ukendt fejl");
   }
 }
@@ -347,6 +347,9 @@ export function registerDocumentIntakeRoutes(app: Express) {
     if (!String(req.body?.dataUrl ?? "").startsWith("data:")) return void res.status(400).json({ error: "Vælg en PDF eller et billede." });
     try {
       const result = await receiveDocument({ companyId: tenantId(req), fileName: String(req.body?.fileName ?? "bilag"), dataUrl: String(req.body.dataUrl), source: "upload" });
+      if (result.duplicate && result.document.status === "papirkurv") {
+        return void res.status(409).json({ error: "Filen ligger allerede i papirkurven. Gendan den derfra." });
+      }
       if (!result.duplicate) await processReceivedDocument(tenantId(req), result.document.id);
       res.status(result.duplicate ? 200 : 201).json({ id: result.document.id, duplicate: result.duplicate });
     } catch (error) {
@@ -359,6 +362,7 @@ export function registerDocumentIntakeRoutes(app: Express) {
     const companyId = tenantId(req);
     const document = db.select().from(documentInbox).where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId))).get();
     if (!document) return void res.status(404).json({ error: "Bilaget findes ikke." });
+    if (document.status === "papirkurv") return void res.status(409).json({ error: "Gendan bilaget fra papirkurven først." });
     const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
     if (!company?.aiEnabled || !process.env.OPENAI_API_KEY) return void res.status(409).json({ error: "AI-bilagslæsning er ikke aktiveret for virksomheden." });
     await processReceivedDocument(companyId, documentId);

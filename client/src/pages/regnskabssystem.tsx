@@ -1469,6 +1469,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
   const documentInbox = documentInboxQuery.data ?? [];
+  const documentTrashQuery = useQuery<DocumentInboxItem[]>({
+    queryKey: ["/api/document-inbox", "trash"],
+    enabled: !!effectiveCompanyId && activeTab === "bilagsindbakke",
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/document-inbox?scope=trash");
+      return res.json();
+    },
+  });
+  const documentTrash = documentTrashQuery.data ?? [];
+  const trashDocumentMut = useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/document-inbox/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      toast({ title: "Bilag flyttet til papirkurven", description: "Det kan gendannes." });
+    },
+    onError: (error: unknown) => toast({ title: "Kunne ikke flytte bilaget", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
+  });
+  const restoreDocumentMut = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/document-inbox/${id}/restore`, {})).json(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      toast({ title: "Bilag gendannet" });
+    },
+    onError: (error: unknown) => toast({ title: "Kunne ikke gendanne bilaget", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
+  });
 
   const documentReceivingQuery = useQuery<{ address: string | null; emailReady: boolean; emailPilot: boolean; autoPost: boolean;
     payablesAccountId: number | null; inputVatAccountId: number | null;
@@ -4235,12 +4260,35 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                     <FileCheck2 className="size-3.5" />
                                     Konverter til bilag
                                   </Button>}
+                                  {!item.postedJournalEntryId && !item.matchedVoucherId && <Button
+                                    size="sm" variant="ghost"
+                                    data-testid={`btn-trash-bilag-${item.id}`}
+                                    onClick={() => { if (window.confirm(`Flyt ${item.fileName ?? "bilaget"} til papirkurven? Det kan gendannes.`)) trashDocumentMut.mutate(item.id); }}
+                                    disabled={trashDocumentMut.isPending}
+                                  >
+                                    <Trash2 className="size-3.5" /> Papirkurv
+                                  </Button>}
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+                </SectionCard>
+
+                <SectionCard title={`Papirkurv (${documentTrash.length})`} icon={<Trash2 className="size-4" />}>
+                  {documentTrashQuery.isLoading ? <Skeleton className="h-10 w-full" /> : documentTrashQuery.isError ? (
+                    <p className="text-xs text-destructive">Kunne ikke hente papirkurven.</p>
+                  ) : documentTrash.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Papirkurven er tom.</p>
+                  ) : (
+                    <div className="space-y-2" data-testid="document-trash">
+                      {documentTrash.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-xs">
+                        <span className="font-medium">{item.fileName ?? `Bilag #${item.id}`}</span>
+                        <Button size="sm" variant="outline" data-testid={`btn-restore-bilag-${item.id}`} onClick={() => restoreDocumentMut.mutate(item.id)} disabled={restoreDocumentMut.isPending}>Gendan</Button>
+                      </div>)}
                     </div>
                   )}
                 </SectionCard>
