@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { randomBytes } from "crypto";
 import QRCode from "qrcode";
 import type { Server } from "node:http";
+import { and, eq } from "drizzle-orm";
 import { db, storage } from "./storage";
 import { registerExtendedRoutes } from "./extended-routes";
 import { registerExtendedRoutes2 } from "./extended-routes-2";
@@ -56,7 +57,7 @@ import {
   insertPaymentRunSchema,
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
-  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships,
+  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, auditLogs, documentInbox,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
 import { DPA_VERSION } from "@shared/legal-documents";
@@ -5637,19 +5638,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.update("document_inbox", Number(req.params.id), updates, tenantId(req)));
   }));
   app.delete("/api/document-inbox/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const document = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
-    if (!document) return res.status(404).json({ error: "Bilaget findes ikke." });
-    if (document.postedJournalEntryId || document.matchedVoucherId) {
-      return res.status(409).json({ error: "Bilaget indgår i bogføringen og kan ikke flyttes til papirkurven." });
-    }
-    if (document.status !== "papirkurv") await storage.update("document_inbox", document.id, { status: "papirkurv" }, tenantId(req));
+    const result = db.transaction((tx) => {
+      const document = tx.select().from(documentInbox).where(and(
+        eq(documentInbox.id, Number(req.params.id)), eq(documentInbox.companyId, tenantId(req)),
+      )).get();
+      if (!document) return "missing";
+      if (document.postedJournalEntryId || document.matchedVoucherId) return "linked";
+      if (document.status === "papirkurv") return "already";
+      tx.update(documentInbox).set({ status: "papirkurv" })
+        .where(and(eq(documentInbox.id, document.id), eq(documentInbox.companyId, tenantId(req)))).run();
+      tx.insert(auditLogs).values({ companyId: tenantId(req), userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email, action: "bilag_til_papirkurv", target: `document_inbox#${document.id}`,
+        createdAt: nowIso(),
+      }).run();
+      return "moved";
+    });
+    if (result === "missing") return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (result === "linked") return res.status(409).json({ error: "Bilaget indgår i bogføringen og kan ikke flyttes til papirkurven." });
     res.status(204).send();
   }));
   app.post("/api/document-inbox/:id/restore", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    const document = await storage.get("document_inbox", Number(req.params.id), tenantId(req));
-    if (!document) return res.status(404).json({ error: "Bilaget findes ikke." });
-    if (document.status !== "papirkurv") return res.status(409).json({ error: "Bilaget ligger ikke i papirkurven." });
-    res.json(await storage.update("document_inbox", document.id, { status: "ny" }, tenantId(req)));
+    const result = db.transaction((tx) => {
+      const document = tx.select().from(documentInbox).where(and(
+        eq(documentInbox.id, Number(req.params.id)), eq(documentInbox.companyId, tenantId(req)),
+      )).get();
+      if (!document) return { state: "missing" as const };
+      if (document.status !== "papirkurv") return { state: "not_trash" as const };
+      const updated = tx.update(documentInbox).set({ status: "ny" })
+        .where(and(eq(documentInbox.id, document.id), eq(documentInbox.companyId, tenantId(req))))
+        .returning().get();
+      tx.insert(auditLogs).values({ companyId: tenantId(req), userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email, action: "bilag_gendannet", target: `document_inbox#${document.id}`,
+        createdAt: nowIso(),
+      }).run();
+      return { state: "restored" as const, document: updated };
+    });
+    if (result.state === "missing") return res.status(404).json({ error: "Bilaget findes ikke." });
+    if (result.state === "not_trash") return res.status(409).json({ error: "Bilaget ligger ikke i papirkurven." });
+    res.json(result.document);
   }));
   // Konverter bilag til voucher
   app.post("/api/document-inbox/:id/convert", h(async (req, res) => {
