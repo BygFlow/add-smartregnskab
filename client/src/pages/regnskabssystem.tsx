@@ -507,8 +507,11 @@ type AuditLogEntry = {
   id: number;
   createdAt?: string | null;
   userName?: string | null;
+  userEmail?: string | null;
   action?: string | null;
   module?: string | null;
+  target?: string | null;
+  detail?: string | null;
   entityDescription?: string | null;
   oldValue?: string | null;
   newValue?: string | null;
@@ -1478,10 +1481,12 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
   const documentTrash = documentTrashQuery.data ?? [];
+  const [trashConfirmation, setTrashConfirmation] = useState<DocumentInboxItem | null>(null);
   const trashDocumentMut = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/document-inbox/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      setTrashConfirmation(null);
       toast({ title: "Bilag flyttet til papirkurven", description: "Det kan gendannes." });
     },
     onError: (error: unknown) => toast({ title: "Kunne ikke flytte bilaget", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
@@ -4263,7 +4268,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                   {!item.postedJournalEntryId && !item.matchedVoucherId && <Button
                                     size="sm" variant="ghost"
                                     data-testid={`btn-trash-bilag-${item.id}`}
-                                    onClick={() => { if (window.confirm(`Flyt ${item.fileName ?? "bilaget"} til papirkurven? Det kan gendannes.`)) trashDocumentMut.mutate(item.id); }}
+                                    onClick={() => setTrashConfirmation(item)}
                                     disabled={trashDocumentMut.isPending}
                                   >
                                     <Trash2 className="size-3.5" /> Papirkurv
@@ -4277,6 +4282,19 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </div>
                   )}
                 </SectionCard>
+
+                <Dialog open={!!trashConfirmation} onOpenChange={(open) => { if (!open && !trashDocumentMut.isPending) setTrashConfirmation(null); }}>
+                  <DialogContent data-testid="dialog-trash-bilag">
+                    <DialogHeader>
+                      <DialogTitle>Flyt bilag til papirkurven?</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm">{trashConfirmation?.fileName ?? "Bilaget"} kan gendannes senere. Filen slettes ikke permanent.</p>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTrashConfirmation(null)} disabled={trashDocumentMut.isPending}>Annuller</Button>
+                      <Button variant="destructive" onClick={() => { if (trashConfirmation) trashDocumentMut.mutate(trashConfirmation.id); }} disabled={trashDocumentMut.isPending}>Flyt til papirkurven</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
                 <SectionCard title={`Papirkurv (${documentTrash.length})`} icon={<Trash2 className="size-4" />}>
                   {documentTrashQuery.isLoading ? <Skeleton className="h-10 w-full" /> : documentTrashQuery.isError ? (
@@ -5119,15 +5137,15 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         <tbody>
                           {auditLog.map((e) => (
                             <tr key={e.id} className="border-b border-border/50 last:border-0">
-                              <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{dk(e.createdAt)}</td>
-                              <td className="px-3 py-1.5">{e.userName ?? "—"}</td>
+                              <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{e.createdAt ? new Date(e.createdAt).toLocaleString("da-DK") : "—"}</td>
+                              <td className="px-3 py-1.5">{e.userName ?? e.userEmail ?? "—"}</td>
                               <td className="px-3 py-1.5">{e.action ?? "—"}</td>
-                              <td className="px-3 py-1.5">{e.module ?? "—"}</td>
-                              <td className="px-3 py-1.5">{e.entityDescription ?? "—"}</td>
+                              <td className="px-3 py-1.5">{e.module ?? (e.target?.startsWith("document_inbox#") ? "Bilag" : "—")}</td>
+                              <td className="px-3 py-1.5">{e.entityDescription ?? e.target ?? "—"}</td>
                               <td className="px-3 py-1.5">
-                                <span className="text-muted-foreground">{e.oldValue ?? "—"}</span>
+                                <span className="text-muted-foreground">{e.oldValue ?? (e.action === "bilag_gendannet" ? "Papirkurv" : e.action === "bilag_til_papirkurv" ? "Ny" : "—")}</span>
                                 <span className="mx-1">→</span>
-                                <span className="font-medium">{e.newValue ?? "—"}</span>
+                                <span className="font-medium">{e.newValue ?? (e.action === "bilag_gendannet" ? "Ny" : e.action === "bilag_til_papirkurv" ? "Papirkurv" : "—")}</span>
                               </td>
                             </tr>
                           ))}
