@@ -5649,6 +5649,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .where(and(eq(documentInbox.id, document.id), eq(documentInbox.companyId, tenantId(req)))).run();
       tx.insert(auditLogs).values({ companyId: tenantId(req), userId: req.auth?.user.id,
         userEmail: req.auth?.user.email, action: "bilag_til_papirkurv", target: `document_inbox#${document.id}`,
+        detail: JSON.stringify({ fileName: document.fileName, fromStatus: document.status, toStatus: "papirkurv" }),
         createdAt: nowIso(),
       }).run();
       return "moved";
@@ -5669,6 +5670,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .returning().get();
       tx.insert(auditLogs).values({ companyId: tenantId(req), userId: req.auth?.user.id,
         userEmail: req.auth?.user.email, action: "bilag_gendannet", target: `document_inbox#${document.id}`,
+        detail: JSON.stringify({ fileName: document.fileName, fromStatus: "papirkurv", toStatus: "ny" }),
         createdAt: nowIso(),
       }).run();
       return { state: "restored" as const, document: updated };

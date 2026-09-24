@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, openAuthedFile, queryClient } from "@//lib/queryClient";
 import { useAuth } from "@//lib/auth";
 import { useToast } from "@//hooks/use-toast";
+import { auditActionLabel, auditChangeLabels, auditEntityLabel, auditModuleLabel } from "@shared/audit-display";
 import { PageHeader, SectionCard, StatusChip } from "@/components/premium";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1486,6 +1487,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/document-inbox/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      qc.invalidateQueries({ queryKey: ["/api/audit-log"] });
       setTrashConfirmation(null);
       toast({ title: "Bilag flyttet til papirkurven", description: "Det kan gendannes." });
     },
@@ -1495,6 +1497,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     mutationFn: async (id: number) => (await apiRequest("POST", `/api/document-inbox/${id}/restore`, {})).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      qc.invalidateQueries({ queryKey: ["/api/audit-log"] });
       toast({ title: "Bilag gendannet" });
     },
     onError: (error: unknown) => toast({ title: "Kunne ikke gendanne bilaget", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
@@ -1966,19 +1969,22 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const [auditModuleFilter, setAuditModuleFilter] = useState<string>("alle");
   const [auditActionFilter, setAuditActionFilter] = useState<string>("alle");
   const auditLogQuery = useQuery<AuditLogEntry[]>({
-    queryKey: ["/api/audit-log", auditModuleFilter, auditActionFilter],
+    queryKey: ["/api/audit-log"],
     enabled: !!effectiveCompanyId,
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (auditModuleFilter !== "alle") params.set("module", auditModuleFilter);
-      if (auditActionFilter !== "alle") params.set("action", auditActionFilter);
-      const qs = params.toString() ? `?${params.toString()}` : "";
-      const res = await apiRequest("GET", `/api/audit-log${qs}`);
+      const res = await apiRequest("GET", "/api/audit-log");
       const data = await res.json();
       return Array.isArray(data) ? data : (data?.entries ?? []);
     },
   });
-  const auditLog = auditLogQuery.data ?? [];
+  const allAuditLog = auditLogQuery.data ?? [];
+  const auditModules = Array.from(new Set(allAuditLog.map(auditModuleLabel))).sort((a, b) => a.localeCompare(b, "da"));
+  const auditActions = Array.from(new Set(allAuditLog.map((entry) => entry.action).filter((action): action is string => !!action)))
+    .sort((a, b) => auditActionLabel(a).localeCompare(auditActionLabel(b), "da"));
+  const auditLog = allAuditLog
+    .filter((entry) => auditModuleFilter === "alle" || auditModuleLabel(entry) === auditModuleFilter)
+    .filter((entry) => auditActionFilter === "alle" || entry.action === auditActionFilter)
+    .sort((a, b) => b.id - a.id);
 
   /* ---------- Moms-afstemning ---------- */
   const vatReconciliationsQuery = useQuery<VatReconciliation[]>({
@@ -5084,12 +5090,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="alle" data-testid="opt-audit-module-alle">Alle moduler</SelectItem>
-                          <SelectItem value="bilag" data-testid="opt-audit-module-bilag">Bilag</SelectItem>
-                          <SelectItem value="moms" data-testid="opt-audit-module-moms">Moms</SelectItem>
-                          <SelectItem value="bank" data-testid="opt-audit-module-bank">Bank</SelectItem>
-                          <SelectItem value="lon" data-testid="opt-audit-module-lon">Løn</SelectItem>
-                          <SelectItem value="anlaeg" data-testid="opt-audit-module-anlaeg">Anlæg</SelectItem>
-                          <SelectItem value="periode" data-testid="opt-audit-module-periode">Periode</SelectItem>
+                          {auditModules.map((module) => <SelectItem key={module} value={module}>{module}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <Select value={auditActionFilter} onValueChange={setAuditActionFilter}>
@@ -5098,11 +5099,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="alle" data-testid="opt-audit-action-alle">Alle handlinger</SelectItem>
-                          <SelectItem value="opret" data-testid="opt-audit-action-opret">Opret</SelectItem>
-                          <SelectItem value="opdater" data-testid="opt-audit-action-opdater">Opdater</SelectItem>
-                          <SelectItem value="slet" data-testid="opt-audit-action-slet">Slet</SelectItem>
-                          <SelectItem value="bogfoer" data-testid="opt-audit-action-bogfoer">Bogfør</SelectItem>
-                          <SelectItem value="godkend" data-testid="opt-audit-action-godkend">Godkend</SelectItem>
+                          {auditActions.map((action) => <SelectItem key={action} value={action}>{auditActionLabel(action)}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -5110,7 +5107,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   noPadding
                 >
                   <p className="text-xs text-muted-foreground p-3" data-testid="audit-info">
-                    Alle ændringer logges automatisk.
+                    Viser registrerede hændelser. Ikke alle ændringer i programmet logges her endnu.
                   </p>
                   {auditLogQuery.isLoading ? (
                     <div className="p-2 space-y-2">
@@ -5120,7 +5117,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   ) : auditLogQuery.isError ? (
                     <p className="text-xs text-destructive p-3">Kunne ikke hente revisionsspor.</p>
                   ) : auditLog.length === 0 ? (
-                    <p className="text-xs text-muted-foreground p-3">Ingen logposter.</p>
+                    <p className="text-xs text-muted-foreground p-3">Ingen logposter for det valgte filter.</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs" data-testid="table-audit-log">
@@ -5139,13 +5136,13 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                             <tr key={e.id} className="border-b border-border/50 last:border-0">
                               <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{e.createdAt ? new Date(e.createdAt).toLocaleString("da-DK") : "—"}</td>
                               <td className="px-3 py-1.5">{e.userName ?? e.userEmail ?? "—"}</td>
-                              <td className="px-3 py-1.5">{e.action ?? "—"}</td>
-                              <td className="px-3 py-1.5">{e.module ?? (e.target?.startsWith("document_inbox#") ? "Bilag" : "—")}</td>
-                              <td className="px-3 py-1.5">{e.entityDescription ?? e.target ?? "—"}</td>
+                              <td className="px-3 py-1.5">{auditActionLabel(e.action)}</td>
+                              <td className="px-3 py-1.5">{auditModuleLabel(e)}</td>
+                              <td className="px-3 py-1.5">{auditEntityLabel(e)}</td>
                               <td className="px-3 py-1.5">
-                                <span className="text-muted-foreground">{e.oldValue ?? (e.action === "bilag_gendannet" ? "Papirkurv" : e.action === "bilag_til_papirkurv" ? "Ny" : "—")}</span>
+                                <span className="text-muted-foreground">{auditChangeLabels(e)[0]}</span>
                                 <span className="mx-1">→</span>
-                                <span className="font-medium">{e.newValue ?? (e.action === "bilag_gendannet" ? "Ny" : e.action === "bilag_til_papirkurv" ? "Papirkurv" : "—")}</span>
+                                <span className="font-medium">{auditChangeLabels(e)[1]}</span>
                               </td>
                             </tr>
                           ))}
