@@ -20,9 +20,13 @@ const requiredFiles = [
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
-const grep = spawnSync("git", ["grep", "-In", "SmartDrift Clean", "--", ".", ":(exclude)migrations/meta/*", ":(exclude)scripts/release-readiness.mjs"], { encoding: "utf8" });
+// ADD Connect must name the separate Clean product to connect it. That is not
+// SmartRegnskab branding, so exclude only the integration catalogue itself.
+const grep = spawnSync("git", ["grep", "-In", "SmartDrift Clean", "--", ".", ":(exclude)migrations/meta/*", ":(exclude)scripts/release-readiness.mjs", ":(exclude)server/add-connect.ts"], { encoding: "utf8" });
 const trackedText = grep.status === 1 ? "" : String(grep.stdout || grep.stderr || "");
-add("brand-separation", trackedText.trim() === "", "code", trackedText.trim() || "Ingen SmartDrift Clean-referencer i produktkoden; SmartRegnskab er fortsat et separat produkt.");
+add("brand-separation", trackedText.trim() === "", "code", trackedText.trim() || "Clean nævnes kun som et separat produkt i ADD Connect-kataloget.");
+const connectCatalogue = existsSync("server/add-connect.ts") ? readFileSync("server/add-connect.ts", "utf8") : "";
+add("cross-product-integration", connectCatalogue.includes('id: "smartdrift_clean"'), "code", "Clean er registreret som separat produkt i ADD Connect.");
 
 const sproom = String(process.env.EINVOICE_PROVIDER || "").toLowerCase() === "sproom";
 const productionEnv = [
@@ -35,8 +39,18 @@ const productionEnv = [
 ];
 for (const [id, names] of productionEnv) {
   const missing = names.filter((name) => !process.env[name]);
-  add(id, missing.length === 0, "external", missing.length ? `Mangler ${missing.join(", ")}` : "konfigureret");
+  add(id, missing.length === 0, "external", missing.length ? `Ikke konfigureret i dette kørselsmiljø: ${missing.join(", ")}` : "Konfiguration til stede; adgang og godkendelse er ikke verificeret af dette tjek.");
 }
+
+// Credentials and files cannot prove legal authorization or an end-to-end
+// production test. These gates require separate evidence and owner sign-off.
+for (const [id, detail] of [
+  ["provider-approvals", "Sproom, Mastercard/AiiA og Clearhaus/QuickPay: aftaler, produktionsadgang og ende-til-ende-test skal dokumenteres."],
+  ["external-restore", "En krypteret ekstern backup skal gendannes og verificeres i et isoleret miljø."],
+  ["legal-registration", "Juridisk gennemgang og relevant registreringsbekræftelse skal dokumenteres."],
+  ["independent-security", "Uvildig sikkerhedstest og håndtering af fund skal dokumenteres."],
+  ["pilot-signoff", "Pilotens kritiske regnskabsflows og kundens sign-off skal dokumenteres."],
+]) add(id, false, "manual", `Kræver særskilt verificering og ejerens godkendelse. ${detail}`);
 
 const codeFailed = checks.some((check) => check.category === "code" && !check.ok);
 console.log(JSON.stringify({ generatedAt: new Date().toISOString(), readyForTechnicalRelease: !codeFailed, readyForRegisteredOperation: checks.every((check) => check.ok), checks }, null, 2));

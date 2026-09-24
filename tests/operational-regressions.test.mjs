@@ -1,8 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("readiness treats the separate Clean integration as intentional", () => {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("../scripts/release-readiness.mjs", import.meta.url))], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.readyForTechnicalRelease, true);
+  assert.equal(report.readyForRegisteredOperation, false, "technical checks alone must never approve customer bookkeeping");
+  assert.equal(report.checks.find((check) => check.id === "brand-separation")?.ok, true);
+  assert.equal(report.checks.find((check) => check.id === "cross-product-integration")?.ok, true);
+  assert.equal(report.checks.find((check) => check.id === "pilot-signoff")?.ok, false);
+});
 
 test("S3-compatible file storage honors the configured endpoint", () => {
   const files = read("server/files.ts");
