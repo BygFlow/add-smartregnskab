@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import { simpleParser } from "mailparser";
-import { extractDeliveries, signedHeaders } from "../scripts/simply-imap-bridge.mjs";
+import { extractDeliveries, pollOnce, signedHeaders } from "../scripts/simply-imap-bridge.mjs";
 
 const recipient = `bilag-${"a".repeat(32)}@addsmartregnskab.dk`;
 const pdf = Buffer.from("%PDF-1.4\n%%EOF");
@@ -46,4 +46,93 @@ test("Simply bridge signs exact webhook bytes", () => {
   const headers = signedHeaders(body, "secret", "1234567890");
   const expected = createHmac("sha256", "secret").update("1234567890.").update(body).digest("hex");
   assert.equal(headers["x-document-signature"], expected);
+});
+
+function fakeMailbox(uids) {
+  const seen = new Set();
+  const flagged = new Set();
+  const searches = [];
+  const client = {
+    connect: async () => {}, logout: async () => {},
+    getMailboxLock: async () => ({ release() {} }),
+    search: async (query) => {
+      searches.push(query);
+      return uids.filter((uid) => !seen.has(uid) && !flagged.has(uid));
+    },
+    fetchOne: async (uid, query) => query.size ? { size: 100 } : { source: Buffer.from(String(uid)) },
+    messageFlagsAdd: async (uid, flags) => {
+      if (flags.includes("\\Seen")) seen.add(uid);
+      if (flags.includes("\\Flagged")) flagged.add(uid);
+    },
+  };
+  return { client, seen, flagged, searches };
+}
+
+function fakeParsed(uid) {
+  return {
+    to: { value: [{ address: Number(uid) === 26 || Number(uid) === 1 ? recipient : "other@example.com" }] },
+    from: { value: [{ address: "supplier@example.com" }] },
+    headers: new Map(), messageId: `<invoice-${uid}@example.com>`,
+    attachments: [{ contentType: "application/pdf", content: pdf, filename: "invoice.pdf",
+      contentDisposition: "attachment", related: false }],
+  };
+}
+
+const pollConfig = { user: "machine@example.com", password: "test-password",
+  domain: "addsmartregnskab.dk", secret: "test-secret", endpoint: "https://example.com/inbound" };
+
+test("rejected unread messages are flagged for review and cannot starve later invoices", async () => {
+  const mailbox = fakeMailbox(Array.from({ length: 26 }, (_, index) => index + 1));
+  const accepted = [];
+  const options = { clientFactory: () => mailbox.client,
+    parseImpl: async (source) => Number(source.toString()) === 26 ? fakeParsed(26) : {
+      ...fakeParsed(0), to: { value: [{ address: "other@example.com" }] },
+    },
+    fetchImpl: async (_url, request) => { accepted.push(JSON.parse(request.body.toString())); return { ok: true }; },
+    warn: () => {},
+  };
+  await pollOnce(pollConfig, options);
+  assert.equal(mailbox.flagged.size, 25);
+  assert.equal(mailbox.seen.size, 0);
+  assert.equal(accepted.length, 0);
+  await pollOnce(pollConfig, options);
+  assert.equal(mailbox.seen.has(26), true);
+  assert.equal(accepted.length, 1);
+  assert.deepEqual(mailbox.searches, [
+    { seen: false, flagged: false }, { seen: false, flagged: false },
+  ]);
+});
+
+test("a temporary receive-API failure stays unflagged and is retried", async () => {
+  const mailbox = fakeMailbox([1]);
+  let attempts = 0;
+  const options = { clientFactory: () => mailbox.client,
+    parseImpl: async () => fakeParsed(1),
+    fetchImpl: async () => ({ ok: ++attempts > 1, status: attempts > 1 ? 200 : 503 }),
+    warn: () => {},
+  };
+  await pollOnce(pollConfig, options);
+  assert.equal(mailbox.flagged.size, 0);
+  assert.equal(mailbox.seen.size, 0);
+  await pollOnce(pollConfig, options);
+  assert.equal(mailbox.seen.has(1), true);
+  assert.equal(attempts, 2);
+});
+
+test("an unknown customer address is flagged instead of blocking the queue forever", async () => {
+  const mailbox = fakeMailbox([1]);
+  let attempts = 0;
+  await pollOnce(pollConfig, { clientFactory: () => mailbox.client,
+    parseImpl: async () => fakeParsed(1),
+    fetchImpl: async () => { attempts += 1; return { ok: false, status: 404 }; },
+    warn: () => {},
+  });
+  assert.equal(mailbox.flagged.has(1), true);
+  assert.equal(mailbox.seen.size, 0);
+  await pollOnce(pollConfig, { clientFactory: () => mailbox.client,
+    parseImpl: async () => fakeParsed(1),
+    fetchImpl: async () => { attempts += 1; return { ok: true }; },
+    warn: () => {},
+  });
+  assert.equal(attempts, 1);
 });

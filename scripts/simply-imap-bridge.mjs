@@ -59,45 +59,59 @@ function configuration() {
   return { user, password, domain, secret, endpoint: new URL("/api/document-receiving/inbound", url).toString() };
 }
 
-export async function pollOnce(config = configuration()) {
-  const client = new ImapFlow({ host: "mail.simply.com", port: 993, secure: true,
+export async function pollOnce(config = configuration(), {
+  clientFactory = (options) => new ImapFlow(options), fetchImpl = fetch,
+  parseImpl = simpleParser, warn = console.warn,
+} = {}) {
+  const client = clientFactory({ host: "mail.simply.com", port: 993, secure: true,
     auth: { user: config.user, pass: config.password }, logger: false });
   await client.connect();
   try {
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const uids = await client.search({ seen: false }, { uid: true });
+      // Rejected messages stay unread for human review, but \Flagged keeps
+      // them from permanently occupying the first batch on every run.
+      const uids = await client.search({ seen: false, flagged: false }, { uid: true });
       for (const uid of uids.slice(0, 25)) {
         try {
           const meta = await client.fetchOne(uid, { size: true }, { uid: true });
-          if (!meta?.size || meta.size > MAX_MESSAGE_BYTES) {
-            console.warn(`Bilagsmail UID ${uid}: besked er for stor eller mangler størrelse.`);
+          if (!meta?.size) {
+            warn(`Bilagsmail UID ${uid}: besked mangler størrelse; forsøges igen.`);
+            continue;
+          }
+          if (meta.size > MAX_MESSAGE_BYTES) {
+            warn(`Bilagsmail UID ${uid}: besked er for stor og markeret til kontrol.`);
+            await client.messageFlagsAdd(uid, ["\\Flagged"], { uid: true });
             continue;
           }
           const message = await client.fetchOne(uid, { source: true }, { uid: true });
           if (!message?.source) continue;
-          const parsed = await simpleParser(message.source);
+          const parsed = await parseImpl(message.source);
           const { deliveries, reason } = extractDeliveries(parsed, config.domain, uid);
           if (reason) {
-            console.warn(`Bilagsmail UID ${uid}: ${reason}`);
+            warn(`Bilagsmail UID ${uid}: ${reason} Markerede til kontrol.`);
+            await client.messageFlagsAdd(uid, ["\\Flagged"], { uid: true });
             continue;
           }
           let allAccepted = true;
+          let permanentRejection = false;
           for (const delivery of deliveries) {
             const body = Buffer.from(JSON.stringify(delivery));
-            const response = await fetch(config.endpoint, { method: "POST", body,
+            const response = await fetchImpl(config.endpoint, { method: "POST", body,
               headers: signedHeaders(body, config.secret), signal: AbortSignal.timeout(30_000) });
             if (!response.ok) {
               allAccepted = false;
-              console.warn(`Bilagsmail UID ${uid}: modtage-API svarede ${response.status}.`);
+              permanentRejection = [400, 404, 413, 422].includes(response.status);
+              warn(`Bilagsmail UID ${uid}: modtage-API svarede ${response.status}; ${permanentRejection ? "markeret til kontrol" : "forsøges igen"}.`);
               break;
             }
           }
           // This is a dedicated machine mailbox; only acknowledge after every
           // attachment was durably accepted. Retries are idempotent server-side.
           if (allAccepted) await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+          else if (permanentRejection) await client.messageFlagsAdd(uid, ["\\Flagged"], { uid: true });
         } catch (error) {
-          console.warn(`Bilagsmail UID ${uid} kræver kontrol:`, error instanceof Error ? error.message : "Ukendt fejl");
+          warn(`Bilagsmail UID ${uid} kræver kontrol:`, error instanceof Error ? error.message : "Ukendt fejl");
         }
       }
     } finally { lock.release(); }

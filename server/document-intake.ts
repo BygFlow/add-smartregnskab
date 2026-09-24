@@ -286,6 +286,9 @@ export function registerPublicDocumentIntakeRoutes(app: Express) {
     if (!company || company.kind === "platform" || company.status === "spaerret" || company.status === "opsagt") {
       return void res.status(404).json({ error: "Bilagsadresse findes ikke." });
     }
+    if (!inboundReady() && !inboundPilot(company.id)) {
+      return void res.status(503).json({ error: "Bilagsmail er ikke aktiv for virksomheden." });
+    }
     const messageId = String(req.body?.messageId ?? "").trim().slice(0, 250);
     if (!messageId) return void res.status(400).json({ error: "messageId mangler." });
     const prior = db.select().from(documentInbox).where(and(

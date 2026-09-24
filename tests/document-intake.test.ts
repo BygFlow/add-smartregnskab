@@ -145,6 +145,9 @@ test("inbound document webhook requires a fresh signature over raw bytes", () =>
 test("email webhook isolates customer inboxes, rejects unknown recipients, and deduplicates retries", async () => {
   process.env.DOCUMENT_INBOUND_DOMAIN = "addsmartregnskab.dk";
   process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET = "test-document-secret";
+  process.env.DOCUMENT_INBOUND_READY = "true";
+  process.env.SIMPLY_PRODUCT_HANDLE = "addsmartregnskab.dk";
+  process.env.SIMPLY_API_KEY = "test-only-key";
   const first = await storage.createCompany({ name: "Isoleret bilagstest A", createdAt: new Date().toISOString() } as any);
   const second = await storage.createCompany({ name: "Isoleret bilagstest B", createdAt: new Date().toISOString() } as any);
   const app = express();
@@ -180,10 +183,17 @@ test("email webhook isolates customer inboxes, rejects unknown recipients, and d
     assert.equal(db.select().from(journalEntries).where(eq(journalEntries.companyId, first.id)).all().length, 0);
     const unknown = await send({ ...payload, recipient: `bilag-${"f".repeat(32)}@addsmartregnskab.dk`, messageId: "isolated-mail-test-2" });
     assert.equal(unknown.status, 404);
+    process.env.DOCUMENT_INBOUND_READY = "false";
+    const disabled = await send({ ...payload, messageId: "isolated-mail-test-3" });
+    assert.equal(disabled.status, 503);
+    assert.equal(db.select().from(documentInbox).where(eq(documentInbox.companyId, first.id)).all().length, 1);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     delete process.env.DOCUMENT_INBOUND_DOMAIN;
     delete process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET;
+    delete process.env.DOCUMENT_INBOUND_READY;
+    delete process.env.SIMPLY_PRODUCT_HANDLE;
+    delete process.env.SIMPLY_API_KEY;
   }
 });
 
