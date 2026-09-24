@@ -48,8 +48,8 @@ export default function Selskabsstruktur() {
   const createCompany = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/organization/companies", {
       ...companyForm,
-      parentCompanyId: companyForm.parentCompanyId ? Number(companyForm.parentCompanyId) : data?.ownerCompanyId,
-      ownershipPercent: companyForm.ownershipPercent ? Number(companyForm.ownershipPercent) : null,
+      parentCompanyId: companyForm.parentCompanyId === "none" ? null : companyForm.parentCompanyId ? Number(companyForm.parentCompanyId) : data?.ownerCompanyId,
+      ownershipPercent: companyForm.parentCompanyId === "none" ? null : companyForm.ownershipPercent ? Number(companyForm.ownershipPercent) : null,
     })).json(),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["/api/organization"] });
@@ -126,9 +126,10 @@ export default function Selskabsstruktur() {
       <div className="grid gap-4 py-2">
         <div><Label htmlFor="legal-name">Selskabsnavn</Label><Input id="legal-name" value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} placeholder="Eksempel ApS"/></div>
         <div><Label htmlFor="legal-cvr">CVR-nummer</Label><Input id="legal-cvr" inputMode="numeric" maxLength={8} value={companyForm.cvr} onChange={(e) => setCompanyForm({ ...companyForm, cvr: e.target.value.replace(/\D/g, "") })} placeholder="8 cifre"/></div>
-        <div><Label>Moderselskab</Label><Select value={companyForm.parentCompanyId} onValueChange={(value) => setCompanyForm({ ...companyForm, parentCompanyId: value })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{data.companies.map((company) => <SelectItem key={company.id} value={String(company.id)}>{company.name}</SelectItem>)}</SelectContent></Select></div>
-        <div><Label>Type</Label><Select value={companyForm.groupRole} onValueChange={(value) => setCompanyForm({ ...companyForm, groupRole: value })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="subsidiary">Datterselskab</SelectItem><SelectItem value="parent">Moderselskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></SelectContent></Select></div>
-        <div><Label htmlFor="ownership">Ejerandel i procent</Label><Input id="ownership" type="number" min="0" max="100" value={companyForm.ownershipPercent} onChange={(e) => setCompanyForm({ ...companyForm, ownershipPercent: e.target.value })}/></div>
+        <div><Label>Moderselskab i denne konto</Label><Select value={companyForm.parentCompanyId} onValueChange={(value) => setCompanyForm({ ...companyForm, parentCompanyId: value, groupRole: value === "none" ? "standalone" : companyForm.groupRole === "standalone" ? "subsidiary" : companyForm.groupRole, ownershipPercent: value === "none" ? "" : companyForm.ownershipPercent || "100" })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="none">Ingen intern ejerrelation</SelectItem>{data.companies.map((company) => <SelectItem key={company.id} value={String(company.id)}>{company.name}</SelectItem>)}</SelectContent></Select></div>
+        {companyForm.parentCompanyId === "none" && <p className="text-sm text-muted-foreground">Selskabet deler abonnement, men registreres ikke som ejet af et andet selskab i denne konto. En ekstern ejer kan tilføjes til strukturen senere.</p>}
+        <div><Label>Type</Label><Select value={companyForm.groupRole} onValueChange={(value) => setCompanyForm({ ...companyForm, groupRole: value })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{companyForm.parentCompanyId === "none" ? <><SelectItem value="standalone">Selvstændigt juridisk selskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></> : <><SelectItem value="subsidiary">Datterselskab</SelectItem><SelectItem value="parent">Moderselskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></>}</SelectContent></Select></div>
+        {companyForm.parentCompanyId !== "none" && <div><Label htmlFor="ownership">Ejerandel i procent</Label><Input id="ownership" type="number" min="0" max="100" value={companyForm.ownershipPercent} onChange={(e) => setCompanyForm({ ...companyForm, ownershipPercent: e.target.value })}/></div>}
       </div><DialogFooter><Button variant="outline" onClick={() => setCompanyOpen(false)}>Annuller</Button><Button disabled={!companyForm.name || companyForm.cvr.length !== 8 || createCompany.isPending} onClick={() => createCompany.mutate()}>Opret selskab</Button></DialogFooter>
     </DialogContent></Dialog>
 

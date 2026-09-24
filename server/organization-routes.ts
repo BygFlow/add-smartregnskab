@@ -62,27 +62,34 @@ export function registerOrganizationRoutes(app: Express) {
     }
     const name = String(req.body?.name ?? "").trim();
     const cvr = digits8(req.body?.cvr);
-    const parentCompanyId = req.body?.parentCompanyId ? Number(req.body.parentCompanyId) : ownerId;
-    const parent = companies.find((company) => company.id === parentCompanyId);
+    // An explicit null means a separate legal company sharing the subscription,
+    // not a subsidiary of the subscription owner.
+    const parentCompanyId = req.body?.parentCompanyId === null
+      ? null : req.body?.parentCompanyId ? Number(req.body.parentCompanyId) : ownerId;
+    const parent = parentCompanyId == null ? null : companies.find((company) => company.id === parentCompanyId);
     if (!name || cvr.length !== 8) return res.status(400).json({ error: "Angiv selskabsnavn og et gyldigt CVR-nummer på 8 cifre." });
-    if (!parent) return res.status(400).json({ error: "Moderselskabet skal være en del af samme kundeorganisation." });
+    if (parentCompanyId != null && !parent) return res.status(400).json({ error: "Moderselskabet skal være en del af samme kundeorganisation." });
     if ((await storage.getCompanies()).some((company) => company.cvr === cvr)) return res.status(409).json({ error: "CVR-nummeret findes allerede i ADD SmartRegnskab." });
     const ownershipPercent = req.body?.ownershipPercent === "" || req.body?.ownershipPercent == null
       ? null : Number(req.body.ownershipPercent);
     if (ownershipPercent != null && (!Number.isFinite(ownershipPercent) || ownershipPercent < 0 || ownershipPercent > 100)) {
       return res.status(400).json({ error: "Ejerandelen skal være mellem 0 og 100 procent." });
     }
-    if (!home.subscriptionOwnerId || home.groupRole === "standalone") {
+    const groupRole = String(req.body?.groupRole || (parentCompanyId == null ? "standalone" : "subsidiary"));
+    if (parentCompanyId == null && groupRole !== "standalone" && groupRole !== "holding") {
+      return res.status(400).json({ error: "Vælg et internt moderselskab for denne selskabstype." });
+    }
+    if (!home.subscriptionOwnerId || (parentCompanyId != null && home.groupRole === "standalone")) {
       await storage.updateCompany(ownerId, {
         subscriptionOwnerId: ownerId,
-        groupRole: home.groupRole === "standalone" ? "parent" : home.groupRole,
+        groupRole: parentCompanyId != null && home.groupRole === "standalone" ? "parent" : home.groupRole,
       });
     }
     const company = await storage.createCompany({
       name, cvr, address: req.body?.address || null, email: req.body?.email || home.email,
       phone: req.body?.phone || null, status: home.status, kind: "kunde", createdAt: new Date().toISOString(),
       parentCompanyId, subscriptionOwnerId: ownerId,
-      groupRole: String(req.body?.groupRole || "subsidiary"), ownershipPercent,
+      groupRole, ownershipPercent: parentCompanyId == null ? null : ownershipPercent,
     } as any);
     await db.insert(companyAccessMemberships).values({
       userId: req.auth!.userId, companyId: company.id, role: "leder", status: "active", createdAt: new Date().toISOString(),

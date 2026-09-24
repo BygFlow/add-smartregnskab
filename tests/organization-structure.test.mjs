@@ -16,12 +16,17 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(schema, /companyAccessMemberships/);
   assert.match(schema, /companyUnits/);
   assert.match(routes, /Pakken tillader.*virksomhed/);
+  assert.match(routes, /req\.body\?\.parentCompanyId === null/);
+  assert.match(routes, /parentCompanyId != null && !parent/);
+  assert.match(routes, /ownershipPercent: parentCompanyId == null \? null : ownershipPercent/);
   assert.match(routes, /SE-nummeret er allerede registreret/);
   assert.match(domain, /organizationPostingUsage/);
   assert.match(domain, /organizationCompanies\.map/);
   assert.match(shell, /Selskaber & SE-enheder/);
   assert.match(page, /Ét ApS eller A\/S er ét juridisk regnskab/);
   assert.match(page, /Afdelinger og SE-numre hører under det valgte CVR/);
+  assert.match(page, /Ingen intern ejerrelation/);
+  assert.match(page, /parentCompanyId: companyForm\.parentCompanyId === "none" \? null/);
   assert.match(migration, /CREATE TABLE `company_access_memberships`/);
   assert.match(migration, /CREATE TABLE `company_units`/);
 });
