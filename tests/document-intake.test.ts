@@ -15,7 +15,7 @@ after(() => {
   rmSync(testUploadDir, { recursive: true, force: true });
   delete process.env.FILE_STORAGE_DIR;
 });
-const { validExtraction, verifiedWebhook, bookDocument, registerPublicDocumentIntakeRoutes, emailAddress } = await import("../server/document-intake");
+const { validExtraction, verifiedWebhook, bookDocument, registerPublicDocumentIntakeRoutes, emailAddress, provisionEmailAddress } = await import("../server/document-intake");
 const { storage, db } = await import("../server/storage");
 const { accounts, documentInbox, journalEntries, journalLines, vouchers } = await import("../shared/schema");
 const { eq } = await import("drizzle-orm");
@@ -46,6 +46,73 @@ test("pilot email address is visible only to its designated test company", async
     delete process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET;
     delete process.env.DOCUMENT_INBOUND_READY;
     delete process.env.DOCUMENT_INBOUND_TEST_COMPANY_ID;
+  }
+});
+
+test("live addresses provision separate Simply forwards before being exposed", async () => {
+  const first = await storage.createCompany({ name: "Forward A", createdAt: new Date().toISOString() } as any);
+  const second = await storage.createCompany({ name: "Forward B", createdAt: new Date().toISOString() } as any);
+  process.env.DOCUMENT_INBOUND_DOMAIN = "addsmartregnskab.dk";
+  process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET = "test-document-secret";
+  process.env.DOCUMENT_INBOUND_READY = "true";
+  process.env.SIMPLY_PRODUCT_HANDLE = "addsmartregnskab.dk";
+  process.env.SIMPLY_API_KEY = "test-only-key";
+  const forwards: Array<{ address: string; destination: string }> = [];
+  const provider = async (_url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      const input = JSON.parse(String(init.body));
+      forwards.push({ address: `${input.localpart}@addsmartregnskab.dk`, destination: input.destination });
+      return Response.json({ status: 200, message: "success" });
+    }
+    return Response.json({ status: 200, forwards });
+  };
+  try {
+    const addressA = await provisionEmailAddress(first.id, provider as typeof fetch);
+    const addressB = await provisionEmailAddress(second.id, provider as typeof fetch);
+    assert.ok(addressA && addressB);
+    assert.notEqual(addressA, addressB);
+    assert.deepEqual(forwards.map((entry) => entry.address), [addressA, addressB]);
+    assert.ok(forwards.every((entry) => entry.destination === "bilag-system@addsmartregnskab.dk"));
+    assert.equal(await provisionEmailAddress(first.id, provider as typeof fetch), addressA);
+    assert.equal(forwards.length, 2, "a second visit must not create a second forward");
+    delete process.env.SIMPLY_API_KEY;
+    assert.equal(emailAddress(first.id), null, "no address may be shown without provider credentials");
+  } finally {
+    delete process.env.DOCUMENT_INBOUND_DOMAIN;
+    delete process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET;
+    delete process.env.DOCUMENT_INBOUND_READY;
+    delete process.env.SIMPLY_PRODUCT_HANDLE;
+    delete process.env.SIMPLY_API_KEY;
+  }
+});
+
+test("a new pilot company gets its own forward while general mail intake stays closed", async () => {
+  const pilot = await storage.createCompany({ name: "Forward pilot", createdAt: new Date().toISOString() } as any);
+  process.env.DOCUMENT_INBOUND_DOMAIN = "addsmartregnskab.dk";
+  process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET = "test-document-secret";
+  process.env.DOCUMENT_INBOUND_READY = "false";
+  process.env.DOCUMENT_INBOUND_TEST_COMPANY_ID = String(pilot.id);
+  process.env.SIMPLY_PRODUCT_HANDLE = "addsmartregnskab.dk";
+  process.env.SIMPLY_API_KEY = "test-only-key";
+  let createdLocalpart = "";
+  const provider = async (_url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      createdLocalpart = JSON.parse(String(init.body)).localpart;
+      return Response.json({ status: 200, message: "success" });
+    }
+    return Response.json({ status: 200, forwards: [] });
+  };
+  try {
+    const address = await provisionEmailAddress(pilot.id, provider as typeof fetch);
+    assert.equal(address, `${createdLocalpart}@addsmartregnskab.dk`);
+    assert.equal(address, `bilag-${pilot.documentInboxToken}@addsmartregnskab.dk`);
+  } finally {
+    delete process.env.DOCUMENT_INBOUND_DOMAIN;
+    delete process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET;
+    delete process.env.DOCUMENT_INBOUND_READY;
+    delete process.env.DOCUMENT_INBOUND_TEST_COMPANY_ID;
+    delete process.env.SIMPLY_PRODUCT_HANDLE;
+    delete process.env.SIMPLY_API_KEY;
   }
 });
 

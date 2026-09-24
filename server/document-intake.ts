@@ -7,6 +7,7 @@ import { db } from "./storage";
 import { decodeDataUrl, deleteFile, readFile, saveFile } from "./files";
 import { authorizeAiUsage, recordAiUsage } from "./ai-usage";
 import { estimateOpenAiCostDkk, extractOpenAiText } from "./ai-provider";
+import { ensureSimplyMailForward, forwardConfiguration } from "../scripts/simply-mail-forward-core.mjs";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) =>
   (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res)).catch(next);
@@ -19,7 +20,8 @@ function inboundDomain(): string | null {
 
 function inboundReady(): boolean {
   return process.env.DOCUMENT_INBOUND_READY === "true"
-    && Boolean(inboundDomain() && process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET);
+    && Boolean(inboundDomain() && process.env.DOCUMENT_INBOUND_WEBHOOK_SECRET
+      && process.env.SIMPLY_API_KEY && process.env.SIMPLY_PRODUCT_HANDLE);
 }
 
 function inboundPilot(companyId: number): boolean {
@@ -44,6 +46,18 @@ export function emailAddress(companyId: number): string | null {
       .returning().get() ?? db.select().from(companies).where(eq(companies.id, companyId)).get();
   }
   return company?.documentInboxToken ? `bilag-${company.documentInboxToken}@${domain}` : null;
+}
+
+/** Show a public company address only after its own Simply forward exists. */
+export async function provisionEmailAddress(companyId: number, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  const address = emailAddress(companyId);
+  if (!address) return null;
+  // Preserve the already verified manual pilot until Simply API access is configured.
+  if (!process.env.SIMPLY_API_KEY && !inboundReady()) return address;
+  if (!process.env.SIMPLY_API_KEY || !process.env.SIMPLY_PRODUCT_HANDLE) return null;
+  const config = forwardConfiguration({ ...process.env, DOCUMENT_FORWARD_ADDRESS: address });
+  await ensureSimplyMailForward({ config, apiKey: process.env.SIMPLY_API_KEY, apply: true, fetchImpl });
+  return address;
 }
 
 async function receiveDocument(input: {
@@ -294,7 +308,14 @@ export function registerDocumentIntakeRoutes(app: Express) {
     const companyId = tenantId(req);
     const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
     const chart = db.select().from(accounts).where(eq(accounts.companyId, companyId)).all();
-    res.json({ address: emailAddress(companyId), emailReady: inboundReady(), emailPilot: !inboundReady() && inboundPilot(companyId),
+    let address: string | null = null;
+    try {
+      address = await provisionEmailAddress(companyId);
+    } catch (error) {
+      console.warn(`Bilagsvideresendelse kunne ikke bekræftes for virksomhed ${companyId}:`,
+        error instanceof Error ? error.message : "Ukendt fejl");
+    }
+    res.json({ address, emailReady: inboundReady() && Boolean(address), emailPilot: !inboundReady() && inboundPilot(companyId),
       autoPost: Boolean(company?.documentAutoPost), payablesAccountId: company?.documentPayablesAccountId,
       inputVatAccountId: company?.documentInputVatAccountId,
       accounts: chart.filter((account) => account.active).map(({ id, accountNumber, name, type }) => ({ id, accountNumber, name, type })),

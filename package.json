@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-sqlite-prod.mjs",
     "db:push:dev": "drizzle-kit push",
-    "mail:poll:simply": "node scripts/simply-imap-bridge.mjs"
+    "mail:poll:simply": "node scripts/simply-imap-bridge.mjs",
+    "mail:forward:simply": "node scripts/simply-mail-forward.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
