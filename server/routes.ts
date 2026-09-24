@@ -606,7 +606,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/budgets", "/business-profiles", "/cashflow-projections", "/compliance-checks",
     "/compliance-documents", "/consolidation", "/control-tests", "/cost-centers",
     "/credit-notes", "/currency-transactions", "/customer-portal-settings", "/customers",
-    "/delivery-logs", "/dimension-definitions", "/dimension-values", "/document-inbox",
+    "/delivery-logs", "/dimension-definitions", "/dimension-values", "/document-inbox", "/document-receiving",
     "/einvoice-queue", "/file-objects", "/file-versions", "/fixed-assets", "/import-jobs2",
     "/industry-account-templates", "/integration-configs", "/integration-retry-queue",
     "/integration-runs", "/inventory-accounts", "/invoices", "/journal-entries",
