@@ -19,6 +19,16 @@ test("readiness treats the separate Clean integration as intentional", () => {
   assert.equal(report.checks.find((check) => check.id === "pilot-signoff")?.ok, false);
 });
 
+test("checkout terms stay available to signed-in reviewers", () => {
+  const app = read("client/src/App.tsx");
+  const checkout = read("client/src/pages/regnskab-tabs/abonnement.tsx");
+  const publicPages = read("client/src/pages/marketing.tsx");
+  assert.match(app, /if \(location === "\/abonnementsbetingelser"\) return <Marketing page="subscriptionTerms" \/>;/);
+  assert.match(checkout, /data-testid="subscription-terms-checkbox"/);
+  assert.match(checkout, /href="\/abonnementsbetingelser"/);
+  assert.match(publicPages, /function SubscriptionTerms\(\)/);
+});
+
 test("S3-compatible file storage honors the configured endpoint", () => {
   const files = read("server/files.ts");
   assert.match(files, /S3_ENDPOINT/);
