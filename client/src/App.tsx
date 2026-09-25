@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Router, Switch } from "wouter";
+import { Route, Router, Switch, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,10 +21,17 @@ function useRouteLocation(): [string, (to: string, options?: { replace?: boolean
 
 function Root() {
   const { user, company, companyId, initializing } = useAuth();
+  const [location] = useLocation();
 
   if (initializing) {
     return <main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser sikker session…</p></main>;
   }
+
+  // Checkout terms must stay available when opened by a signed-in customer.
+  if (location === "/abonnementsbetingelser") return <Marketing page="subscriptionTerms" />;
+  if (location === "/vilkaar") return <Marketing page="terms" />;
+  if (location === "/betaling-og-refusion") return <Marketing page="payment" />;
+  if (location === "/privatliv") return <Marketing page="privacy" />;
 
   if (!user) {
     return (
