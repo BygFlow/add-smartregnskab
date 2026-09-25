@@ -5,14 +5,14 @@ Status: Klargøring, ikke en indsendt eller godkendt ansøgning. Del aldrig en a
 ## Bekræftede oplysninger
 
 - Faktisk månedlig abonnementsomsætning i dag: **0 kr.** (oplyst af ejeren 25. september 2026).
-- Planlagt testadresse: `clearhaus-test@addsmartregnskab.dk` (godkendt af ejeren). Den må kun bruges til et særskilt, tomt testfirma.
+- Testadresse: `clearhaus-test@addsmartregnskab.dk` (godkendt af ejeren). Den er 25. september oprettet som videresendelse hos Simply til `admin@addsmartregnskab.dk` og ses på listen over videresendelser. En faktisk leveringstest er endnu ikke gennemført. Adressen må kun bruges til et særskilt, tomt testfirma.
 - Hjemmesiden har en særskilt side med abonnementsbetingelser, og købsflowet har en særskilt, ikke-forudafkrydset accept med link til siden.
 - Lokal kodeændring sikrer, at abonnementsbetingelserne også kan åbnes, mens testbrugeren er logget ind. Ændringen skal være deployeret og verificeret på den offentlige URL, før det meddeles Clearhaus som færdigt.
 - Ved visuel kontrol af den nuværende produktionsapp stod QuickPay som manglende, og knappen til betalingsaftale var deaktiveret. Det er ikke et færdigt betalingsflow.
 
 ## Skal afklares før ansøgningen sendes retur
 
-1. Opret testadressen som en intern videresendelse eller særskilt mailbox, og verificér modtagelse.
+1. Verificér levering til den oprettede interne videresendelse fra en anden afsender end modtagerkontoen.
 2. Opret et isoleret testfirma med testbrugeren. Brugeren vælger selv adgangskode; ingen eksisterende kundedata eller betalingskort må knyttes til kontoen.
 3. Bekræft at testbrugeren kan se pakker, abonnementsoverblik, almindelige handelsvilkår og de særskilte abonnementsbetingelser.
 4. Få ejerens realistiske forventning til omsætningsandel fordelt på månedlige, kvartalsvise, halvårlige og årlige abonnementer. Skriv ikke opdigtede procenttal ved 0 kr. faktisk omsætning.
