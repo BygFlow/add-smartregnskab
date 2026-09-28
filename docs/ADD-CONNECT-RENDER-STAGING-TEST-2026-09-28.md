@@ -17,6 +17,8 @@ Testen blev udført mellem tre private Render-tjenester i projektet **ADD Integr
 - Clean kørte den normale `syncInvoices`-connector med én fiktiv faktura. Dens andet kald kontrollerede den gemte faktura i SmartRegnskab og sprang den over. Loggen viste `faktura bogført og arkiveret én gang; gensynkronisering sprunget over`.
 - `STAGING_CONNECT_TOKEN` blev fjernet fra alle tre Render-tjenesters miljøvariabler. SmartRegnskabs log viste `ADD Connect staging-testnøgle deaktiveret`, og alle tre tjenester startede igen. Variablen var derefter ikke længere synlig i nogen af de tre miljøer.
 - En lokal regressionstest kontrollerer nu også HTTP-adgangen: den aktive testnøgle kan læse et ADD Connect-endpoint, mens samme nøgle får `401` efter deaktivering. Det er ikke en erstatning for en ny negativ Render-stagingtest.
+- En lokal, isoleret restore-øvelse oprettede en fiktiv faktura via ADD Connect, tog en konsistent SQLite-backup og en separat kopi af PDF-fillageret, åbnede den gendannede database og kontrollerede bogføringen, original-PDF'en og SHA-256. En bevidst ændret testkopi af PDF'en gav hash-mismatch. `tests/add-connect-restore-drill.test.ts` og TypeScript-kontrollen bestod. Dette er **ikke** en gendannelse af Render-stagingdisken.
+- I en separat lokal Clean-installation med tom testdatabase oprettede jeg via brugerfladen en fiktiv erhvervskunde og en fakturakladde. Brugerfladen viste fakturanummer `F-2026-0001`, 100 kr. ekskl. moms, 25 kr. moms, 125 kr. i alt og status `Kladde`; den bekræftede, at ingen e-mail blev sendt. Pro's `test:invoicing` og `test:bookkeeping-integrations` bestod. Denne lokale UI-test og Pro's kodebaserede tests er **ikke** et fuldt Pro/Clean-fakturaforløb på Render-staging.
 
 ## Hvad testen **ikke** beviser
 
