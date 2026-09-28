@@ -49,7 +49,7 @@ export async function ensureStagingConnectFixture(): Promise<void> {
   } else {
     const expiresAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
     db.insert(apiKeys).values({ companyId: company.id, name: FIXTURE_KEY, keyPrefix: token.slice(0, 10),
-      keyHash: hash, scopes: JSON.stringify(["add_connect:write"]), status: "aktiv",
+      keyHash: hash, scopes: JSON.stringify(["add_connect:read", "add_connect:write"]), status: "aktiv",
       expiresAt, createdAt: new Date().toISOString() }).run();
   }
   console.info(`ADD Connect staging-fixture klar for firma ${company.id}; testnøglen udløber om to timer.`);
