@@ -1,6 +1,6 @@
 # EDI for SmartRegnskab, Pro og Clean — staging og lancering
 
-Status: lokal kodeforberedelse. Dette dokument er **ikke** en godkendelse til at åbne hjemmesiden eller aktivere EDI i produktion.
+Status: private integrationstesttjenester er oprettet; fælles EDI-gateway er stadig kun lokalt bygget og testet. Dette dokument er **ikke** en godkendelse til at åbne hjemmesiden eller aktivere EDI i produktion.
 
 ## Første spor: intern integration uden Sproom
 
@@ -8,20 +8,20 @@ SmartRegnskab, Pro og Clean kan afprøves separat fra EDI, men kun i tre isolere
 
 - SmartRegnskab-staging: kopi af appen med separat database/fillager og uden produktionsnøgler til betaling, mail, bank og Sproom. Udsted en ADD Connect-testnøgle bundet til den fiktive virksomhed og det rigtige kildeprogram.
 - Pro-staging: sæt ADD SmartRegnskab-integrationens `endpoint` eksplicit til **SmartRegnskab-staging**. Gem ingen produktionsnøgle eller rigtige fakturaer i testvirksomheden.
-- Clean-staging: sæt integrationens `baseUrl` eksplicit til **SmartRegnskab-staging**. Uden `baseUrl` bruger connectoren produktionsadressen `https://app.addsmartregnskab.dk`; derfor må testen ikke startes før adressen er verificeret.
+- Clean-staging: sæt integrationens `baseUrl` eksplicit til `http://add-smartregnskab-staging:10000`. `ADD_DEPLOYMENT_MODE=staging` afviser nu en manglende eller anden adresse, så connectoren ikke falder tilbage til produktionsadressen.
 - Alle tre: lad `EDI_GATEWAY_URL`, `EDI_GATEWAY_KEYS_JSON` og Sproom-credentials være tomme. Slå automatisk afsendelse, live betalinger og kundemails fra, eller brug dokumenterede testudbydere. Brug kun fiktive CVR-numre, modtagere og dokumenter.
 - Test én allerede udstedt faktura fra Pro og én fra Clean: original PDF og SHA-256 skal matche, SmartRegnskab skal bogføre præcis én gang, og det må ikke sende fakturaen igen. Test også kladde, dublet, forkert virksomheds-/programnøgle, manglende konti, genforsøg og gendannelse fra backup.
 - Først efter en logget stagingrapport og en vellykket restore-test kan intern integration foreslås til produktion. Det er en **separat** beslutning fra Sproom/EDI og fra offentlig lancering; brugerens særskilte godkendelse kræves.
 
-Dette interne spor er endnu ikke kørt i rigtige stagingtjenester. Den lokale fiktive test og enhedstests er ikke det samme som en deploytest.
+De private stagingtjenester er oprettet, men det samlede fakturaflow er endnu ikke kørt mellem de tre kørende tjenester. Den lokale fiktive test og enhedstests er ikke det samme som en deploytest.
 
 ### Render-kontrol 28. september 2026
 
-Render-workspacet viser de eksisterende produktionstjenester for SmartRegnskab, Pro og Clean, men ingen af de tre isolerede integrationstesttjenester. Render-formularen viser 7 USD pr. måned for den mindste private tjeneste; tre tjenester samt særskilt database og diske giver yderligere månedlige omkostninger. Der er ikke trykket Deploy.
+Tre isolerede private tjenester er nu oprettet på Render fra `staging/internal-integration-2026-09-28`: `add-smartregnskab-staging`, `add-smartdrift-pro-staging` og `add-smartdrift-clean-staging`. Pro bruger en separat staging-PostgreSQL-database; SmartRegnskab og Clean har hver sin persistente staging-SQLite-disk. Staging-databasens offentlige IP-adgang er blokeret. Pro og Clean afviser produktionsadressen for SmartRegnskab i staging. Der er ikke ændret i produktionsgrenene eller åbnet en offentlig stagingadresse.
 
-De nye integrationsændringer er endnu ikke udgivet til GitHub: SmartRegnskab har en lokal feature-gren med ikke-committede ændringer og er én commit bag `origin/main`; Pro og Clean har ligeledes lokale ikke-committede ændringer. En ny Render-tjeneste fra `main` ville derfor teste gammel kode. Før en betalt tjeneste oprettes, skal en afgrænset staging-gren for hvert produkt publiceres og testes uden at ændre produktionens `main`, og et samlet omkostningsloft skal være godkendt.
+Lokalt er ADD Connect testet med én fiktiv virksomhed, en midlertidig testnøgle og fakturaer fra både Pro og Clean: de bogføres hver én gang, selv når kilde-ID'et er ens, og en anden virksomhed kan ikke se posteringerne. EDI-gatewayens simulerede tre-program-flow, kundeadskillelse, signaturer, kø/genforsøg og Sproom-adapter består også. Testvirksomhed og ADD Connect-nøgle er **ikke** oprettet i Render-staging; derfor mangler stadig en ægte test på tværs af de tre private tjenester. Ingen Sproom- eller betalingsnøgler er sat i staging.
 
-## Før staging kan begynde
+## Før EDI-staging kan begynde
 
 - Bekræft at Sproom-aftalen for ADD SmartDrift ApS er aktiv, og få adgang til staging-parent-token, child-profiler, webhook-public key og relevante API-rettigheder. Ét CVR må kun mappes til én child-profil; eksisterende profil kræver Sprooms særlige enrollment-proces og kundens dokumenterede samtykke.
 - Vælg en faktisk OIOUBL/Peppol-validator og test den med gyldige og ugyldige dokumenter. `EINVOICE_VALIDATOR_URL` må ikke sættes til en attrap.
