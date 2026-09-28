@@ -16,6 +16,7 @@ Testen blev udført mellem tre private Render-tjenester i projektet **ADD Integr
 - Pro sendte én fiktiv udstedt faktura. Loggen viste `success=2, duplicate=false, booked=true, archived=true`. Efter genstart med samme payload viste loggen `success=0, duplicate=true, booked=true, archived=true`.
 - Clean kørte den normale `syncInvoices`-connector med én fiktiv faktura. Dens andet kald kontrollerede den gemte faktura i SmartRegnskab og sprang den over. Loggen viste `faktura bogført og arkiveret én gang; gensynkronisering sprunget over`.
 - `STAGING_CONNECT_TOKEN` blev fjernet fra alle tre Render-tjenesters miljøvariabler. SmartRegnskabs log viste `ADD Connect staging-testnøgle deaktiveret`, og alle tre tjenester startede igen. Variablen var derefter ikke længere synlig i nogen af de tre miljøer.
+- En lokal regressionstest kontrollerer nu også HTTP-adgangen: den aktive testnøgle kan læse et ADD Connect-endpoint, mens samme nøgle får `401` efter deaktivering. Det er ikke en erstatning for en ny negativ Render-stagingtest.
 
 ## Hvad testen **ikke** beviser
 
