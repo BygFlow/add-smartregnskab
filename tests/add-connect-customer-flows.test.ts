@@ -146,6 +146,55 @@ test("an already issued Pro invoice is booked once without being sent again", as
   }
 });
 
+test("one synthetic staging company books Pro and Clean invoices once without mixing source IDs", async () => {
+  const company = await storage.createCompany({ name: "Fiktiv samlet staging-kunde", createdAt: new Date().toISOString() } as any);
+  const other = await storage.createCompany({ name: "Fiktiv anden kunde", createdAt: new Date().toISOString() } as any);
+  const token = `sk_${"d".repeat(48)}`;
+  db.insert(apiKeys).values({ companyId: company.id, name: "Isoleret lokal testnøgle",
+    keyPrefix: token.slice(0, 10), keyHash: createHash("sha256").update(token).digest("hex"),
+    scopes: JSON.stringify(["add_connect:write"]), status: "aktiv", createdAt: new Date().toISOString() }).run();
+  for (const row of [
+    { accountNumber: "1200", name: "Debitorer", type: "aktiv" },
+    { accountNumber: "3000", name: "Salg", type: "indtaegt" },
+    { accountNumber: "2310", name: "Salgsmoms", type: "passiv" },
+  ]) db.insert(accounts).values({ companyId: company.id, ...row, active: 1, createdAt: new Date().toISOString() }).run();
+  const app = express();
+  app.use(express.json());
+  registerPublicAddConnectRoutes(app);
+  const server = app.listen(0);
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const endpoint = `http://127.0.0.1:${address.port}/api/add-connect/sync`;
+    const send = (sourceProduct: string, invoiceNumber: string) => fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sourceProduct, idempotencyKey: `${sourceProduct}-${invoiceNumber}`, events: [
+        { type: "customer.upsert", data: { sourceId: "shared-customer-1", name: "Fiktiv modtager" } },
+        { type: "invoice.issued", data: {
+          sourceId: "shared-invoice-1", invoiceNumber, customerSourceId: "shared-customer-1",
+          issueDate: "2026-09-28", sentAt: "2026-09-28T10:00:00.000Z", deliveryChannel: "email",
+          deliveryReference: `${sourceProduct}-delivery-1`, documentHash, documentBase64,
+          netAmount: 100, vatAmount: 25, totalAmount: 125,
+          ledgerAccounts: { receivables: "1200", revenue: "3000", outputVat: "2310" },
+          lines: [{ description: "Fiktiv service", quantity: 1, unitPrice: 100, amount: 100, vatRate: 25 }],
+        } },
+      ] }),
+    });
+    assert.equal((await send("smartdrift_pro", "PRO-TEST-1")).status, 200);
+    assert.equal((await send("smartdrift_clean", "CLEAN-TEST-1")).status, 200);
+    assert.equal((await send("smartdrift_pro", "PRO-TEST-1")).status, 200);
+    assert.equal((await send("smartdrift_clean", "CLEAN-TEST-1")).status, 200);
+    const bookedInvoices = db.select().from(invoices).where(eq(invoices.companyId, company.id)).all();
+    assert.deepEqual(bookedInvoices.map((row) => row.invoiceNumber).sort(), ["CLEAN-TEST-1", "PRO-TEST-1"]);
+    assert.equal(db.select().from(journalEntries).where(eq(journalEntries.companyId, company.id)).all().length, 2);
+    assert.equal(db.select().from(invoices).where(eq(invoices.companyId, other.id)).all().length, 0);
+    assert.equal(db.select().from(journalEntries).where(eq(journalEntries.companyId, other.id)).all().length, 0);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("an approved external program may hand over a draft or an issued invoice, never both", async () => {
   const company = await storage.createCompany({ name: "Fiktiv ekstern kunde", createdAt: new Date().toISOString() } as any);
   const sourceProduct = "external_other_invoice_app";
