@@ -132,7 +132,8 @@ export function providerStatus(companyId?: number) {
 export async function providerValidate(payload: string, format: EInvoiceFormat): Promise<string[]> {
   const local = validateEInvoice(payload);
   if (local.length || !process.env.EINVOICE_VALIDATOR_URL) return local;
-  const response = await fetch(process.env.EINVOICE_VALIDATOR_URL, { method: "POST", headers: { "Content-Type": "application/xml", "X-Document-Format": format }, body: payload });
+  const response = await fetch(process.env.EINVOICE_VALIDATOR_URL, { method: "POST", headers: { "Content-Type": "application/xml", "X-Document-Format": format }, body: payload,
+    signal: AbortSignal.timeout(15_000), redirect: "manual" });
   if (response.ok) return [];
   return [`Ekstern validator afviste dokumentet (${response.status}): ${(await response.text()).slice(0, 500)}`];
 }
@@ -171,10 +172,15 @@ export function internalCompanyIdForSproom(externalCompanyId: string): number | 
 }
 
 async function sproomCompanyToken(companyId: number): Promise<string> {
+  return sproomChildCompanyToken(sproomCompanyId(companyId));
+}
+
+export async function sproomChildCompanyToken(childCompanyId: string): Promise<string> {
   const parentToken = process.env.SPROOM_API_TOKEN?.trim();
   if (!parentToken) throw new Error("Sproom API-token mangler.");
-  const response = await fetch(`${sproomBaseUrl()}/child-companies/${encodeURIComponent(sproomCompanyId(companyId))}/token`, {
+  const response = await fetch(`${sproomBaseUrl()}/child-companies/${encodeURIComponent(childCompanyId)}/token`, {
     headers: { Accept: "application/json", Authorization: `Bearer ${parentToken}` },
+    signal: AbortSignal.timeout(15_000), redirect: "manual",
   });
   const body = await response.text();
   if (!response.ok) throw new Error(`Sproom kunne ikke udstede virksomhedstoken (${response.status}): ${body.slice(0, 500)}`);
@@ -203,14 +209,36 @@ export function sproomRequestId(payload: string, format: EInvoiceFormat, recipie
 }
 
 export async function sproomDownloadDocument(documentId: string, companyId: number, format: EInvoiceFormat): Promise<string> {
-  const token = await sproomCompanyToken(companyId);
+  return sproomDownloadChildDocument(documentId, sproomCompanyId(companyId), format);
+}
+
+export async function sproomDownloadChildDocument(documentId: string, childCompanyId: string, format: EInvoiceFormat): Promise<string> {
+  const token = await sproomChildCompanyToken(childCompanyId);
   const targetFormat = format === "PEPPOL_BIS_3" ? "peppolBis3" : "oioUbl2";
   const response = await fetch(`${sproomBaseUrl()}/documents/${encodeURIComponent(documentId)}/${targetFormat}`, {
     headers: { Accept: "application/xml, application/octet-stream", Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000), redirect: "manual",
   });
   const body = await response.text();
   if (!response.ok) throw new Error(`Sproom-dokumentet kunne ikke hentes (${response.status}): ${body.slice(0, 500)}`);
   return body;
+}
+
+export type SproomDocumentState = { statusCode: number; state?: string; message?: string | null; dateTime?: string };
+
+export async function sproomChildDocumentState(documentId: string, childCompanyId: string): Promise<SproomDocumentState> {
+  if (!/^[0-9a-f-]{36}$/i.test(documentId) || !/^[0-9a-f-]{36}$/i.test(childCompanyId)) {
+    throw new Error("Ugyldigt Sproom-dokument eller child-company-ID.");
+  }
+  const token = await sproomChildCompanyToken(childCompanyId);
+  const response = await fetch(`${sproomBaseUrl()}/documents/${encodeURIComponent(documentId)}/state`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000), redirect: "manual",
+  });
+  if (!response.ok) throw new Error(`Sproom-status kunne ikke hentes (${response.status}).`);
+  const result = await response.json() as Partial<SproomDocumentState>;
+  if (!Number.isSafeInteger(result?.statusCode)) throw new Error("Sproom-status mangler en gyldig statusCode.");
+  return result as SproomDocumentState;
 }
 
 export function verifySproomSignature(raw: string, signature?: string): boolean {
@@ -229,9 +257,24 @@ export function verifySproomSignature(raw: string, signature?: string): boolean 
 export async function providerSend(payload: string, format: EInvoiceFormat, recipient: string, companyId?: number) {
   if (providerKind() === "sproom") {
     if (!companyId) throw new Error("Virksomheds-ID mangler ved Sproom-afsendelse.");
-    const token = await sproomCompanyToken(companyId);
+    return sproomSendForChild(payload, format, recipient, sproomCompanyId(companyId));
+  }
+  if (!process.env.EINVOICE_PROVIDER_URL || !process.env.EINVOICE_PROVIDER_API_KEY) throw new Error("NemHandel/Peppol-leverandøren er ikke konfigureret. Dokumentet er ikke sendt.");
+  const idempotencyKey = createHash("sha256").update(`${format}\0${recipient}\0${payload}`).digest("hex");
+  const response = await fetch(process.env.EINVOICE_PROVIDER_URL, { method: "POST", headers: { Authorization: `Bearer ${process.env.EINVOICE_PROVIDER_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ format, recipient, documentBase64: Buffer.from(payload).toString("base64") }) });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Leverandøren afviste afsendelsen (${response.status}): ${body.slice(0, 500)}`);
+  let parsed: any = {};
+  try { parsed = JSON.parse(body); } catch { parsed = { messageId: response.headers.get("x-message-id") }; }
+  return { messageId: String(parsed.messageId || parsed.id || response.headers.get("x-message-id") || ""), response: body.slice(0, 2000) };
+}
+
+/** Shared transport, independent of whether the child company buys SmartRegnskab. */
+export async function sproomSendForChild(payload: string, format: EInvoiceFormat, recipient: string, childCompanyId: string) {
+    const token = await sproomChildCompanyToken(childCompanyId);
     const recipientResponse = await fetch(`${sproomBaseUrl()}/recipients/${encodeURIComponent(sproomRecipient(recipient))}`, {
       headers: { Accept: "*/*", Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000), redirect: "manual",
     });
     if (!recipientResponse.ok) {
       const reason = (await recipientResponse.text()).slice(0, 500);
@@ -246,6 +289,7 @@ export async function providerSend(payload: string, format: EInvoiceFormat, reci
         "X-Request-Id": sproomRequestId(payload, format, recipient),
       },
       body: Buffer.from(payload, "utf8"),
+      signal: AbortSignal.timeout(20_000), redirect: "manual",
     });
     const body = await response.text();
     if (response.status === 409) {
@@ -258,15 +302,6 @@ export async function providerSend(payload: string, format: EInvoiceFormat, reci
     const messageId = response.headers.get("x-sproom-documentid") || response.headers.get("x-sproom-document-id") || "";
     if (!messageId) throw new Error("Sproom accepterede kaldet, men returnerede ikke X-Sproom-DocumentId. Dokumentet markeres ikke som sendt.");
     return { messageId, response: body.slice(0, 2000) };
-  }
-  if (!process.env.EINVOICE_PROVIDER_URL || !process.env.EINVOICE_PROVIDER_API_KEY) throw new Error("NemHandel/Peppol-leverandøren er ikke konfigureret. Dokumentet er ikke sendt.");
-  const idempotencyKey = createHash("sha256").update(`${format}\0${recipient}\0${payload}`).digest("hex");
-  const response = await fetch(process.env.EINVOICE_PROVIDER_URL, { method: "POST", headers: { Authorization: `Bearer ${process.env.EINVOICE_PROVIDER_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ format, recipient, documentBase64: Buffer.from(payload).toString("base64") }) });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Leverandøren afviste afsendelsen (${response.status}): ${body.slice(0, 500)}`);
-  let parsed: any = {};
-  try { parsed = JSON.parse(body); } catch { parsed = { messageId: response.headers.get("x-message-id") }; }
-  return { messageId: String(parsed.messageId || parsed.id || response.headers.get("x-message-id") || ""), response: body.slice(0, 2000) };
 }
 
 export function verifyInboundSignature(raw: string, signature?: string): boolean {

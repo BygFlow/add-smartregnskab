@@ -1,0 +1,1 @@
+ALTER TABLE `edi_gateway_documents` ADD `issuer_cvr` text;

@@ -52,7 +52,9 @@ function safeMailError(error: unknown): string {
   return "E-mailen kunne ikke sendes på grund af en forbindelsesfejl.";
 }
 
-async function sendViaSmtp(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
+type MailAttachment = { filename: string; content: Buffer; contentType: string };
+
+async function sendViaSmtp(msg: OutboxMessage, attachments: MailAttachment[] = []): Promise<{ ok: boolean; error?: string }> {
   const port = Number.parseInt(process.env.SMTP_PORT || "587", 10);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     return { ok: false, error: "SMTP-porten er ugyldig." };
@@ -77,6 +79,7 @@ async function sendViaSmtp(msg: OutboxMessage): Promise<{ ok: boolean; error?: s
       to: msg.recipient,
       subject: msg.subject ?? "Besked fra ADD SmartRegnskab",
       text: msg.body,
+      attachments,
     });
     return { ok: true };
   } catch (error) {
@@ -86,7 +89,7 @@ async function sendViaSmtp(msg: OutboxMessage): Promise<{ ok: boolean; error?: s
   }
 }
 
-async function sendViaResend(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
+async function sendViaResend(msg: OutboxMessage, attachments: MailAttachment[] = []): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await withTimeout("https://api.resend.com/emails", {
       method: "POST",
@@ -99,6 +102,7 @@ async function sendViaResend(msg: OutboxMessage): Promise<{ ok: boolean; error?:
         to: [msg.recipient],
         subject: msg.subject ?? "Besked fra ADD SmartRegnskab",
         text: msg.body,
+        attachments: attachments.map((item) => ({ filename: item.filename, content: item.content.toString("base64"), content_type: item.contentType })),
       }),
     });
     if (!res.ok) {
@@ -112,11 +116,11 @@ async function sendViaResend(msg: OutboxMessage): Promise<{ ok: boolean; error?:
   }
 }
 
-async function sendEmail(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
+async function sendEmail(msg: OutboxMessage, attachments: MailAttachment[] = []): Promise<{ ok: boolean; error?: string }> {
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-    return sendViaSmtp(msg);
+    return sendViaSmtp(msg, attachments);
   }
-  return sendViaResend(msg);
+  return sendViaResend(msg, attachments);
 }
 
 async function sendSms(msg: OutboxMessage): Promise<{ ok: boolean; error?: string }> {
@@ -148,6 +152,7 @@ export interface QueueInput {
   body: string;
   relatedType?: string | null;
   relatedId?: number | null;
+  attachments?: MailAttachment[];
 }
 
 /** Lægger beskeden i kø og forsøger straks at sende den. */
@@ -177,7 +182,7 @@ export async function queueAndSend(input: QueueInput): Promise<OutboxMessage> {
     }))!;
   }
 
-  const result = input.channel === "email" ? await sendEmail(msg) : await sendSms(msg);
+  const result = input.channel === "email" ? await sendEmail(msg, input.attachments) : await sendSms(msg);
   return (await storage.updateMessage(msg.id, {
     status: result.ok ? "sendt" : "fejl",
     error: result.error ?? null,
@@ -198,7 +203,7 @@ export function invoiceEmail(opts: {
     subject: `Faktura ${opts.invoiceNumber} fra ${opts.companyName}`,
     body:
       `Hej ${opts.customerName}\n\n` +
-      `Du finder faktura ${opts.invoiceNumber} på ${opts.total} kr. inkl. moms i ADD SmartRegnskab.\n` +
+      `Vedhæftet finder du faktura ${opts.invoiceNumber} på ${opts.total} kr. inkl. moms.\n` +
       `Betalingsfristen er ${opts.dueDate}.\n\n` +
       `Har du spørgsmål til fakturaen, er du velkommen til at svare på denne mail.\n\n` +
       `Med venlig hilsen\n${opts.companyName}`,

@@ -4,6 +4,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import path from "node:path";
 import { eq, isNotNull } from "drizzle-orm";
 import { attachments } from "@shared/schema";
+import { XMLValidator } from "fast-xml-parser";
 import { db } from "./storage";
 
 // ── Persistent file storage path ──
@@ -46,6 +47,7 @@ export function storageBackend(): Backend {
 function assertValidFile(mimeType: string, buffer: Buffer): void {
   const signatures: Record<string, (data: Buffer) => boolean> = {
     "application/pdf": (data) => data.subarray(0, 5).toString("ascii") === "%PDF-",
+    "application/xml": (data) => data.length > 0 && XMLValidator.validate(data.toString("utf8")) === true,
     "image/jpeg": (data) => data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff,
     "image/png": (data) => data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
     "image/gif": (data) => ["GIF87a", "GIF89a"].includes(data.subarray(0, 6).toString("ascii")),
@@ -53,7 +55,7 @@ function assertValidFile(mimeType: string, buffer: Buffer): void {
   };
   const validSignature = signatures[mimeType];
   if (!validSignature) {
-    throw new Error("Kun billedfiler og PDF-filer må uploades.");
+    throw new Error("Kun billedfiler, PDF og XML må uploades.");
   }
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error("Filen er for stor. Maksimal filstørrelse er 10 MB.");
@@ -68,6 +70,7 @@ function extensionFromName(fileName: string, mimeType: string): string {
   if (ext) return ext;
   const fromMime: Record<string, string> = {
     "application/pdf": "pdf",
+    "application/xml": "xml",
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",

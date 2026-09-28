@@ -2824,6 +2824,64 @@ export const insertPlatformSyncMappingSchema = createInsertSchema(platformSyncMa
 export type InsertPlatformSyncMapping = z.infer<typeof insertPlatformSyncMappingSchema>;
 export type PlatformSyncMapping = typeof platformSyncMappings.$inferSelect;
 
+// Originalt afsendt fakturadokument fra et godkendt kildeprogram.
+// Filen ligger i det private fillager; denne række knytter den til bogføringen.
+export const addConnectInvoiceDocuments = sqliteTable("add_connect_invoice_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  sourceProduct: text("source_product").notNull(),
+  sourceId: text("source_id").notNull(),
+  storage: text("storage").notNull(),
+  storageKey: text("storage_key").notNull(),
+  mimeType: text("mime_type").notNull().default("application/pdf"),
+  sizeBytes: integer("size_bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  deliveryChannel: text("delivery_channel").notNull(),
+  deliveryReference: text("delivery_reference").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({
+  sourceUnique: uniqueIndex("add_connect_invoice_docs_company_source_unique")
+    .on(table.companyId, table.sourceProduct, table.sourceId),
+  invoiceUnique: uniqueIndex("add_connect_invoice_docs_invoice_unique").on(table.invoiceId),
+}));
+
+// Fælles EDI-transport er adskilt fra et SmartRegnskab-abonnement.
+export const ediGatewayTenants = sqliteTable("edi_gateway_tenants", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  product: text("product").notNull(),
+  sourceTenantId: text("source_tenant_id").notNull(),
+  cvr: text("cvr").notNull(),
+  companyName: text("company_name").notNull(),
+  sproomChildId: text("sproom_child_id").notNull(),
+  keyHash: text("key_hash").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  active: integer("active").notNull().default(0),
+  receiveEnabled: integer("receive_enabled").notNull().default(0),
+  onboardingEvidence: text("onboarding_evidence"),
+  activatedAt: text("activated_at"),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({ sourceUnique: uniqueIndex("edi_gateway_tenant_source_unique").on(table.product, table.sourceTenantId) }));
+
+export const ediGatewayDocuments = sqliteTable("edi_gateway_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tenantId: integer("tenant_id").notNull(),
+  sourceId: text("source_id").notNull(),
+  direction: text("direction").notNull(),
+  format: text("format").notNull(),
+  documentType: text("document_type").notNull(),
+  invoiceNumber: text("invoice_number"),
+  issuerCvr: text("issuer_cvr"),
+  recipient: text("recipient"),
+  payloadXml: text("payload_xml").notNull(),
+  sha256: text("sha256").notNull(),
+  providerMessageId: text("provider_message_id"),
+  status: text("status").notNull(),
+  error: text("error"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({ sourceUnique: uniqueIndex("edi_gateway_document_source_unique").on(table.tenantId, table.direction, table.sourceId) }));
+
 export const workflowDefinitions = sqliteTable("workflow_definitions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id"),

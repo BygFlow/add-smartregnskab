@@ -1,0 +1,1 @@
+ALTER TABLE `add_connect_invoice_documents` ADD `mime_type` text DEFAULT 'application/pdf' NOT NULL;

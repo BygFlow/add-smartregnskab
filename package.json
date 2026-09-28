@@ -18,7 +18,13 @@
     "db:migrate": "node scripts/migrate-sqlite-prod.mjs",
     "db:push:dev": "drizzle-kit push",
     "mail:poll:simply": "node scripts/simply-imap-bridge.mjs",
-    "mail:forward:simply": "node scripts/simply-mail-forward.mjs"
+    "mail:forward:simply": "node scripts/simply-mail-forward.mjs",
+    "edi:dev": "tsx services/edi-gateway/index.ts",
+    "edi:build": "node scripts/build-edi-gateway.mjs",
+    "edi:start": "node dist/edi-gateway.cjs",
+    "edi:backup": "node scripts/edi-gateway-backup.mjs",
+    "edi:backup:offsite": "node scripts/edi-gateway-offsite-backup.mjs",
+    "edi:cutover:audit": "node scripts/edi-gateway-cutover-audit.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

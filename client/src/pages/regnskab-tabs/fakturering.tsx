@@ -36,6 +36,7 @@ type Invoice = {
   totalAmount: number;
   paymentTerms: number;
   sentAt?: string | null;
+  booked?: boolean;
   paidAt?: string | null;
   reminderCount: number;
   reminderFee: number;
@@ -76,6 +77,9 @@ type Customer = {
   zipCode?: string | null;
 };
 
+type LedgerAccount = { id: number; accountNumber: string; name: string; type: string; active: number };
+type LedgerMapping = { receivables: string; revenue: string; outputVat: string };
+
 const STATUS_LABELS: Record<string, string> = {
   kladde: "Kladde",
   sendt: "Sendt",
@@ -109,6 +113,8 @@ export default function Fakturering({ companyId }: { companyId: number }) {
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("alle");
+  const [sendTarget, setSendTarget] = useState<Invoice | null>(null);
+  const [ledgerMapping, setLedgerMapping] = useState<LedgerMapping>({ receivables: "", revenue: "", outputVat: "" });
 
   // ── Data ──
   const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
@@ -135,6 +141,11 @@ export default function Fakturering({ companyId }: { companyId: number }) {
     },
   });
 
+  const { data: ledgerAccounts = [] } = useQuery<LedgerAccount[]>({
+    queryKey: ["/api/accounts", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/accounts")).json(),
+  });
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -150,15 +161,28 @@ export default function Fakturering({ companyId }: { companyId: number }) {
   });
 
   const sendMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("POST", `/api/invoices/${id}/send`, {});
+    mutationFn: async ({ id, ledgerAccounts }: { id: number; ledgerAccounts: LedgerMapping }) => {
+      const res = await apiRequest("POST", `/api/invoices/${id}/send`, { ledgerAccounts });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Faktura sendt", description: "Fakturaen er markeret som sendt." });
+    onSuccess: (result: any) => {
+      toast({ title: result.bookingPending ? "Bogføring afventer" : "Faktura sendt og bogført", description: result.note,
+        variant: result.bookingPending ? "destructive" : undefined });
       qc.invalidateQueries({ queryKey: ["/api/invoices", companyId] });
+      setSendTarget(null);
     },
     onError: (e: any) => toast({ title: "Fejl", description: e.message, variant: "destructive" }),
+  });
+
+  const bookMutation = useMutation({
+    mutationFn: async ({ id, ledgerAccounts }: { id: number; ledgerAccounts: LedgerMapping }) =>
+      (await apiRequest("POST", `/api/invoices/${id}/book`, { ledgerAccounts })).json(),
+    onSuccess: () => {
+      toast({ title: "Faktura bogført" });
+      qc.invalidateQueries({ queryKey: ["/api/invoices", companyId] });
+      setSendTarget(null);
+    },
+    onError: (e: any) => toast({ title: "Bogføring mislykkedes", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -348,6 +372,7 @@ export default function Fakturering({ companyId }: { companyId: number }) {
                           <Badge className={STATUS_COLORS[inv.status] || "bg-gray-100"}>
                             {STATUS_LABELS[inv.status] || inv.status}
                           </Badge>
+                          {inv.status === "sendt" && !inv.booked && <Badge variant="outline" className="ml-1">Bogføring afventer</Badge>}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
@@ -362,12 +387,16 @@ export default function Fakturering({ companyId }: { companyId: number }) {
                             {inv.status === "kladde" && (
                               <Button
                                 size="icon" variant="ghost"
-                                onClick={() => sendMutation.mutate(inv.id)}
+                                onClick={() => setSendTarget(inv)}
                                 data-testid={`button-send-${inv.id}`}
                                 title="Send"
                               >
                                 <Send className="h-4 w-4 text-blue-600" />
                               </Button>
+                            )}
+                            {inv.status === "sendt" && !inv.booked && (
+                              <Button size="sm" variant="outline" onClick={() => setSendTarget(inv)}
+                                data-testid={`button-book-${inv.id}`} title="Bogfør fakturaen">Bogfør</Button>
                             )}
                             {inv.status === "sendt" && (
                               <Button
@@ -444,6 +473,36 @@ export default function Fakturering({ companyId }: { companyId: number }) {
       )}
 
       {/* ── Create Invoice Dialog ── */}
+      <Dialog open={Boolean(sendTarget)} onOpenChange={(open) => { if (!open) setSendTarget(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{sendTarget?.status === "kladde" ? "Send og bogfør faktura" : "Bogfør sendt faktura"}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Vælg virksomhedens konti. Systemet gætter ikke bogføringskonti. Ved afsendelse vedhæftes fakturaen som PDF.</p>
+          {([
+            ["receivables", "Debitorer", "aktiv"],
+            ["revenue", "Omsætning", "indtaegt"],
+            ...(sendTarget?.vatAmount ? [["outputVat", "Salgsmoms", "passiv"]] : []),
+          ] as Array<[keyof LedgerMapping, string, string]>).map(([field, label, type]) => (
+            <div key={field} className="space-y-1">
+              <Label>{label}</Label>
+              <Select value={ledgerMapping[field]} onValueChange={(value) => setLedgerMapping((current) => ({ ...current, [field]: value }))}>
+                <SelectTrigger><SelectValue placeholder={`Vælg ${label.toLowerCase()}...`} /></SelectTrigger>
+                <SelectContent>{ledgerAccounts.filter((account) => account.active && account.type === type).map((account) =>
+                  <SelectItem key={account.id} value={account.accountNumber}>{account.accountNumber} · {account.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ))}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendTarget(null)}>Annuller</Button>
+            <Button disabled={!sendTarget || !ledgerMapping.receivables || !ledgerMapping.revenue || (Boolean(sendTarget?.vatAmount) && !ledgerMapping.outputVat)
+              || sendMutation.isPending || bookMutation.isPending}
+              onClick={() => sendTarget && (sendTarget.status === "kladde"
+                ? sendMutation.mutate({ id: sendTarget.id, ledgerAccounts: ledgerMapping })
+                : bookMutation.mutate({ id: sendTarget.id, ledgerAccounts: ledgerMapping }))}>
+              {sendTarget?.status === "kladde" ? "Send PDF og bogfør" : "Bogfør"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <CreateInvoiceDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}

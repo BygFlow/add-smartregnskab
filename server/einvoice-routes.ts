@@ -4,6 +4,7 @@ import { creditNotes, einvoiceQueue } from "@shared/schema";
 import { requireRole } from "./auth";
 import { db, storage } from "./storage";
 import { generateECreditNote, generateEInvoice, generateEInvoiceResponse, internalCompanyIdForSproom, providerSend, providerStatus, providerValidate, sproomDownloadDocument, validateEInvoice, verifyInboundSignature, verifySproomSignature, type EInvoiceFormat } from "./einvoice";
+import { gatewayConfiguredForCompany, syncGatewayInboundForCompany } from "./edi-gateway-sync";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res)).catch(next);
 const cid = (req: Request) => Number((req as any).auth?.companyId);
@@ -53,22 +54,30 @@ export function registerPublicEInvoiceRoutes(app: Express) {
     const documentId = String(req.body?.documentId || "").trim();
     const externalCompanyId = String(req.body?.companyId || "").trim();
     const companyId = internalCompanyIdForSproom(externalCompanyId);
-    if (!companyId) return void res.status(404).json({ error: "Sproom-virksomheden er ikke knyttet til en virksomhed i ADD SmartRegnskab." });
+    if (!companyId) {
+      return void res.status(404).json({ error: "Sproom-virksomheden er ikke knyttet til et program." });
+    }
 
     if (eventType === "documentStatusChanged") {
       if (!documentId) return void res.status(400).json({ error: "documentId mangler." });
       const row = db.select().from(einvoiceQueue).where(and(eq(einvoiceQueue.companyId, companyId), eq(einvoiceQueue.providerMessageId, documentId))).get();
       if (!row) return void res.status(202).json({ accepted: true, matched: false });
       const providerState = String(req.body?.documentStatus || "");
-      const delivered = ["sent", "received", "transmissionCompleted", "approved"].includes(providerState);
+      const delivered = ["received", "transmissionCompleted", "approved"].includes(providerState);
       const failed = /error|reject|timeout|notfound|exceeded|canceled|deleted/i.test(providerState);
+      if (row.routingStatus === "leveret" && !failed) return void res.json({ accepted: true, matched: true, duplicate: true });
       const detail = String(req.body?.statusDetails?.message || providerState).slice(0, 1000);
       db.update(einvoiceQueue).set({
-        routingStatus: delivered ? "leveret" : failed ? "fejlet" : "sendt",
-        status: delivered ? "leveret" : failed ? "fejlet" : "sendt",
+        routingStatus: delivered ? "leveret" : failed ? "fejlet" : "indsendt",
+        status: delivered ? "leveret" : failed ? "fejlet" : "indsendt",
         lastError: failed ? detail : null,
         processedAt: now(),
       }).where(eq(einvoiceQueue.id, row.id)).run();
+      if (delivered && row.invoiceId && row.documentType === "invoice") await storage.updateInvoice(row.invoiceId, { status: "sendt", sentAt: now() });
+      if (delivered && row.documentType === "credit_note") {
+        const note = db.select().from(creditNotes).where(and(eq(creditNotes.companyId, companyId), eq(creditNotes.creditNumber, row.invoiceNumber || ""))).get();
+        if (note) db.update(creditNotes).set({ status: "sendt" }).where(eq(creditNotes.id, note.id)).run();
+      }
       await audit(companyId, "sproom", "einvoice_status", `einvoice#${row.id}`, `${providerState}: ${detail}`);
       return void res.json({ accepted: true, matched: true });
     }
@@ -104,6 +113,14 @@ export function registerPublicEInvoiceRoutes(app: Express) {
 }
 
 export function registerEInvoiceRoutes(app: Express) {
+  app.get("/api/einvoice-queue/gateway-status", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+    res.json({ configured: gatewayConfiguredForCompany(cid(req)) });
+  }));
+  app.post("/api/einvoice-queue/sync-gateway", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+    if (!gatewayConfiguredForCompany(cid(req))) return void res.status(503).json({ error: "EDI-gatewayen er ikke konfigureret for virksomheden." });
+    const imported = await syncGatewayInboundForCompany(cid(req));
+    res.json({ imported });
+  }));
   app.get("/api/einvoice-queue/status", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => res.json(providerStatus(cid(req)))));
   app.get("/api/einvoice-queue", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     res.json(db.select().from(einvoiceQueue).where(eq(einvoiceQueue.companyId, cid(req))).orderBy(desc(einvoiceQueue.id)).all().map(({ payloadXml, ...row }) => ({ ...row, hasDocument: Boolean(payloadXml) })));
@@ -155,20 +172,17 @@ export function registerEInvoiceRoutes(app: Express) {
   app.post("/api/einvoice-queue/:id/send", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     const row = db.select().from(einvoiceQueue).where(and(eq(einvoiceQueue.id, Number(req.params.id)), eq(einvoiceQueue.companyId, cid(req)))).get();
     if (!row?.payloadXml) return void res.status(404).json({ error: "E-fakturaen eller XML-dokumentet findes ikke." });
+    if (row.direction !== "udgående") return void res.status(409).json({ error: "Et modtaget EDI-dokument må ikke sendes igen." });
     if (row.validationStatus !== "godkendt") return void res.status(409).json({ error: "Dokumentet skal bestå validering før afsendelse." });
+    if (row.providerMessageId || Number(row.attempts || 0) > 0) return void res.status(409).json({ error: "Dokumentet er allerede indsendt eller kræver manuel afklaring hos leverandøren." });
     try {
       const result = await providerSend(row.payloadXml, formatOf(row.format), String(row.recipientEndpointId || ""), cid(req));
-      const updated = db.update(einvoiceQueue).set({ routingStatus: "sendt", status: "sendt", providerMessageId: result.messageId || null, sentAt: now(), processedAt: now(), attempts: (row.attempts || 0) + 1, lastError: null }).where(eq(einvoiceQueue.id, row.id)).returning().get();
-      if (row.invoiceId && row.documentType === "invoice") await storage.updateInvoice(row.invoiceId, { status: "sendt", sentAt: now() });
-      if (row.documentType === "credit_note") {
-        const note = db.select().from(creditNotes).where(and(eq(creditNotes.companyId, cid(req)), eq(creditNotes.creditNumber, row.invoiceNumber || ""))).get();
-        if (note) db.update(creditNotes).set({ status: "sendt" }).where(eq(creditNotes.id, note.id)).run();
-      }
-      await audit(cid(req), actor(req), "einvoice_sendt", `einvoice#${row.id}`, `Leverandør-ID: ${result.messageId || "ikke oplyst"}`);
-      res.json({ ...updated, payloadXml: undefined });
+      const updated = db.update(einvoiceQueue).set({ routingStatus: "indsendt", status: "indsendt", providerMessageId: result.messageId || null, sentAt: now(), processedAt: now(), attempts: (row.attempts || 0) + 1, lastError: null }).where(eq(einvoiceQueue.id, row.id)).returning().get();
+      await audit(cid(req), actor(req), "einvoice_indsendt", `einvoice#${row.id}`, `Leverandør-ID: ${result.messageId || "ikke oplyst"}; levering afventer webhook.`);
+      res.status(202).json({ ...updated, payloadXml: undefined });
     } catch (error: any) {
       const message = String(error?.message || error);
-      db.update(einvoiceQueue).set({ routingStatus: "fejlet", status: "fejlet", attempts: (row.attempts || 0) + 1, lastError: message, processedAt: now() }).where(eq(einvoiceQueue.id, row.id)).run();
+      db.update(einvoiceQueue).set({ routingStatus: "afventer_afklaring", status: "afventer_afklaring", attempts: (row.attempts || 0) + 1, lastError: message, processedAt: now() }).where(eq(einvoiceQueue.id, row.id)).run();
       await audit(cid(req), actor(req), "einvoice_sendefejl", `einvoice#${row.id}`, message);
       res.status(503).json({ error: message });
     }

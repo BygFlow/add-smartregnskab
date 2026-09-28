@@ -7,6 +7,7 @@ import { applyRetention } from "./gdpr";
 import { monitorRegulatorySources } from "./regulatory-monitor";
 import { createExternalBackup, externalBackupConfigured } from "./backup-service";
 import { syncAllAiia } from "./aiia";
+import { syncAllGatewayInbound } from "./edi-gateway-sync";
 
 /**
  * Automatiske job.
@@ -310,6 +311,15 @@ export async function jobRegulatoryMonitor(): Promise<JobResult> {
 // ══════════════════════════════════════════════════
 
 const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Promise<JobResult> }> = {
+  edi_gateway_inbound: {
+    label: "Hent modtagne EDI-dokumenter til SmartRegnskab",
+    everyMinutes: 15,
+    run: async () => {
+      const result = await syncAllGatewayInbound();
+      return { job: "edi_gateway_inbound", affected: result.imported,
+        detail: `${result.imported} dokumenter importeret for ${result.companies} virksomheder; ${result.failed} synkroniseringer fejlede.` };
+    },
+  },
   aiia_bank_sync: {
     label: "Hent nye bankposter fra AiiA",
     everyMinutes: 15,

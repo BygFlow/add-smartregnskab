@@ -1,7 +1,7 @@
 // Extended routes batch 2 — 24 new features
 import type { Express } from "express";
 import { storage } from "./storage";
-import { tenantId } from "./auth";
+import { requireRole, tenantId } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
@@ -145,16 +145,30 @@ export function registerExtendedRoutes2(app: Express) {
   }));
 
   // ── API key generate ──
-  app.post("/api/api-keys/generate", h(async (req, res) => {
+  app.post("/api/api-keys/generate", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tid(req);
-    const { name, scopes } = req.body;
+    const { name, scopes, sourceProduct } = req.body;
+    const source = String(sourceProduct || "").trim();
+    if (source && !/^external_[a-z0-9_]{3,40}$/.test(source)) {
+      return res.status(400).json({ error: "Program-ID skal starte med external_ og må kun indeholde små bogstaver, tal og _." });
+    }
+    let requested: string[];
+    try { requested = Array.isArray(scopes) ? scopes.map(String) : JSON.parse(String(scopes || '["read"]')); }
+    catch { return res.status(400).json({ error: "Ugyldige nøgle-rettigheder." }); }
+    if (!Array.isArray(requested) || (!source && requested.length === 0)
+        || requested.some((item) => !["read", "write", "admin"].includes(item))) {
+      return res.status(400).json({ error: "Ugyldige nøgle-rettigheder." });
+    }
+    const keyScopes = source
+      ? ["add_connect:read", "add_connect:write", `add_connect:source:${source}`]
+      : requested;
     const crypto = await import("crypto");
     const rawKey = `sk_${crypto.randomBytes(24).toString("hex")}`;
     const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
     const keyPrefix = rawKey.substring(0, 10);
     const record = await storage.insert("api_keys", {
       companyId: cid, name: name || "Ny API-nøgle", keyPrefix, keyHash,
-      scopes: scopes || "read", rateLimit: 1000, status: "aktiv", createdAt: nowIso(),
+      scopes: JSON.stringify(keyScopes), rateLimit: 1000, status: "aktiv", createdAt: nowIso(),
     } as any);
     res.status(201).json({ ...record, key: rawKey });
   }));

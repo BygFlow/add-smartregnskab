@@ -83,8 +83,10 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(true);
+  const [externalProgram, setExternalProgram] = useState(false);
   const [form, setForm] = useState({
     name: "",
+    sourceProduct: "",
     scopes: ["read"] as string[],
     rateLimit: 1000,
     expiresAt: "",
@@ -108,6 +110,7 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
       const res = await apiRequest("POST", "/api/api-keys/generate", {
         name: form.name,
         scopes: JSON.stringify(form.scopes),
+        sourceProduct: externalProgram ? form.sourceProduct : undefined,
         rateLimit: Number(form.rateLimit) || null,
         expiresAt: form.expiresAt || null,
         companyId,
@@ -359,7 +362,18 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                     placeholder="F.eks. Mobil-app, Webhook-integration"
                   />
                 </div>
-                <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={externalProgram} onChange={(e) => setExternalProgram(e.target.checked)} />
+                  Nøgle til et andet faktureringsprogram
+                </label>
+                {externalProgram && <div className="space-y-2">
+                  <Label htmlFor="ak-source">Program-ID</Label>
+                  <Input id="ak-source" value={form.sourceProduct}
+                    onChange={(e) => setForm((f) => ({ ...f, sourceProduct: e.target.value.toLowerCase().trim() }))}
+                    placeholder="external_mit_program" />
+                  <p className="text-xs text-muted-foreground">Nøglen gælder kun denne virksomhed og dette program. En modtaget kladde sendes ikke automatisk; en allerede sendt faktura bogføres uden genafsendelse.</p>
+                </div>}
+                {!externalProgram && <div className="space-y-2">
                   <Label>Scopes</Label>
                   <div className="flex flex-wrap gap-2">
                     {ALL_SCOPES.map((s) => {
@@ -381,7 +395,7 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                       );
                     })}
                   </div>
-                </div>
+                </div>}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="ak-rate">Rate limit (pr. time)</Label>
@@ -411,7 +425,9 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                 </Button>
                 <Button
                   data-testid="form-save"
-                  disabled={generateMut.isPending || !form.name.trim() || form.scopes.length === 0}
+                  disabled={generateMut.isPending || !form.name.trim() || (externalProgram
+                    ? !/^external_[a-z0-9_]{3,40}$/.test(form.sourceProduct)
+                    : form.scopes.length === 0)}
                   onClick={() => generateMut.mutate()}
                 >
                   <KeyRound className="mr-1.5 h-4 w-4" />

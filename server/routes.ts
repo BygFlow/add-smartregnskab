@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import QRCode from "qrcode";
 import type { Server } from "node:http";
 import { and, eq } from "drizzle-orm";
@@ -21,11 +21,13 @@ import { registerProfessionalRoutes } from "./professional-routes";
 import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import { registerPublicAddConnectRoutes } from "./add-connect";
+import { readFile as readPrivateFile } from "./files";
+import { bookLocalIssuedInvoice, validateSalesInvoiceBooking } from "./invoice-ledger";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
-  insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
+  addConnectInvoiceDocuments, insertCompanySchema, insertUserSchema, insertEmployeeSchema, insertCustomerSchema,
   insertTaskSchema, insertTimeEntrySchema, insertNotificationSchema,
   insertInvoiceSchema, insertIntegrationSchema,
   insertAbsenceSchema, insertShiftSchema, insertAttachmentSchema,
@@ -608,7 +610,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/compliance-documents", "/consolidation", "/control-tests", "/cost-centers",
     "/credit-notes", "/currency-transactions", "/customer-portal-settings", "/customers",
     "/delivery-logs", "/dimension-definitions", "/dimension-values", "/document-inbox", "/document-receiving",
-    "/einvoice-queue", "/file-objects", "/file-versions", "/fixed-assets", "/import-jobs2",
+    "/einvoice-queue", "/edi-gateway", "/file-objects", "/file-versions", "/fixed-assets", "/import-jobs2",
     "/industry-account-templates", "/integration-configs", "/integration-retry-queue",
     "/integration-runs", "/inventory-accounts", "/invoices", "/journal-entries",
     "/integration-adapters", "/migration", "/migration-jobs", "/onboarding", "/operations", "/payment", "/payment-runs", "/billing", "/payroll-engine", "/payroll-entries",
@@ -1279,9 +1281,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/invoices", h(async (req, res) => {
     if (req.auth!.role === "assistent") return res.status(403).json({ error: "Ingen adgang." });
-    const invoices = await storage.getInvoices(tenantId(req));
+    const cid = tenantId(req);
+    const invoices = await storage.getInvoices(cid);
     if (req.auth!.role === "kunde") return res.json(invoices.filter((invoice) => invoice.customerId === req.auth!.user.customerId));
-    res.json(invoices);
+    const entries = await storage.all("journal_entries", cid);
+    const booked = new Set(entries.filter((entry: any) => entry.sourceType === "faktura" && entry.sourceId).map((entry: any) => entry.sourceId));
+    res.json(invoices.map((invoice) => ({ ...invoice, booked: booked.has(invoice.id) })));
   }));
   app.get("/api/invoices/overdue", h(async (req, res) => {
     const list = await overdueInvoices(tenantId(req), today());
@@ -1377,6 +1382,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const inv = await storage.getInvoice(Number(req.params.id), cid);
     if (!inv) return res.status(404).json({ error: "Fakturaen blev ikke fundet." });
     if (req.auth!.role === "assistent" || (req.auth!.role === "kunde" && inv.customerId !== req.auth!.user.customerId)) return res.status(403).json({ error: "Ingen adgang." });
+    const archived = db.select().from(addConnectInvoiceDocuments).where(and(
+      eq(addConnectInvoiceDocuments.companyId, cid), eq(addConnectInvoiceDocuments.invoiceId, inv.id),
+    )).get();
+    if (archived?.mimeType === "application/pdf") {
+      const original = await readPrivateFile(archived.storage, archived.storageKey);
+      if (createHash("sha256").update(original).digest("hex") !== archived.sha256)
+        return res.status(500).json({ error: "Fakturaens originaldokument kunne ikke verificeres." });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="faktura-${inv.invoiceNumber}.pdf"`);
+      return res.send(original);
+    }
     const company = await storage.getCompany(cid);
     const cust = await storage.getCustomer(inv.customerId, cid);
     if (!company || !cust) return res.status(400).json({ error: "Manglende stamdata til fakturaen." });
@@ -1386,12 +1404,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.send(pdf);
   }));
 
+  /** The exact signed-off source document, PDF for mail and XML for EDI. */
+  app.get("/api/invoices/:id/original", h(async (req, res) => {
+    const cid = tenantId(req);
+    const inv = await storage.getInvoice(Number(req.params.id), cid);
+    if (!inv) return res.status(404).json({ error: "Fakturaen blev ikke fundet." });
+    if (req.auth!.role === "assistent" || (req.auth!.role === "kunde" && inv.customerId !== req.auth!.user.customerId))
+      return res.status(403).json({ error: "Ingen adgang." });
+    const archived = db.select().from(addConnectInvoiceDocuments).where(and(
+      eq(addConnectInvoiceDocuments.companyId, cid), eq(addConnectInvoiceDocuments.invoiceId, inv.id),
+    )).get();
+    if (!archived) return res.status(404).json({ error: "Fakturaen har ikke et importeret originaldokument." });
+    const original = await readPrivateFile(archived.storage, archived.storageKey);
+    if (createHash("sha256").update(original).digest("hex") !== archived.sha256)
+      return res.status(500).json({ error: "Originaldokumentets integritet kunne ikke verificeres." });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", archived.mimeType);
+    res.setHeader("Content-Disposition", `attachment; filename="faktura-${inv.invoiceNumber}.${archived.mimeType === "application/xml" ? "xml" : "pdf"}"`);
+    res.send(original);
+  }));
+
   /** Send fakturaen til kunden. */
   app.post("/api/invoices/:id/send", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     const inv = await storage.getInvoice(Number(req.params.id), cid);
     if (!inv) return res.status(404).json({ error: "Fakturaen blev ikke fundet." });
-    if (inv.status === "betalt") return res.status(409).json({ error: "Fakturaen er allerede betalt." });
+    if (inv.status !== "kladde") return res.status(409).json({ error: "Kun en kladde kan sendes. En allerede sendt faktura må ikke gensendes her." });
+    const ledgerAccounts = req.body?.ledgerAccounts;
+    try {
+      validateSalesInvoiceBooking(cid, inv.id, ledgerAccounts);
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : "Ugyldig kontoopsætning." });
+    }
     const company = await storage.getCompany(cid);
     const cust = await storage.getCustomer(inv.customerId, cid);
     if (!cust?.email) {
@@ -1401,18 +1446,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       companyName: company!.name, customerName: cust.name,
       invoiceNumber: inv.invoiceNumber, total: kr(inv.totalAmount), dueDate: dkDate(inv.dueDate),
     });
+    const pdf = await invoicePdf(company!, cust, inv, await storage.getInvoiceItems(inv.id));
     const msg = await queueAndSend({
       companyId: cid, channel: "email", recipient: cust.email,
       subject: tpl.subject, body: tpl.body, relatedType: "invoice", relatedId: inv.id,
+      attachments: [{ filename: `faktura-${inv.invoiceNumber.replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf`, content: pdf, contentType: "application/pdf" }],
     });
+    if (msg.status !== "sendt") {
+      return res.status(502).json({ error: msg.error || "Fakturaen blev ikke sendt og er fortsat kladde.", message: msg });
+    }
     const updated = await storage.updateInvoice(inv.id, { status: "sendt", sentAt: nowIso() });
     await audit(req, "send", "invoice", inv.id, inv.invoiceNumber);
-    res.json({
-      invoice: updated, message: msg,
-      note: msg.status === "simuleret"
-        ? "Fakturaen er markeret som sendt, og mailen ligger i beskedkøen. Den afsendes først, når en mailudbyder er opsat."
-        : "Fakturaen er sendt til kunden.",
-    });
+    try {
+      const journalEntry = bookLocalIssuedInvoice(cid, inv.id, ledgerAccounts);
+      await audit(req, "bogfør", "invoice", inv.id, `Journal #${journalEntry.id}`);
+      return res.json({ invoice: updated, message: msg, journalEntryId: journalEntry.id, note: "Fakturaen er sendt som PDF og bogført." });
+    } catch (error) {
+      return res.status(202).json({ invoice: updated, message: msg, bookingPending: true,
+        note: `Fakturaen er sendt, men bogføringen afventer: ${error instanceof Error ? error.message : "ukendt fejl"}` });
+    }
+  }));
+
+  app.post("/api/invoices/:id/book", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    try {
+      const entry = bookLocalIssuedInvoice(cid, Number(req.params.id), req.body?.ledgerAccounts);
+      await audit(req, "bogfør", "invoice", Number(req.params.id), `Journal #${entry.id}`);
+      return res.json({ journalEntryId: entry.id });
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "Fakturaen kunne ikke bogføres." });
+    }
   }));
 
   /** Send rykker. */

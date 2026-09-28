@@ -162,6 +162,27 @@ if (!hasApplicationSchema) {
         auto_topup_enabled integer DEFAULT 0 NOT NULL, auto_topup_pack_credits integer DEFAULT 500 NOT NULL,
         hard_cost_cap_override real, created_at text NOT NULL, updated_at text NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS add_connect_invoice_documents (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
+        invoice_id integer NOT NULL, source_product text NOT NULL, source_id text NOT NULL,
+        storage text NOT NULL, storage_key text NOT NULL, size_bytes integer NOT NULL,
+        sha256 text NOT NULL, delivery_channel text NOT NULL,
+        delivery_reference text NOT NULL, created_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS edi_gateway_tenants (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, product text NOT NULL,
+        source_tenant_id text NOT NULL, cvr text NOT NULL, company_name text NOT NULL,
+        sproom_child_id text NOT NULL, key_hash text NOT NULL, key_prefix text NOT NULL,
+        active integer DEFAULT 0 NOT NULL, receive_enabled integer DEFAULT 0 NOT NULL,
+        created_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS edi_gateway_documents (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL, tenant_id integer NOT NULL,
+        source_id text NOT NULL, direction text NOT NULL, format text NOT NULL,
+        document_type text NOT NULL, invoice_number text, recipient text,
+        payload_xml text NOT NULL, sha256 text NOT NULL, provider_message_id text,
+        status text NOT NULL, error text, created_at text NOT NULL, updated_at text NOT NULL
+      );
     `);
 
     addColumn("dimension_values", "company_id", "integer");
@@ -214,7 +235,14 @@ if (!hasApplicationSchema) {
     addColumn("document_inbox", "sender_email", "text");
     addColumn("document_inbox", "external_message_id", "text");
     addColumn("document_inbox", "posted_journal_entry_id", "integer");
+    addColumn("add_connect_invoice_documents", "mime_type", "text DEFAULT 'application/pdf' NOT NULL");
     addColumn("subscriptions", "ai_addon_enabled", "integer DEFAULT 0 NOT NULL");
+    addColumn("edi_gateway_documents", "issuer_cvr", "text");
+    addColumn("edi_gateway_tenants", "onboarding_evidence", "text");
+    addColumn("edi_gateway_tenants", "activated_at", "text");
+    sqlite.exec(`UPDATE edi_gateway_documents SET issuer_cvr = (
+      SELECT cvr FROM edi_gateway_tenants WHERE edi_gateway_tenants.id = edi_gateway_documents.tenant_id
+    ) WHERE direction = 'outbound' AND issuer_cvr IS NULL`);
   })();
 
   // Index creation is safe and idempotent. If a historical database already
@@ -236,6 +264,11 @@ if (!hasApplicationSchema) {
     "CREATE UNIQUE INDEX IF NOT EXISTS bank_transactions_company_external_unique ON bank_transactions (company_id, external_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS companies_document_inbox_token_unique ON companies (document_inbox_token)",
     "CREATE UNIQUE INDEX IF NOT EXISTS document_inbox_company_message_unique ON document_inbox (company_id, external_message_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS add_connect_invoice_docs_company_source_unique ON add_connect_invoice_documents (company_id, source_product, source_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS add_connect_invoice_docs_invoice_unique ON add_connect_invoice_documents (invoice_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS edi_gateway_tenant_source_unique ON edi_gateway_tenants (product, source_tenant_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS edi_gateway_document_source_unique ON edi_gateway_documents (tenant_id, direction, source_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS edi_gateway_invoice_number_unique ON edi_gateway_documents (issuer_cvr, invoice_number) WHERE direction = 'outbound' AND issuer_cvr IS NOT NULL AND invoice_number IS NOT NULL",
   ]) {
     try { sqlite.exec(statement); } catch (error) {
       console.warn("Legacy database index could not be created:", error instanceof Error ? error.message : error);

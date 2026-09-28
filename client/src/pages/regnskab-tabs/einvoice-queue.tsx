@@ -95,6 +95,18 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
     queryKey: ["/api/einvoice-queue/status"],
     queryFn: async () => (await apiRequest("GET", "/api/einvoice-queue/status")).json(),
   });
+  const { data: gatewayStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ["/api/einvoice-queue/gateway-status", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/einvoice-queue/gateway-status")).json(),
+  });
+  const syncGatewayMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/einvoice-queue/sync-gateway")).json() as Promise<{ imported: number }>,
+    onSuccess: ({ imported }) => {
+      qc.invalidateQueries({ queryKey });
+      toast({ title: "EDI-indbakken er opdateret", description: `${imported} nye dokumenter hentet.` });
+    },
+    onError: (err: unknown) => toast({ title: "Kunne ikke hente EDI-dokumenter", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
+  });
 
   const createMut = useMutation({
     mutationFn: async () => (await apiRequest("POST", documentKind === "credit_note" ? "/api/einvoice-queue/from-credit-note" : "/api/einvoice-queue/from-invoice", documentKind === "credit_note" ? { creditNoteId: Number(invoiceId), format } : { invoiceId: Number(invoiceId), format })).json(),
@@ -168,6 +180,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
           ? "Afsendelsesleverandør er tilsluttet. Kontrollér stadig leveringskvitteringen i køen."
           : "Afsendelse er låst, indtil en rigtig NemHandel/Peppol-leverandør er tilsluttet. Systemet kan ikke længere markere dokumenter som sendt uden leverandørsvar."}
       </div>
+      {gatewayStatus?.configured && <Button variant="outline" onClick={() => syncGatewayMut.mutate()} disabled={syncGatewayMut.isPending}>Hent fra fælles EDI-indbakke</Button>}
 
       <div className="flex flex-wrap items-end gap-2 rounded-md border p-3">
         <label className="grid gap-1 text-sm"><span>Dokument</span><select className="h-9 rounded-md border bg-background px-3" value={documentKind} onChange={(event) => setDocumentKind(event.target.value)}><option value="invoice">Faktura</option><option value="credit_note">Kreditnota</option></select></label>
@@ -241,7 +254,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
                       </Button>
                       {inv.hasDocument && <Button size="sm" variant="ghost" onClick={() => downloadXml(inv)}><Download className="h-3.5 w-3.5" /> XML</Button>}
                       {inv.direction === "indgående" && <><Button size="sm" variant="outline" onClick={() => respondMut.mutate({ id: inv.id, accepted: true, invoiceFormat: inv.format })}>Accepter</Button><Button size="sm" variant="outline" onClick={() => respondMut.mutate({ id: inv.id, accepted: false, invoiceFormat: inv.format })}>Afvis</Button></>}
-                      <Button
+                      {inv.direction === "udgående" && <Button
                         size="sm"
                         variant="secondary"
                         data-testid={`send-btn-${inv.id}`}
@@ -254,7 +267,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
                         onClick={() => sendMut.mutate(inv.id)}
                       >
                         <Send className="h-3.5 w-3.5" /> Send
-                      </Button>
+                      </Button>}
                     </div>
                     {inv.lastError && <p className="mt-1 max-w-xs text-xs text-destructive">{inv.lastError}</p>}
                   </td>

@@ -1,0 +1,54 @@
+# Staging-only blueprint. Does not modify the existing production render.yaml.
+# Do not sync in Render until the Sproom staging agreement, validator and
+# separate backup storage are ready and the user approves any new service cost.
+services:
+  - type: web
+    name: add-smartregnskab-edi-staging
+    runtime: node
+    plan: starter
+    region: frankfurt
+    autoDeployTrigger: off
+    healthCheckPath: /ready
+    buildCommand: npm ci --include=dev && npm run edi:build
+    startCommand: npm run edi:start
+    disk:
+      name: smartregnskab-edi-staging-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: EDI_GATEWAY_DATABASE_PATH
+        value: /var/data/edi-gateway-staging.db
+      - key: EDI_GATEWAY_BACKUP_DIR
+        value: /var/data/edi-backups
+      - key: EDI_GATEWAY_ADMIN_TOKEN
+        generateValue: true
+      - key: SPROOM_API_URL
+        value: https://staging.sproom.net/api
+      - key: SPROOM_API_TOKEN
+        sync: false
+      - key: SPROOM_WEBHOOK_PUBLIC_KEY_BASE64
+        sync: false
+      - key: EINVOICE_VALIDATOR_URL
+        sync: false
+      - key: EDI_GATEWAY_RECONCILE_ENABLED
+        value: "false"
+      - key: EDI_GATEWAY_OFFSITE_BACKUP_ENABLED
+        value: "false"
+      - key: EDI_GATEWAY_BACKUP_ENCRYPTION_KEY
+        generateValue: true
+      - key: EDI_GATEWAY_S3_PREFIX
+        value: smartregnskab/edi-staging
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "false"
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false

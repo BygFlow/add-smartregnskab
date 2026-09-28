@@ -485,22 +485,12 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     });
     assert.equal(markInvoiceSent.status, 409);
     const sendInvoice = await fetch(`${base}/api/invoices/${invoice.id}/send`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}` } });
-    assert.equal(sendInvoice.status, 200);
+    assert.equal(sendInvoice.status, 400); // Kontoopsætning kræves før en rigtig faktura må sendes og bogføres.
     const creditResponse = await fetch(`${base}/api/credit-notes`, {
       method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ invoiceId: invoice.id, amount: 125, reason: "Smoke-test kreditering" }),
     });
-    assert.equal(creditResponse.status, 201);
-    const creditNote = await creditResponse.json();
-    assert.equal((await fetch(`${base}/api/credit-notes/${creditNote.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${leaderToken}` } })).status, 409);
-    const electronicCreditResponse = await fetch(`${base}/api/einvoice-queue/from-credit-note`, {
-      method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ creditNoteId: creditNote.id, format: "PEPPOL_BIS_3" }),
-    });
-    assert.equal(electronicCreditResponse.status, 201);
-    const electronicCredit = await electronicCreditResponse.json();
-    const creditXmlResponse = await fetch(`${base}/api/einvoice-queue/${electronicCredit.id}/download`, { headers: { Authorization: `Bearer ${leaderToken}` } });
-    assert.match(await creditXmlResponse.text(), /<CreditNote\b/);
+    assert.equal(creditResponse.status, 409); // En usendt kladde må heller ikke krediteres.
 
     const inboundBody = JSON.stringify({ companyId: companyResult.company.id, format: "PEPPOL_BIS_3", messageId: "smoke-inbound-1", documentBase64: Buffer.from(invoiceXml).toString("base64") });
     const inboundSignature = createHmac("sha256", "test-einvoice-webhook-secret").update(inboundBody).digest("hex");

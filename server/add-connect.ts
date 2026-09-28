@@ -1,24 +1,41 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { XMLParser } from "fast-xml-parser";
 import { and, eq } from "drizzle-orm";
 import { db, storage } from "./storage";
 import {
   apiKeys,
+  addConnectInvoiceDocuments,
+  accounts,
   companies,
   customers,
   invoices,
   invoiceItems,
+  journalEntries,
+  journalLines,
+  periodCloses,
   platformSyncJobs,
   platformSyncMappings,
 } from "@shared/schema";
+import { deleteFile, readFile, saveFile, storageBackend } from "./files";
+import { validateEInvoice } from "./einvoice";
 
 type AddConnectRequest = Request & {
   addConnect?: { companyId: number; keyId: number; scopes: string[] };
 };
 
 const PRODUCTS = ["smartdrift_pro", "smartdrift_clean"] as const;
-const EVENT_TYPES = ["customer.upsert", "invoice.upsert", "payment.updated"] as const;
+const EXTERNAL_SOURCE = /^external_[a-z0-9_]{3,40}$/;
+const EVENT_TYPES = ["customer.upsert", "invoice.draft", "invoice.issued", "payment.updated"] as const;
 const nowIso = () => new Date().toISOString();
+
+function sourceAllowed(sourceProduct: string, scopes: string[]): boolean {
+  const boundSources = scopes.filter((scope) => scope.startsWith("add_connect:source:"));
+  if (boundSources.length) return EXTERNAL_SOURCE.test(sourceProduct)
+    && boundSources.includes(`add_connect:source:${sourceProduct}`);
+  if (PRODUCTS.includes(sourceProduct as any)) return true;
+  return false;
+}
 
 function jsonScopes(raw?: string | null): string[] {
   if (!raw) return [];
@@ -134,71 +151,229 @@ function upsertCustomer(companyId: number, sourceProduct: string, payload: any) 
   return target;
 }
 
-function resolveCustomer(companyId: number, sourceProduct: string, payload: any): number {
-  const customerSourceId = text(payload.customerSourceId, 120);
-  if (customerSourceId) {
-    const mapped = findMapping(companyId, sourceProduct, "customer", customerSourceId);
-    if (mapped) return Number(mapped.targetId);
+/** A source draft gets a NEW SmartRegnskab number and is not sent or booked on import. */
+function importDraftInvoice(companyId: number, sourceProduct: string, payload: any) {
+  const sourceId = text(payload.sourceId, 120);
+  const issueDate = text(payload.issueDate, 10);
+  if (!sourceId || !/^\d{4}-\d{2}-\d{2}$/.test(issueDate)
+      || Number.isNaN(Date.parse(issueDate)) || new Date(issueDate).toISOString().slice(0, 10) !== issueDate) {
+    throw new Error("invoice.draft kræver sourceId og gyldig issueDate.");
   }
-  if (payload.customer && typeof payload.customer === "object") {
-    return upsertCustomer(companyId, sourceProduct, {
-      sourceId: customerSourceId || payload.customer.sourceId || `invoice-customer:${text(payload.sourceId, 120)}`,
-      ...payload.customer,
-    }).id;
+  const dueDate = text(payload.dueDate, 10);
+  if (dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)
+      || Number.isNaN(Date.parse(dueDate)) || new Date(dueDate).toISOString().slice(0, 10) !== dueDate
+      || dueDate < issueDate)) {
+    throw new Error("Fakturakladdens forfaldsdato skal være gyldig og tidligst fakturadatoen.");
   }
-  throw new Error("invoice.upsert kræver customerSourceId eller customer.");
+  if (text(payload.currency || "DKK", 3).toUpperCase() !== "DKK") {
+    throw new Error("Kladder i anden valuta end DKK kræver særskilt valutaflow.");
+  }
+  const mappedCustomer = findMapping(companyId, sourceProduct, "customer", text(payload.customerSourceId, 120));
+  if (!mappedCustomer) throw new Error("Kunden skal være synkroniseret før fakturakladden.");
+  const customerId = Number(mappedCustomer.targetId);
+  if (!db.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, customerId))).get()) {
+    throw new Error("Den synkroniserede kunde findes ikke i virksomheden.");
+  }
+  if (findMapping(companyId, sourceProduct, "invoice_draft", sourceId)) {
+    throw new Error("Kilden har allerede oprettet denne fakturakladde. Genforsøg skal bruge samme idempotencyKey.");
+  }
+  if (findMapping(companyId, sourceProduct, "invoice", sourceId)) {
+    throw new Error("Fakturaen er allerede importeret som udstedt og kan ikke også oprettes som kladde.");
+  }
+  const rawLines = payload.lines;
+  if (!Array.isArray(rawLines) || rawLines.length < 1 || rawLines.length > 250) {
+    throw new Error("invoice.draft kræver 1-250 fakturalinjer.");
+  }
+  const cents = (value: number) => Math.round(value * 100);
+  const lines = rawLines.map((row: any) => {
+    const quantity = Number(row.quantity), unitPrice = Number(row.unitPrice);
+    const amount = Number(row.amount), vatRate = Number(row.vatRate);
+    if (!text(row.description, 500) || ![quantity, unitPrice, amount, vatRate].every(Number.isFinite)
+        || quantity <= 0 || unitPrice < 0 || amount < 0 || vatRate < 0 || vatRate > 100
+        || cents(quantity * unitPrice) !== cents(amount)) {
+      throw new Error("Fakturakladdens linjer har ugyldigt beløb, pris eller momssats.");
+    }
+    return { description: text(row.description, 500), quantity, unitPrice, amount, vatRate };
+  });
+  const netAmount = lines.reduce((sum, line) => sum + cents(line.amount), 0) / 100;
+  const vatAmount = lines.reduce((sum, line) => sum + cents(line.amount * line.vatRate / 100), 0) / 100;
+  const totalAmount = (cents(netAmount) + cents(vatAmount)) / 100;
+  if (totalAmount <= 0) throw new Error("Fakturakladden skal have et positivt beløb.");
+  const year = issueDate.slice(0, 4);
+  return db.transaction((tx) => {
+    const existing = tx.select().from(invoices).where(eq(invoices.companyId, companyId)).all();
+    const used = new Set(existing.map((row) => row.invoiceNumber));
+    let sequence = Math.max(1, existing.length + 1);
+    let invoiceNumber = `F-${year}-${String(sequence).padStart(4, "0")}`;
+    while (used.has(invoiceNumber)) invoiceNumber = `F-${year}-${String(++sequence).padStart(4, "0")}`;
+    const invoice = tx.insert(invoices).values({
+      companyId, customerId, invoiceNumber, issueDate,
+      dueDate: dueDate || null, status: "kladde",
+      netAmount, vatAmount, totalAmount, vatRate: netAmount ? Math.round(vatAmount / netAmount * 10000) / 100 : 0,
+      paymentTerms: Math.max(0, Math.round(number(payload.paymentTerms, 14))),
+      notes: `Fakturakladde fra ${sourceProduct}; kilde-ID ${sourceId}. Ikke sendt eller bogført.`.slice(0, 1000),
+    }).returning().get();
+    tx.insert(invoiceItems).values(lines.map((line) => ({ invoiceId: invoice.id, ...line }))).run();
+    tx.insert(platformSyncMappings).values({
+      companyId, sourcePlatform: sourceProduct, syncType: "invoice_draft", sourceId,
+      targetPlatform: "add_smartregnskab", targetId: String(invoice.id), status: "synkroniseret", lastSyncedAt: nowIso(),
+    }).run();
+    return invoice;
+  }, { behavior: "immediate" });
 }
 
-function upsertInvoice(companyId: number, sourceProduct: string, payload: any) {
+/** An already delivered source invoice is imported once and booked, never reissued. */
+async function bookIssuedInvoice(companyId: number, sourceProduct: string, payload: any) {
   const sourceId = text(payload.sourceId, 120);
   const invoiceNumber = text(payload.invoiceNumber, 80);
-  if (!sourceId || !invoiceNumber) throw new Error("invoice.upsert kræver sourceId og invoiceNumber.");
-  const customerId = resolveCustomer(companyId, sourceProduct, payload);
-  const mapped = findMapping(companyId, sourceProduct, "invoice", sourceId);
-  const netAmount = number(payload.netAmount ?? payload.amount);
-  const vatAmount = number(payload.vatAmount ?? payload.vat);
-  const totalAmount = number(payload.totalAmount ?? payload.total, netAmount + vatAmount);
-  const values = {
-    customerId,
-    invoiceNumber,
-    status: text(payload.status, 40) || "kladde",
-    issueDate: text(payload.issueDate || payload.date, 10) || nowIso().slice(0, 10),
-    dueDate: text(payload.dueDate, 10) || null,
-    netAmount,
-    vatRate: number(payload.vatRate, netAmount ? (vatAmount / netAmount) * 100 : 25),
-    vatAmount,
-    totalAmount,
-    paymentTerms: Math.max(0, Math.round(number(payload.paymentTerms, 14))),
-    paidAmount: number(payload.paidAmount),
-    paidAt: text(payload.paidAt, 40) || null,
-    notes: text(payload.notes, 1000) || null,
-  };
-  let target;
-  if (mapped) {
-    target = db.update(invoices).set(values).where(and(
-      eq(invoices.id, Number(mapped.targetId)),
-      eq(invoices.companyId, companyId),
-    )).returning().get();
+  const issueDate = text(payload.issueDate, 10);
+  const sentAt = text(payload.sentAt, 40);
+  const deliveryChannel = text(payload.deliveryChannel, 40);
+  const deliveryReference = text(payload.deliveryReference, 160);
+  const documentHash = text(payload.documentHash, 64).toLowerCase();
+  const documentMimeType = text(payload.documentMimeType || "application/pdf", 40).toLowerCase();
+  if (text(payload.currency || "DKK", 3).toUpperCase() !== "DKK") {
+    throw new Error("Valuta ud over DKK kræver særskilt kurs- og bogføringsflow.");
   }
-  if (!target) target = db.insert(invoices).values({ companyId, ...values }).returning().get();
-
-  if (Array.isArray(payload.lines)) {
-    db.delete(invoiceItems).where(eq(invoiceItems.invoiceId, target.id)).run();
-    for (const row of payload.lines.slice(0, 250)) {
-      const quantity = number(row.quantity, 1);
-      const unitPrice = number(row.unitPrice);
-      db.insert(invoiceItems).values({
-        invoiceId: target.id,
-        description: text(row.description, 500) || "Ydelse",
-        quantity,
-        unitPrice,
-        amount: number(row.amount, quantity * unitPrice),
-        vatRate: number(row.vatRate, 25),
-      }).run();
+  if (!sourceId || !invoiceNumber || !/^\d{4}-\d{2}-\d{2}$/.test(issueDate)
+      || Number.isNaN(Date.parse(issueDate)) || new Date(issueDate).toISOString().slice(0, 10) !== issueDate
+      || !sentAt || Number.isNaN(Date.parse(sentAt)) || !deliveryChannel || !deliveryReference
+      || !/^[a-f0-9]{64}$/.test(documentHash)) {
+    throw new Error("invoice.issued kræver sourceId, fakturanummer, gyldig dato og dokumenteret afsendelse (sentAt, deliveryChannel, deliveryReference, documentHash).");
+  }
+  const mappedCustomer = findMapping(companyId, sourceProduct, "customer", text(payload.customerSourceId, 120));
+  if (!mappedCustomer) throw new Error("Kunden skal være synkroniseret før den udstedte faktura.");
+  const customerId = Number(mappedCustomer.targetId);
+  if (!db.select().from(customers).where(and(eq(customers.id, customerId), eq(customers.companyId, companyId))).get()) {
+    throw new Error("Den synkroniserede kunde findes ikke i virksomheden.");
+  }
+  if (findMapping(companyId, sourceProduct, "invoice", sourceId)) {
+    throw new Error("Fakturaens sourceId er allerede importeret. Brug oprindelig idempotencyKey ved genforsøg.");
+  }
+  if (findMapping(companyId, sourceProduct, "invoice_draft", sourceId)) {
+    throw new Error("Fakturaen er allerede overdraget som kladde til SmartRegnskab og må ikke også importeres som udstedt.");
+  }
+  if (db.select().from(invoices).where(and(eq(invoices.companyId, companyId), eq(invoices.invoiceNumber, invoiceNumber))).get()) {
+    throw new Error("Fakturanummeret findes allerede i virksomheden.");
+  }
+  const closedPeriod = db.select().from(periodCloses).where(eq(periodCloses.companyId, companyId)).all()
+    .some((period) => period.status === "afsluttet" && period.startDate <= issueDate && issueDate <= period.endDate);
+  if (closedPeriod) throw new Error("Fakturaen kan ikke bogføres i en afsluttet regnskabsperiode.");
+  const net = Number(payload.netAmount);
+  const vat = Number(payload.vatAmount);
+  const total = Number(payload.totalAmount);
+  const cents = (value: number) => Math.round(value * 100);
+  if (![net, vat, total].every((value) => Number.isFinite(value) && value >= 0)
+      || total <= 0 || Math.abs(cents(net) + cents(vat) - cents(total)) > 0) {
+    throw new Error("Fakturabeløbene skal være ikke-negative og stemme på øreniveau.");
+  }
+  const rawLines = payload.lines;
+  if (!Array.isArray(rawLines) || rawLines.length < 1 || rawLines.length > 250) {
+    throw new Error("invoice.issued kræver 1-250 fakturalinjer.");
+  }
+  const lines = rawLines.map((row: any) => {
+    const quantity = Number(row.quantity);
+    const unitPrice = Number(row.unitPrice);
+    const amount = Number(row.amount);
+    const vatRate = Number(row.vatRate ?? 0);
+    if (!text(row.description, 500) || ![quantity, unitPrice, amount, vatRate].every(Number.isFinite)
+        || quantity <= 0 || unitPrice < 0 || amount < 0
+        || vatRate < 0 || vatRate > 100
+        || Math.abs(cents(quantity * unitPrice) - cents(amount)) > 0) {
+      throw new Error("Fakturalinjerne skal have gyldig beskrivelse, antal, pris og beløb.");
+    }
+    return { description: text(row.description, 500), quantity, unitPrice, amount, vatRate };
+  });
+  if (lines.reduce((sum: number, line: any) => sum + cents(line.amount), 0) !== cents(net)) {
+    throw new Error("Fakturalinjernes beløb stemmer ikke med netto.");
+  }
+  if (lines.reduce((sum: number, line: any) => sum + cents(line.amount * line.vatRate / 100), 0) !== cents(vat)) {
+    throw new Error("Fakturalinjernes moms stemmer ikke med fakturaens moms.");
+  }
+  const mapping = payload.ledgerAccounts;
+  const accountNumber = (value: unknown) => text(value, 40);
+  if (!mapping || !accountNumber(mapping.receivables) || !accountNumber(mapping.revenue)
+      || (vat > 0 && !accountNumber(mapping.outputVat))) {
+    throw new Error("Bogføringskonti for debitor, omsætning og eventuel salgsmoms skal angives.");
+  }
+  const companyAccounts = db.select().from(accounts).where(eq(accounts.companyId, companyId)).all();
+  const account = (number: string, type: string) => companyAccounts.find((row) => row.active
+    && row.accountNumber === number && row.type === type);
+  const receivable = account(accountNumber(mapping.receivables), "aktiv");
+  const revenue = account(accountNumber(mapping.revenue), "indtaegt");
+  const outputVat = vat > 0 ? account(accountNumber(mapping.outputVat), "passiv") : null;
+  if (!receivable || !revenue || (vat > 0 && !outputVat)) {
+    throw new Error("En eller flere bogføringskonti mangler, er inaktive eller har forkert type.");
+  }
+  const encoded = payload.documentBase64;
+  // Keep the complete sync envelope below the application's 12 MB JSON limit.
+  if (typeof encoded !== "string" || !encoded || encoded.length > 8_000_000
+      || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new Error("Original PDF-faktura mangler eller har ugyldigt base64-format.");
+  }
+  const pdf = Buffer.from(encoded, "base64");
+  if (!pdf.length || pdf.toString("base64") !== encoded
+      || createHash("sha256").update(pdf).digest("hex") !== documentHash) {
+    throw new Error("Originaldokumentet matcher ikke dokumentets SHA-256.");
+  }
+  if (documentMimeType !== (deliveryChannel === "edi" ? "application/xml" : "application/pdf")) {
+    throw new Error("EDI kræver original XML; øvrige afsendelser kræver original PDF.");
+  }
+  if (documentMimeType === "application/xml") {
+    const payloadXml = pdf.toString("utf8");
+    if (validateEInvoice(payloadXml).length) throw new Error("Originalt EDI-dokument er ikke en gyldig e-faktura.");
+    const root = new XMLParser({ ignoreAttributes: false }).parse(payloadXml)?.Invoice;
+    const id = String(root?.["cbc:ID"] ?? "");
+    const amountValue = root?.["cac:LegalMonetaryTotal"]?.["cbc:PayableAmount"];
+    const payable = Number(typeof amountValue === "object" ? amountValue?.["#text"] : amountValue);
+    if (id !== invoiceNumber || !Number.isFinite(payable) || cents(payable) !== cents(total)) {
+      throw new Error("Originalt EDI-dokument stemmer ikke med fakturanummer eller totalbeløb.");
     }
   }
-  saveMapping(companyId, sourceProduct, "invoice", sourceId, String(target.id));
-  return target;
+  if (process.env.NODE_ENV === "production" && storageBackend() === "disk" && !process.env.FILE_STORAGE_DIR) {
+    throw new Error("Fakturaarkivet kræver S3 eller et konfigureret vedvarende FILE_STORAGE_DIR i produktion.");
+  }
+  const file = await saveFile({ companyId, fileName: documentMimeType === "application/xml" ? "original-faktura.xml" : "original-faktura.pdf", mimeType: documentMimeType, buffer: pdf });
+  try {
+    return db.transaction((tx) => {
+    // The unique invoice number and journal entry number also protect concurrent retries.
+    const invoice = tx.insert(invoices).values({
+      companyId, customerId, invoiceNumber, status: "sendt", issueDate,
+      dueDate: text(payload.dueDate, 10) || null, sentAt,
+      netAmount: net, vatAmount: vat, totalAmount: total,
+      vatRate: net ? Math.round((vat / net) * 10000) / 100 : 0,
+      paymentTerms: Math.max(0, Math.round(number(payload.paymentTerms, 14))),
+      paidAmount: 0,
+      notes: `Import fra ${sourceProduct}; leveret via ${deliveryChannel}; kvittering ${deliveryReference}; dokument SHA-256 ${documentHash}`.slice(0, 1000),
+    }).returning().get();
+    tx.insert(invoiceItems).values(lines.map((line: any) => ({ invoiceId: invoice.id, ...line }))).run();
+    const entry = tx.insert(journalEntries).values({
+      companyId, entryNumber: `ADD-CONNECT-${invoice.id}`, date: issueDate,
+      description: `Udstedt faktura ${invoiceNumber} fra ${sourceProduct}`,
+      reference: invoiceNumber, sourceType: "faktura", sourceId: invoice.id,
+      status: "bogført", createdBy: `add-connect:${sourceProduct}`, createdAt: nowIso(),
+    }).returning().get();
+    tx.insert(journalLines).values([
+      { companyId, journalEntryId: entry.id, accountId: receivable.id, debit: total, credit: 0 },
+      { companyId, journalEntryId: entry.id, accountId: revenue.id, debit: 0, credit: net },
+      ...(vat > 0 ? [{ companyId, journalEntryId: entry.id, accountId: outputVat!.id, debit: 0, credit: vat }] : []),
+    ]).run();
+    tx.insert(platformSyncMappings).values({
+      companyId, sourcePlatform: sourceProduct, syncType: "invoice", sourceId,
+      targetPlatform: "add_smartregnskab", targetId: String(invoice.id), status: "synkroniseret",
+      lastSyncedAt: nowIso(),
+    }).run();
+    tx.insert(addConnectInvoiceDocuments).values({
+      companyId, invoiceId: invoice.id, sourceProduct, sourceId,
+      storage: file.storage, storageKey: file.storageKey, mimeType: documentMimeType, sizeBytes: file.sizeBytes,
+      sha256: documentHash, deliveryChannel, deliveryReference, createdAt: nowIso(),
+    }).run();
+    return invoice;
+    }, { behavior: "immediate" });
+  } catch (error) {
+    await deleteFile(file.storage, file.storageKey).catch(() => {});
+    throw error;
+  }
 }
 
 function updatePayment(companyId: number, sourceProduct: string, payload: any) {
@@ -238,10 +413,64 @@ export function registerPublicAddConnectRoutes(app: Express) {
     res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name } : null, scopes: auth.scopes });
   });
 
+  /** Let the approved source observe a draft's later send/booking without seeing other tenants or sources. */
+  app.get("/api/add-connect/records", requireAddConnect("read"), (req: AddConnectRequest, res) => {
+    const companyId = req.addConnect!.companyId;
+    const sourceProduct = text(req.query.sourceProduct, 40);
+    const sourceId = text(req.query.sourceId, 120);
+    if (!sourceAllowed(sourceProduct, req.addConnect!.scopes)) {
+      return res.status(403).json({ error: "API-nøglen er ikke godkendt til kildeprogrammet." });
+    }
+    if (!sourceId) return res.status(400).json({ error: "sourceId er påkrævet." });
+    const mapping = findMapping(companyId, sourceProduct, "invoice_draft", sourceId)
+      || findMapping(companyId, sourceProduct, "invoice", sourceId);
+    if (!mapping) return res.status(404).json({ error: "Fakturaen findes ikke for denne kilde." });
+    const invoice = db.select().from(invoices).where(and(
+      eq(invoices.companyId, companyId), eq(invoices.id, Number(mapping.targetId)),
+    )).get();
+    if (!invoice) return res.status(404).json({ error: "Fakturaen findes ikke længere i virksomheden." });
+    const booked = !!db.select().from(journalEntries).where(and(
+      eq(journalEntries.companyId, companyId), eq(journalEntries.sourceType, "faktura"),
+      eq(journalEntries.sourceId, invoice.id), eq(journalEntries.status, "bogført"),
+    )).get();
+    const archive = db.select().from(addConnectInvoiceDocuments).where(and(
+      eq(addConnectInvoiceDocuments.companyId, companyId), eq(addConnectInvoiceDocuments.invoiceId, invoice.id),
+    )).get();
+    res.json({ sourceProduct, sourceId, flow: mapping.syncType === "invoice_draft" ? "draft" : "issued",
+      invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, status: invoice.status,
+      sentAt: invoice.sentAt, booked, documentArchived: !!archive });
+  });
+
+  app.get("/api/add-connect/documents", requireAddConnect("read"), async (req: AddConnectRequest, res) => {
+    const companyId = req.addConnect!.companyId;
+    const sourceProduct = text(req.query.sourceProduct, 40);
+    const sourceId = text(req.query.sourceId, 120);
+    if (!sourceAllowed(sourceProduct, req.addConnect!.scopes))
+      return res.status(403).json({ error: "API-nøglen er ikke godkendt til kildeprogrammet." });
+    if (!sourceId) return res.status(400).json({ error: "sourceId er påkrævet." });
+    const archive = db.select().from(addConnectInvoiceDocuments).where(and(
+      eq(addConnectInvoiceDocuments.companyId, companyId),
+      eq(addConnectInvoiceDocuments.sourceProduct, sourceProduct),
+      eq(addConnectInvoiceDocuments.sourceId, sourceId),
+    )).get();
+    if (!archive) return res.status(404).json({ error: "Originaldokumentet findes ikke for denne kilde." });
+    try {
+      const pdf = await readFile(archive.storage, archive.storageKey);
+      if (createHash("sha256").update(pdf).digest("hex") !== archive.sha256)
+        return res.status(500).json({ error: "Originaldokumentets integritet kunne ikke verificeres." });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Content-Type", archive.mimeType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      return res.send(pdf);
+    } catch {
+      return res.status(503).json({ error: "Originaldokumentet er midlertidigt utilgængeligt." });
+    }
+  });
+
   app.get("/api/add-connect/payments", requireAddConnect("read"), async (req: AddConnectRequest, res) => {
     const companyId = req.addConnect!.companyId;
     const sourceProduct = text(req.query.sourceProduct, 40);
-    if (!PRODUCTS.includes(sourceProduct as any)) return res.status(400).json({ error: "Ukendt ADD-produkt." });
+    if (!sourceAllowed(sourceProduct, req.addConnect!.scopes)) return res.status(403).json({ error: "API-nøglen er ikke godkendt til kildeprogrammet." });
     const mappings = db.select().from(platformSyncMappings).where(and(
       eq(platformSyncMappings.companyId, companyId),
       eq(platformSyncMappings.sourcePlatform, sourceProduct),
@@ -269,13 +498,23 @@ export function registerPublicAddConnectRoutes(app: Express) {
     const sourceProduct = text(req.body?.sourceProduct, 40);
     const idempotencyKey = text(req.body?.idempotencyKey || req.header("idempotency-key"), 160);
     const events = Array.isArray(req.body?.events) ? req.body.events : [];
-    if (!PRODUCTS.includes(sourceProduct as any)) return res.status(400).json({ error: "Ukendt ADD-produkt." });
+    if (!sourceAllowed(sourceProduct, req.addConnect!.scopes)) return res.status(403).json({ error: "API-nøglen er ikke godkendt til kildeprogrammet." });
     if (!idempotencyKey) return res.status(400).json({ error: "idempotencyKey er påkrævet." });
     if (!events.length || events.length > 100) return res.status(400).json({ error: "events skal indeholde 1-100 hændelser." });
 
     const requestSourceId = `request:${idempotencyKey}`;
     const duplicate = findMapping(companyId, sourceProduct, "request", requestSourceId);
-    if (duplicate) return res.status(200).json({ ok: true, duplicate: true, jobId: Number(duplicate.targetId) });
+    if (duplicate) {
+      const prior = db.select().from(platformSyncJobs).where(and(
+        eq(platformSyncJobs.id, Number(duplicate.targetId)), eq(platformSyncJobs.companyId, companyId),
+      )).get();
+      const failed = (prior?.errorRecords ?? 0) > 0;
+      return res.status(failed ? 207 : 200).json({
+        ok: !failed, duplicate: true, jobId: Number(duplicate.targetId),
+        failed: prior?.errorRecords ?? 0,
+        errors: failed && prior?.errorMessage ? JSON.parse(prior.errorMessage) : [],
+      });
+    }
 
     const startedAt = nowIso();
     const job = db.insert(platformSyncJobs).values({
@@ -293,18 +532,20 @@ export function registerPublicAddConnectRoutes(app: Express) {
 
     let success = 0;
     const errors: Array<{ index: number; type: string; error: string }> = [];
-    events.forEach((event: any, index: number) => {
+    for (const [index, event] of events.entries()) {
       const type = text(event?.type, 60);
       try {
         if (type === "customer.upsert") upsertCustomer(companyId, sourceProduct, event.data || {});
-        else if (type === "invoice.upsert") upsertInvoice(companyId, sourceProduct, event.data || {});
+        else if (type === "invoice.upsert") throw new Error("invoice.upsert er lukket. Brug invoice.draft til en kladde eller invoice.issued til en allerede sendt faktura.");
+        else if (type === "invoice.draft") importDraftInvoice(companyId, sourceProduct, event.data || {});
+        else if (type === "invoice.issued") await bookIssuedInvoice(companyId, sourceProduct, event.data || {});
         else if (type === "payment.updated") updatePayment(companyId, sourceProduct, event.data || {});
         else throw new Error(`Ikke-understøttet hændelsestype: ${type || "tom"}.`);
         success += 1;
       } catch (error) {
         errors.push({ index, type, error: error instanceof Error ? error.message : "Ukendt fejl" });
       }
-    });
+    }
 
     const completedAt = nowIso();
     db.update(platformSyncJobs).set({
