@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 import { seedSystemData } from "./seed-system";
+import { ensureStagingConnectFixture } from "./staging-connect-fixture";
 import { schedulerRunning, startScheduler } from "./scheduler";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -171,6 +172,7 @@ app.get("/readyz", async (_req, res) => {
   // SmartRegnskab initialiseres altid med sit eget regnskabskatalog. Den gamle
   // SmartDrift-demodatabase må aldrig indlæses i dette separate produkt.
   seedSystemData();
+  await ensureStagingConnectFixture();
   await registerRoutes(httpServer, app);
 
   // ── Production error handler ──
