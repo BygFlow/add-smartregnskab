@@ -57,6 +57,17 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Manuel, syntetisk Object-Lock-test. Den indgår i image, men køres aldrig ved opstart.
+  await esbuild({
+    entryPoints: ["scripts/drill-bookkeeping-archive.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/archive-drill.cjs",
+    external: externals,
+    logLevel: "info",
+  });
 }
 
 buildAll().catch((err) => {

@@ -14,6 +14,7 @@
     "security:check": "node scripts/security-self-check.mjs",
     "authority:pack": "node scripts/build-authority-pack.mjs",
     "restore:drill": "node scripts/restore-drill.mjs",
+    "archive:drill": "node dist/archive-drill.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-sqlite-prod.mjs",
     "db:push:dev": "drizzle-kit push",
