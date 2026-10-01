@@ -38,6 +38,16 @@ bevise fuldstændighed: bl.a. kreditnotaer, momsperioder, regnskabsmaterialets
 gendannelse skal stadig afklares, implementeres og prøves, før reel arkivering
 kan aktiveres.
 
+`captureBookkeepingOriginals` kan nu manuelt overføre verificerede, tilknyttede
+originalbilag til den særskilte Object Lock-bucket med kryptering, Compliance-
+retention, versionskvitteringer, læsekontrol og et låst manifest. Funktionen
+afviser uafklarede bilag og er ikke koblet til et driftsjob eller et API.
+Manifestet er udtrykkeligt mærket `completeBookkeepingArchive: false`:
+originalbilag alene er ikke et komplet bogføringsarkiv. En afbrudt kørsel kan
+efterlade låste objektversioner uden et afsluttende manifest; drift skal derfor
+føre en særskilt kørselslog og kontrollere alle kvitteringer før en fremtidig
+automatisk aktivering.
+
 ## Gendannelseskontrol
 
 Platformadministratoren kan kalde `POST /api/external-backup/verify` med
