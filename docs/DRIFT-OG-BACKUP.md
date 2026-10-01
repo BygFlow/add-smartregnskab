@@ -13,6 +13,18 @@ Database og manifest kontrolleres straks efter upload. Manglende konfiguration
 og fejl opretter en aktiv hændelse i systemets sundhedslog; en efterfølgende
 vellykket backup lukker hændelsen automatisk.
 
+## Særskilt femårsarkiv
+
+Den rullende S3-backup ovenfor har sin egen retention (normalt 35 dage) og er
+ikke et femårsarkiv. Koden kan kontrollere Object Lock og udføre en syntetisk,
+låst læse-/gendannelsestest, men en automatisk kæde fra reelle bogførte
+posteringer, fakturaer og originale bilag til arkiv-bucketen er endnu ikke
+implementeret eller verificeret. `GET /api/external-backup/status` viser derfor
+`bookkeepingArchive.ready: false`, også når arkiv-bucketen er konfigureret.
+Markér ikke femårsopbevaring som opfyldt på baggrund af en backup eller en
+syntetisk test. Arkivering kræver et afgrænset datavalg pr. virksomhed og
+regnskabsår, låst objektversion med kvittering samt en isoleret læsetest.
+
 ## Gendannelseskontrol
 
 Platformadministratoren kan kalde `POST /api/external-backup/verify` med

@@ -58,6 +58,25 @@ export function archiveBucketConfig(env: NodeJS.ProcessEnv = process.env): Archi
   return config;
 }
 
+/** A bucket and a synthetic drill do not prove that real bookkeeping records are archived. */
+export function bookkeepingArchiveStatus(env: NodeJS.ProcessEnv = process.env) {
+  let configured = false;
+  try {
+    archiveBucketConfig(env);
+    configured = /^[0-9a-f]{64}$/i.test(env.ARCHIVE_ENCRYPTION_KEY || "");
+  } catch {
+    // Readiness must not expose credentials or treat partial configuration as ready.
+  }
+  return {
+    configured,
+    objectLockVerification: "not_checked_by_status" as const,
+    capture: "synthetic_drill_only" as const,
+    productionCoverage: "not_verified" as const,
+    restoreDrill: "not_verified" as const,
+    ready: false as const,
+  };
+}
+
 /** Kun en readiness-kontrol. Den uploader ikke data og ændrer ikke bucketens indstillinger. */
 export async function checkArchiveBucket(
   config: ArchiveBucketConfig,

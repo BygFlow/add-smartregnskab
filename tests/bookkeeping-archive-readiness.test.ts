@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { archiveBucketConfig, archivePeriod, checkArchiveBucket } from "../server/bookkeeping-archive-readiness";
+import { archiveBucketConfig, archivePeriod, bookkeepingArchiveStatus, checkArchiveBucket } from "../server/bookkeeping-archive-readiness";
 
 const env = {
   ARCHIVE_S3_BUCKET: "books-archive-test",
@@ -33,6 +33,15 @@ test("archive readiness requires Object Lock and does not modify the bucket", as
   });
   assert.equal(reads, 2);
   assert.deepEqual(ready, { ready: true, bucket: config.bucket, objectLockEnabled: true });
+});
+
+test("a configured bucket and synthetic drill are not reported as a live five-year archive", () => {
+  const status = bookkeepingArchiveStatus({ ...env, ARCHIVE_ENCRYPTION_KEY: "a".repeat(64) });
+  assert.equal(status.configured, true);
+  assert.equal(status.ready, false);
+  assert.equal(status.capture, "synthetic_drill_only");
+  assert.equal(status.productionCoverage, "not_verified");
+  assert.equal(bookkeepingArchiveStatus(env).configured, false);
 });
 
 test("five-year retention follows the company's fiscal year, not the calendar year", () => {

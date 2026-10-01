@@ -6,6 +6,7 @@ import { db } from "./storage";
 import { accounts, backupJobs, companies, journalEntries, journalLines } from "@shared/schema";
 import { commitSaftImport, generateSaft, parseSaft, saftPreflight, SAFT_VERSION, STANDARD_ACCOUNT_VERSION } from "./saft";
 import { createExternalBackup, externalBackupConfigured, verifyExternalBackup } from "./backup-service";
+import { bookkeepingArchiveStatus } from "./bookkeeping-archive-readiness";
 
 const companyId = (req: Request) => Number((req as any).auth?.companyId);
 const actor = (req: Request) => String((req as any).auth?.user?.email || (req as any).auth?.userId || "system");
@@ -78,7 +79,8 @@ export function registerComplianceRoutes(app: Express) {
   }));
 
   app.get("/api/external-backup/status", requireRole("platform_admin"), asyncRoute(async (_req, res) => {
-    res.json({ configured: externalBackupConfigured(), provider: "s3-compatible", encryptedAtRest: true, integrity: "sha256-and-sqlite-quick-check" });
+    res.json({ configured: externalBackupConfigured(), provider: "s3-compatible", encryptedAtRest: true,
+      integrity: "sha256-and-sqlite-quick-check", bookkeepingArchive: bookkeepingArchiveStatus() });
   }));
   app.post("/api/external-backup/run", requireRole("platform_admin"), asyncRoute(async (req, res) => {
     const startedAt = new Date().toISOString();
