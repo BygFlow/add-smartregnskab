@@ -29,7 +29,10 @@ regnskabsår, låst objektversion med kvittering samt en isoleret læsetest.
 konsistent databasekopi. Den tæller bogførte posteringer med linjer, fakturaer
 med linjer, bogførte bilag og tilknyttede originaler pr. selskab og regnskabsår.
 Den markerer manglende linjer, ufuldstændige filreferencer og ubundne dokumenter
-for manuel afklaring. Den eksporterer eller uploader intet og kan ikke alene
+for manuel afklaring. `verifyBookkeepingOriginals` kan derefter læse de
+tilknyttede originaler tilbage og sammenholde størrelse og SHA-256 med
+databasekopien. En filnøgle skal høre til samme virksomhed; ellers afbrydes
+kontrollen. Funktionerne eksporterer eller uploader intet og kan ikke alene
 bevise fuldstændighed: bl.a. kreditnotaer, momsperioder, regnskabsmaterialets
 øvrige afhængigheder, fysiske originalfiler, planlægning, kvitteringer og
 gendannelse skal stadig afklares, implementeres og prøves, før reel arkivering

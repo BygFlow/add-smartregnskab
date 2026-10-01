@@ -1,8 +1,20 @@
+import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { archivePeriod } from "./bookkeeping-archive-readiness";
 
 type IdRow = { id: number };
-type DocumentRow = IdRow & { storage: string | null; storage_key: string | null; content_hash: string | null };
+type DocumentRow = IdRow & { storage: string | null; storage_key: string | null;
+  content_hash: string | null; size_bytes: number | null };
+
+function linkedOriginals(snapshot: Database.Database, companyId: number, start: string, end: string): DocumentRow[] {
+  const params = [companyId, start, end] as const;
+  return snapshot.prepare(`SELECT d.id, d.storage, d.storage_key, d.content_hash, d.size_bytes FROM document_inbox d
+    WHERE d.company_id = ? AND (d.posted_journal_entry_id IN (
+      SELECT id FROM journal_entries WHERE company_id = ? AND date BETWEEN ? AND ? AND status IN ('bogført', 'bogfort', 'afstemt')
+    ) OR d.matched_voucher_id IN (
+      SELECT id FROM vouchers WHERE company_id = ? AND date BETWEEN ? AND ? AND status IN ('bogfoert', 'bogført')
+    )) ORDER BY d.id`).all(companyId, ...params, ...params) as DocumentRow[];
+}
 
 /** Read-only preflight. This is not an archive export or proof of legal completeness. */
 export function bookkeepingArchiveInventory(snapshot: Database.Database, companyId: number, referenceDate: string) {
@@ -27,12 +39,7 @@ export function bookkeepingArchiveInventory(snapshot: Database.Database, company
     WHERE i.company_id = ? AND i.issue_date BETWEEN ? AND ? AND i.status <> 'kladde' ORDER BY ii.id`).all(...params) as IdRow[];
   const vouchers = snapshot.prepare(`SELECT id FROM vouchers
     WHERE company_id = ? AND date BETWEEN ? AND ? AND status IN ('bogfoert', 'bogført') ORDER BY id`).all(...params) as IdRow[];
-  const documents = snapshot.prepare(`SELECT d.id, d.storage, d.storage_key, d.content_hash FROM document_inbox d
-    WHERE d.company_id = ? AND (d.posted_journal_entry_id IN (
-      SELECT id FROM journal_entries WHERE company_id = ? AND date BETWEEN ? AND ? AND status IN ('bogført', 'bogfort', 'afstemt')
-    ) OR d.matched_voucher_id IN (
-      SELECT id FROM vouchers WHERE company_id = ? AND date BETWEEN ? AND ? AND status IN ('bogfoert', 'bogført')
-    )) ORDER BY d.id`).all(companyId, ...params, ...params) as DocumentRow[];
+  const documents = linkedOriginals(snapshot, companyId, period.start, period.end);
 
   const issues: string[] = [];
   const entriesWithoutLines = snapshot.prepare(`SELECT COUNT(*) AS count FROM journal_entries je
@@ -41,7 +48,8 @@ export function bookkeepingArchiveInventory(snapshot: Database.Database, company
     .get(...params) as { count: number };
   if (entriesWithoutLines.count) issues.push("posted_entries_without_lines");
   if (documents.some((row) => !["s3", "disk"].includes(row.storage || "")
-      || !row.storage_key || !/^[a-f0-9]{64}$/i.test(row.content_hash || ""))) {
+      || !row.storage_key || !/^[a-f0-9]{64}$/i.test(row.content_hash || "")
+      || !Number.isSafeInteger(row.size_bytes) || (row.size_bytes ?? 0) <= 0)) {
     issues.push("linked_originals_without_verified_file_reference");
   }
   const unmatchedDocuments = snapshot.prepare(`SELECT COUNT(*) AS count FROM document_inbox
@@ -59,4 +67,33 @@ export function bookkeepingArchiveInventory(snapshot: Database.Database, company
     scope: "inventory_only" as const,
     readyForAutomaticArchive: false as const,
   };
+}
+
+/** Checks actual original bytes, without copying them to the archive or claiming complete coverage. */
+export async function verifyBookkeepingOriginals(
+  snapshot: Database.Database,
+  companyId: number,
+  referenceDate: string,
+  readOriginal: (storage: string, storageKey: string) => Promise<Buffer>,
+) {
+  const inventory = bookkeepingArchiveInventory(snapshot, companyId, referenceDate);
+  const documents = linkedOriginals(snapshot, companyId, inventory.period.start, inventory.period.end);
+  const verified: Array<{ documentId: number; sha256: string; sizeBytes: number }> = [];
+  for (const row of documents) {
+    if (!row.storage || !["s3", "disk"].includes(row.storage)
+        || !row.storage_key || !/^\d+\/[A-Za-z0-9._-]+$/.test(row.storage_key)
+        || !row.storage_key.startsWith(`${companyId}/`)
+        || !/^[a-f0-9]{64}$/i.test(row.content_hash || "")
+        || !Number.isSafeInteger(row.size_bytes) || (row.size_bytes ?? 0) <= 0) {
+      throw new Error(`Bilag #${row.id} mangler en gyldig virksomhedsbundet originalreference.`);
+    }
+    const bytes = await readOriginal(row.storage, row.storage_key);
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.length !== row.size_bytes || hash !== row.content_hash!.toLowerCase()) {
+      throw new Error(`Bilag #${row.id} stemmer ikke med sin gemte størrelse og SHA-256.`);
+    }
+    verified.push({ documentId: row.id, sha256: hash, sizeBytes: bytes.length });
+  }
+  return { companyId, period: inventory.period, verifiedOriginals: verified,
+    scope: "originals_readback_only" as const, readyForAutomaticArchive: false as const };
 }
