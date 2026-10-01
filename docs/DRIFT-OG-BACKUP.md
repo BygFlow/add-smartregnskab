@@ -25,6 +25,16 @@ Markér ikke femårsopbevaring som opfyldt på baggrund af en backup eller en
 syntetisk test. Arkivering kræver et afgrænset datavalg pr. virksomhed og
 regnskabsår, låst objektversion med kvittering samt en isoleret læsetest.
 
+`bookkeepingArchiveInventory` er nu en skrivebeskyttet forundersøgelse på en
+konsistent databasekopi. Den tæller bogførte posteringer med linjer, fakturaer
+med linjer, bogførte bilag og tilknyttede originaler pr. selskab og regnskabsår.
+Den markerer manglende linjer, ufuldstændige filreferencer og ubundne dokumenter
+for manuel afklaring. Den eksporterer eller uploader intet og kan ikke alene
+bevise fuldstændighed: bl.a. kreditnotaer, momsperioder, regnskabsmaterialets
+øvrige afhængigheder, fysiske originalfiler, planlægning, kvitteringer og
+gendannelse skal stadig afklares, implementeres og prøves, før reel arkivering
+kan aktiveres.
+
 ## Gendannelseskontrol
 
 Platformadministratoren kan kalde `POST /api/external-backup/verify` med
