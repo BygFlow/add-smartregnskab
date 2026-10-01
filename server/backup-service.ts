@@ -8,6 +8,24 @@ import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV
 type BackupResult = { key: string; size: number; checksum: string; verified: boolean; localPath: string; retentionDays: number; prunedSnapshots: number; prunedObjects: number };
 type ManifestFile = { key: string; relativePath: string; size: number; checksum: string };
 
+/** S3-originaler, som den konsistente databasekopi henviser til. */
+export function referencedS3Files(snapshot: Database.Database): string[] {
+  const references = new Set<string>();
+  for (const table of ["attachments", "document_inbox", "add_connect_invoice_documents"]) {
+    if (!snapshot.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) continue;
+    const columns = snapshot.pragma(`table_info(${table})`) as Array<{ name: string }>;
+    if (!columns.some(({ name }) => name === "storage") || !columns.some(({ name }) => name === "storage_key")) {
+      throw new Error(`Filreferencer i ${table} kan ikke kontrolleres.`);
+    }
+    const rows = snapshot.prepare(`SELECT storage_key AS storageKey FROM ${table} WHERE storage = 's3' AND storage_key IS NOT NULL`).all() as Array<{ storageKey: string }>;
+    for (const row of rows) {
+      if (!/^\d+\/[A-Za-z0-9._-]+$/.test(row.storageKey)) throw new Error(`Ugyldig S3-filreference i ${table}.`);
+      references.add(row.storageKey);
+    }
+  }
+  return Array.from(references).sort();
+}
+
 function required(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Miljøvariablen ${name} mangler.`);
@@ -142,6 +160,21 @@ export async function createExternalBackup(): Promise<BackupResult> {
     await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body, ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }));
     uploadedFiles.push({ key: fileKey, relativePath, size: fileSize, checksum: fileChecksum });
   }
+  const snapshot = new Database(localPath, { readonly: true, fileMustExist: true });
+  let s3FileKeys: string[];
+  try { s3FileKeys = referencedS3Files(snapshot); } finally { snapshot.close(); }
+  for (const storageKey of s3FileKeys) {
+    // En utilgængelig original afbryder backuppen før manifest og retention.
+    const { readFile: readStoredFile } = await import("./files");
+    const fileBytes = await readStoredFile("s3", storageKey);
+    const relativePath = `s3/${storageKey}`;
+    const fileKey = `${snapshotPrefix}/files/${relativePath}`;
+    const fileChecksum = createHash("sha256").update(fileBytes).digest("hex");
+    const encryptedFile = encryptForBackup(fileBytes);
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body,
+      ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }));
+    uploadedFiles.push({ key: fileKey, relativePath, size: fileBytes.length, checksum: fileChecksum });
+  }
   const manifest = { format: 1, product: "ADD SmartRegnskab", createdAt: new Date().toISOString(), database: { key: databaseKey, size, checksum }, files: uploadedFiles };
   const manifestBytes = Buffer.from(JSON.stringify(manifest));
   const manifestChecksum = createHash("sha256").update(manifestBytes).digest("hex");
@@ -152,6 +185,12 @@ export async function createExternalBackup(): Promise<BackupResult> {
   const manifestHead = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
   const verified = Number(head.ContentLength) === size && head.Metadata?.sha256 === checksum && Number(manifestHead.ContentLength) === manifestBytes.length && manifestHead.Metadata?.sha256 === manifestChecksum;
   if (!verified) throw new Error("Backup blev uploadet, men fjernverifikationen fejlede.");
+  // Først når hele kopien kan hentes, dekrypteres og kontrolleres, må ældre kopier ryddes.
+  const readBack = await verifyExternalBackup(key);
+  if (!readBack.verified || readBack.checksum !== checksum || readBack.size !== size
+      || readBack.fileCount !== uploadedFiles.length) {
+    throw new Error("Backuppen bestod ikke den isolerede gendannelseskontrol.");
+  }
   const retention = await pruneExpiredSnapshots(s3, bucket, `${prefix}/snapshots`, snapshotPrefix);
   pruneExpiredLocalBackups(backupDir, localPath);
   return { key, size, checksum, verified, localPath, retentionDays: backupRetentionDays(), ...retention };
