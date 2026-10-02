@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LegalPreviewDialog, type LegalPreviewKind } from "@/pages/marketing";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import type { Plan } from "@shared/schema";
@@ -142,6 +143,7 @@ export function Tilmeld() {
     return new URLSearchParams(hashQuery || window.location.search).get("pakke") ?? "";
   });
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [legalPreview, setLegalPreview] = useState<LegalPreviewKind | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [result, setResult] = useState<ApiResult | null>(null);
 
@@ -280,7 +282,7 @@ export function Tilmeld() {
           <div className="flex items-start gap-2">
             <Checkbox id="signup-privacy" data-testid="checkbox-signup-privacy" checked={acceptedPrivacy} onCheckedChange={(value) => setAcceptedPrivacy(value === true)} />
             <Label htmlFor="signup-privacy" className="text-sm leading-5 font-normal cursor-pointer">
-              Jeg accepterer <a href="#/vilkaar" target="_blank" rel="noreferrer" data-testid="link-signup-terms" className="font-medium text-primary hover:underline">vilkårene</a> og har læst <a href="#/privatliv" target="_blank" rel="noreferrer" data-testid="link-signup-privacy" className="font-medium text-primary hover:underline">privatlivspolitikken</a>.
+              Jeg accepterer <a href="#/vilkaar" data-testid="link-signup-terms" className="font-medium text-primary hover:underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setLegalPreview("terms"); }}>vilkårene</a> og har læst <a href="#/privatliv" data-testid="link-signup-privacy" className="font-medium text-primary hover:underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setLegalPreview("privacy"); }}>privatlivspolitikken</a>.
             </Label>
           </div>
 
@@ -291,6 +293,7 @@ export function Tilmeld() {
           </Button>
         </form>
       )}
+      <LegalPreviewDialog kind={legalPreview} onClose={() => setLegalPreview(null)} />
     </PublicLayout>
   );
 }

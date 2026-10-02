@@ -11,6 +11,7 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import type { Plan } from "@shared/schema";
@@ -383,9 +384,7 @@ function Legal({kind}:{kind:"privacy"|"terms"|"payment"|"cookies"}){const d=lega
 /* Previous branch copy retained temporarily during rebase resolution.
 const legal: Record<"privacy"|"terms"|"cookies",{title:string;intro:string;sections:[string,string][]}>={privacy:{title:"Privatlivspolitik",intro:"Sådan behandler ADD SmartDrift ApS oplysninger i forbindelse med ADD SmartRegnskab.",sections:[["Dataansvarlig","ADD SmartDrift ApS, CVR 46761898, Lynæs Søpark 49, 3390 Hundested."],["Formål","Vi behandler kontakt-, konto-, virksomheds-, support- og betalingsoplysninger for at levere tjenesten, beskytte kontoen, håndtere abonnementet og besvare henvendelser."],["Retsgrundlag","Behandling sker efter aftale, retlig forpligtelse, legitim interesse eller samtykke, afhængigt af formålet."],["Opbevaring og rettigheder","Oplysninger opbevares kun så længe formål og lovkrav kræver det. Du kan anmode om indsigt, rettelse, sletning, begrænsning og dataportabilitet, hvor reglerne giver ret til det."],["Kontakt","Skriv til regnskab@addsmartregnskab.dk om privatliv og rettigheder. Klage kan indgives til Datatilsynet."]]},terms:{title:"Vilkår",intro:"Grundvilkår for brug af ADD SmartRegnskab.",sections:[["Tjenesten","Abonnementet giver adgang til de funktioner og grænser, der fremgår af den valgte pakke."],["Kundens ansvar","Kunden er ansvarlig for korrekte oplysninger, brugeradgange, godkendelse af bogføring og overholdelse af egne bogførings- og skatteforpligtelser."],["AI og automatisering","Forslag fra AI er hjælpemidler og erstatter ikke kundens, bogholderens eller revisorens kontrol. Kritiske handlinger kræver godkendelse."],["Betaling og ændringer","Pris, periode og eventuel prøveperiode vises før bestilling. Pakkeændringer bekræftes tydeligt i løsningen."],["Ansvar og drift","Planlagt vedligeholdelse og driftsforstyrrelser håndteres efter gældende support- og driftsprocedurer. Endelige aftalevilkår skal accepteres ved køb."]]},cookies:{title:"Cookieinformation",intro:"Vi bruger kun analyse, når du har valgt det.",sections:[["Nødvendige cookies","Session, sikkerhed, login og dit cookievalg kræver teknisk lagring. Disse kan ikke fravælges, hvis tjenesten skal fungere."],["Analyse","Analyse af besøg og konverteringer aktiveres kun efter samtykke. Et afslag påvirker ikke adgangen til produktet."],["Ændr dit valg","Slet nøglen add_cookie_consent i browserens lokale lager for at få valget vist igen. En selvbetjeningsknap til ændring tilføjes før eksterne analysetags aktiveres."],["Tredjeparter","Eksterne marketingtags må først aktiveres, når de er konfigureret og samtykket er registreret."]]}};
 */
-function SubscriptionTerms() {
-  useSeo("Abonnementsbetingelser", "Betingelser for erhvervskunders abonnement, betaling, automatisk fornyelse og opsigelse i ADD SmartRegnskab.", "abonnementsbetingelser");
-  const sections: [string, string][] = [
+const subscriptionTermsSections: [string, string][] = [
     ["Aftaleparter og erhvervsbrug", "Abonnementet leveres af ADD SmartDrift ApS, CVR 46761898. Tjenesten sælges til virksomheder og er beregnet til erhvervsmæssig brug."],
     ["Produkt og levering", "Den valgte pakke, funktioner, forbrugsgrænser og pris vises i købsflowet. Adgangen leveres digitalt og aktiveres, når kontoen og den nødvendige betalingsaftale er godkendt."],
     ["Pris og moms", "Alle viste abonnementspriser er pr. måned og ekskl. moms, medmindre andet udtrykkeligt fremgår. Eventuelle forbrugstillæg og tilkøb vises særskilt før bestilling og på fakturaen."],
@@ -398,8 +397,24 @@ function SubscriptionTerms() {
     ["Drift og ansvar", "Tjenesten leveres som en onlineydelse. Planlagt vedligeholdelse og hændelser håndteres efter vores drifts- og supportprocedurer. Ansvar reguleres i øvrigt af de almindelige vilkår."],
     ["Data ved ophør", "Kunden bør eksportere nødvendige regnskabsdata inden adgangsperiodens udløb. Opbevaring, eksport og sletning følger bogføringsreglerne, privatlivspolitikken og en eventuel databehandleraftale."],
     ["Kontakt", "Spørgsmål om abonnement, betaling eller opsigelse kan sendes til regnskab@addsmartregnskab.dk."],
-  ];
-  return <Layout><article className="mx-auto max-w-3xl px-4 py-20 sm:px-6"><h1 className="text-4xl font-semibold">Abonnementsbetingelser</h1><p className="mt-4 text-lg text-slate-600">Disse betingelser gælder erhvervskunders abonnement på ADD SmartRegnskab og accepteres særskilt, før en betalingsaftale oprettes.</p><p className="mt-3 text-xs text-slate-500">Senest opdateret 22. september 2026 · version 2026-09-22</p><div className="mt-10 space-y-8">{sections.map(([heading, body]) => <section key={heading}><h2 className="text-xl font-semibold">{heading}</h2><p className="mt-3 leading-7 text-slate-600">{body}</p></section>)}</div><p className="mt-10 rounded-xl border bg-white p-4 text-sm text-slate-600">Se også de <Link className="font-semibold text-emerald-700 underline" href="/vilkaar">almindelige vilkår</Link> og vores <Link className="font-semibold text-emerald-700 underline" href="/privatliv">privatlivspolitik</Link>.</p></article></Layout>;
+];
+function SubscriptionTerms() {
+  useSeo("Abonnementsbetingelser", "Betingelser for erhvervskunders abonnement, betaling, automatisk fornyelse og opsigelse i ADD SmartRegnskab.", "abonnementsbetingelser");
+  return <Layout><article className="mx-auto max-w-3xl px-4 py-20 sm:px-6"><h1 className="text-4xl font-semibold">Abonnementsbetingelser</h1><p className="mt-4 text-lg text-slate-600">Disse betingelser gælder erhvervskunders abonnement på ADD SmartRegnskab og accepteres særskilt, før en betalingsaftale oprettes.</p><p className="mt-3 text-xs text-slate-500">Senest opdateret 22. september 2026 · version 2026-09-22</p><div className="mt-10 space-y-8">{subscriptionTermsSections.map(([heading, body]) => <section key={heading}><h2 className="text-xl font-semibold">{heading}</h2><p className="mt-3 leading-7 text-slate-600">{body}</p></section>)}</div><p className="mt-10 rounded-xl border bg-white p-4 text-sm text-slate-600">Se også de <Link className="font-semibold text-emerald-700 underline" href="/vilkaar">almindelige vilkår</Link> og vores <Link className="font-semibold text-emerald-700 underline" href="/privatliv">privatlivspolitik</Link>.</p></article></Layout>;
+}
+
+export type LegalPreviewKind = "terms" | "privacy" | "subscriptionTerms";
+
+export function LegalPreviewDialog({ kind, onClose }: { kind: LegalPreviewKind | null; onClose: () => void }) {
+  const document = kind === "subscriptionTerms"
+    ? { title: "Abonnementsbetingelser", intro: "Betingelser for abonnement og automatisk fornyelse.", sections: subscriptionTermsSections }
+    : kind ? legal[kind] : null;
+  return <Dialog open={document !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto" data-testid="legal-preview-dialog">
+      <DialogHeader><DialogTitle>{document?.title}</DialogTitle><DialogDescription>{document?.intro}</DialogDescription></DialogHeader>
+      <div className="space-y-6 text-sm">{document?.sections.map(([heading, body]) => <section key={heading}><h3 className="font-semibold">{heading}</h3><p className="mt-2 leading-6 text-muted-foreground">{body}</p></section>)}</div>
+    </DialogContent>
+  </Dialog>;
 }
 
 

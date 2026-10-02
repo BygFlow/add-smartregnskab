@@ -84,7 +84,7 @@ export async function apiRequest(
   return handle(res);
 }
 
-/** Hent en fil (PDF/CSV) med authorization og åbn den i en ny fane. */
+/** Hent en fil (PDF/CSV) med authorization uden at åbne en ny fane. */
 export async function openAuthedFile(url: string, filename?: string) {
   const res = await fetch(`${API_BASE}${url}`, { headers: authHeaders(), credentials: "include" });
   if (!res.ok) throw await toError(res);
@@ -95,8 +95,6 @@ export async function openAuthedFile(url: string, filename?: string) {
   const link = document.createElement("a");
   link.href = objectUrl;
   link.download = navn;
-  link.rel = "noopener";
-  link.target = "_blank";
   document.body.appendChild(link);
   link.click();
   link.remove();

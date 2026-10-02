@@ -10,8 +10,10 @@ test("checkout terms stay available to signed-in reviewers", () => {
   const publicPages = read("client/src/pages/marketing.tsx");
   assert.match(app, /if \(location === "\/abonnementsbetingelser"\) return <Marketing page="subscriptionTerms" \/>;/);
   assert.match(checkout, /data-testid="subscription-terms-checkbox"/);
-  assert.match(checkout, /href="\/abonnementsbetingelser"/);
+  assert.match(checkout, /setShowSubscriptionTerms\(true\)/);
+  assert.match(checkout, /<LegalPreviewDialog kind=\{showSubscriptionTerms \? "subscriptionTerms" : null\}/);
   assert.match(publicPages, /function SubscriptionTerms\(\)/);
+  assert.match(publicPages, /export function LegalPreviewDialog/);
 });
 
 test("S3-compatible file storage honors the configured endpoint", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { LegalPreviewDialog } from "@/pages/marketing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, CreditCard, FileText, Loader2, Package, ShieldCheck, Sparkles } from "lucide-react";
 import { SiMastercard, SiVisa } from "react-icons/si";
@@ -107,6 +107,7 @@ export default function Abonnement() {
   const queryClient = useQueryClient();
   const canManage = user?.role === "leder";
   const [subscriptionTermsAccepted, setSubscriptionTermsAccepted] = useState(false);
+  const [showSubscriptionTerms, setShowSubscriptionTerms] = useState(false);
   const overview = useQuery<SubscriptionOverview>({
     queryKey: ["/api/subscription"],
     queryFn: async () => (await apiRequest("GET", "/api/subscription")).json(),
@@ -200,7 +201,7 @@ export default function Abonnement() {
           onChange={(event) => setSubscriptionTermsAccepted(event.target.checked)}
           data-testid="subscription-terms-checkbox"
         />
-        <span>Jeg accepterer <Link className="font-semibold text-primary underline underline-offset-2" href="/abonnementsbetingelser" target="_blank">abonnementsbetingelserne</Link>, herunder månedlig automatisk fornyelse og betaling, indtil abonnementet opsiges.</span>
+        <span>Jeg accepterer <button type="button" className="font-semibold text-primary underline underline-offset-2" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSubscriptionTerms(true); }}>abonnementsbetingelserne</button>, herunder månedlig automatisk fornyelse og betaling, indtil abonnementet opsiges.</span>
       </label>
       <p className="mt-2 text-xs text-muted-foreground">Afkrydsningen er obligatorisk og er ikke valgt på forhånd. Accepten registreres med bruger, tidspunkt og vilkårsversion.</p>
     </section>}
@@ -267,5 +268,6 @@ export default function Abonnement() {
     <SectionCard title="Abonnementsfakturaer" icon={<FileText className="h-4 w-4" />} noPadding>
       {overview.isLoading ? <div className="p-4"><Skeleton className="h-24 w-full" /></div> : !overview.data?.invoices?.length ? <p className="p-5 text-sm text-muted-foreground">Der er endnu ingen abonnementsfakturaer.</p> : <div className="divide-y">{overview.data.invoices.map((invoice) => <div key={invoice.id} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{invoice.invoiceNumber ?? `Faktura ${invoice.id}`}</p><p className="text-xs text-muted-foreground">{invoice.issueDate ?? "—"} · Forfalder {invoice.dueDate ?? "—"}</p></div><strong className="text-sm">{money(invoice.totalAmount)}</strong><StatusChip status={invoice.status ?? "ukendt"} /><Button size="sm" variant="outline" onClick={() => openAuthedFile(`/api/subscription/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? "abonnementsfaktura"}.pdf`)}>Hent PDF</Button></div>)}</div>}
     </SectionCard>
+    <LegalPreviewDialog kind={showSubscriptionTerms ? "subscriptionTerms" : null} onClose={() => setShowSubscriptionTerms(false)} />
   </div>;
 }
