@@ -70,7 +70,7 @@ export function bookkeepingArchiveStatus(env: NodeJS.ProcessEnv = process.env) {
   return {
     configured,
     objectLockVerification: "not_checked_by_status" as const,
-    capture: "synthetic_drill_only" as const,
+    capture: "manual_candidate_not_scheduled" as const,
     productionCoverage: "not_verified" as const,
     restoreDrill: "not_verified" as const,
     ready: false as const,

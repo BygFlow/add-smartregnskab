@@ -35,11 +35,11 @@ test("archive readiness requires Object Lock and does not modify the bucket", as
   assert.deepEqual(ready, { ready: true, bucket: config.bucket, objectLockEnabled: true });
 });
 
-test("a configured bucket and synthetic drill are not reported as a live five-year archive", () => {
+test("a configured bucket and manual candidate are not reported as a live five-year archive", () => {
   const status = bookkeepingArchiveStatus({ ...env, ARCHIVE_ENCRYPTION_KEY: "a".repeat(64) });
   assert.equal(status.configured, true);
   assert.equal(status.ready, false);
-  assert.equal(status.capture, "synthetic_drill_only");
+  assert.equal(status.capture, "manual_candidate_not_scheduled");
   assert.equal(status.productionCoverage, "not_verified");
   assert.equal(bookkeepingArchiveStatus(env).configured, false);
 });

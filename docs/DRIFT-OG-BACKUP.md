@@ -48,6 +48,21 @@ efterlade låste objektversioner uden et afsluttende manifest; drift skal derfor
 føre en særskilt kørselslog og kontrollere alle kvitteringer før en fremtidig
 automatisk aktivering.
 
+`buildBookkeepingRecordBundle` udvælger en kandidatpakke med bogførte
+posteringer/linjer, tilhørende konti, udstedte fakturaer/linjer og kunder,
+bogførte bilag, kreditnotaer, bankposter, periodeafslutninger og indberettede
+momsperioder for samme virksomhed og år. Fremmede kunde-, konto- og
+fakturareferencer afvises. `captureBookkeepingArchiveCandidate` kan manuelt
+låse både datapakken og de verificerede originaler med et samlet manifest;
+`verifyBookkeepingArchiveCandidate` læser kæden tilbage og kontrollerer
+virksomhed, år, antal og hver original. Disse funktioner er ikke forbundet med
+produktionsjob eller API, og den lokale test med fiktive data er ikke et
+bevis for produktionsdækning. Kandidatmanifestet har derfor altid
+`completeBookkeepingArchive: false`. Åbne datagab: momsperioder uden
+indberetningsdato, kreditnotaers egentlige udstedelsesdato, historiske
+kunde-/kontoværdier, fuldt revisionsspor og andre kildedokumenter. De skal
+afklares før automatisk arkivering og før femårsstatus kan blive klar.
+
 ## Gendannelseskontrol
 
 Platformadministratoren kan kalde `POST /api/external-backup/verify` med

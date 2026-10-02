@@ -27,11 +27,13 @@ export async function captureBookkeepingOriginals(input: {
   for (const row of documents) {
     const bytes = await readVerifiedOriginal(row, input.companyId, input.readOriginal);
     const sourceSha256 = row.content_hash!.toLowerCase();
+    const objectKey = `${prefix}/originals/document-${row.id}-${sourceSha256}.bin`;
     const receipt = await store({ config: input.config,
-      key: `${prefix}/originals/document-${row.id}-${sourceSha256}.bin`,
+      key: objectKey,
       plain: bytes, retainUntil: inventory.period.retainUntil,
       encryptionSecret: input.encryptionSecret, now: input.now });
-    if (!receipt.verified || receipt.bucket !== input.config.bucket || receipt.sha256 !== sourceSha256
+    if (!receipt.verified || receipt.bucket !== input.config.bucket || receipt.objectKey !== objectKey
+        || receipt.sha256 !== sourceSha256
         || receipt.plainBytes !== bytes.length || !receipt.versionId) {
       throw new Error(`Arkivlagerets kvittering for bilag #${row.id} er ikke verificeret.`);
     }
@@ -46,12 +48,14 @@ export async function captureBookkeepingOriginals(input: {
     inventoryCounts: inventory.counts,
     originals: receipts,
   };
+  const manifestKey = `${prefix}/manifests/originals-${randomUUID()}.json`;
   const manifestReceipt = await store({ config: input.config,
-    key: `${prefix}/manifests/originals-${randomUUID()}.json`,
+    key: manifestKey,
     plain: Buffer.from(JSON.stringify(manifest), "utf8"),
     retainUntil: inventory.period.retainUntil,
     encryptionSecret: input.encryptionSecret, now: input.now });
-  if (!manifestReceipt.verified || manifestReceipt.bucket !== input.config.bucket || !manifestReceipt.versionId) {
+  if (!manifestReceipt.verified || manifestReceipt.bucket !== input.config.bucket
+      || manifestReceipt.objectKey !== manifestKey || !manifestReceipt.versionId) {
     throw new Error("Arkivlagerets manifestkvittering er ikke verificeret.");
   }
   return { scope: "originals_only" as const, completeBookkeepingArchive: false as const,
