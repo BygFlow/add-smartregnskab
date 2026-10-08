@@ -118,20 +118,28 @@ test("annual report add-on is enforced by both client and API", () => {
   assert.match(routes, /app\.patch\("\/api\/annual-reports\/:id", requireFeature\("aarsrapport"\)/);
 });
 
-test("payroll stays in Appmarked and all payroll APIs require the add-on", () => {
+test("core payroll expense posting stays separate from the payroll add-on", () => {
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const router = read("client/src/pages/regnskabssystem.tsx");
   const routes = read("server/routes.ts");
   const extendedRoutes = read("server/extended-routes.ts");
   const extendedRoutes2 = read("server/extended-routes-2.ts");
 
-  assert.doesNotMatch(shell, /item\("lon", "Lønbogføring"/);
+  assert.match(shell, /item\("lon", "Lønudgifter"/);
   assert.match(catalog, /name: "Løn og lønindberetning"/);
   assert.match(catalog, /feature: "loen"/);
-  assert.match(catalog, /protectedRoutes: \["lon", "lonindberetning", "lonmotor_regnskab"\]/);
-  assert.match(routes, /app\.get\("\/api\/payroll-entries", requireFeature\("loen"\)/);
-  assert.match(routes, /app\.post\("\/api\/payroll-entries", requireFeature\("loen"\)/);
-  assert.match(routes, /app\.patch\("\/api\/payroll-entries\/:id", requireFeature\("loen"\)/);
+  assert.match(catalog, /Almindelig bogføring af lønudgifter er altid inkluderet/);
+  assert.match(catalog, /protectedRoutes: \["lonindberetning", "lonmotor_regnskab"\]/);
+  assert.match(router, /SmartRegnskab beregner ikke løn i grundpakken/);
+  assert.match(router, /Registrer godkendt løngrundlag/);
+  assert.doesNotMatch(router, /Auto-generer løn/);
+  assert.doesNotMatch(routes, /app\.get\("\/api\/payroll-entries", requireFeature\("loen"\)/);
+  assert.match(routes, /app\.post\("\/api\/payroll-entries", requireRole\("leder", "platform_admin"\)/);
+  assert.match(routes, /app\.post\("\/api\/payroll-entries\/:id\/post", requireRole\("leder", "platform_admin"\)/);
+  assert.match(routes, /sourceType: "løn"/);
+  assert.match(routes, /debit: amount, credit: 0/);
+  assert.match(routes, /debit: 0, credit: amount/);
   assert.match(routes, /app\.post\("\/api\/payroll-entries\/auto-generate", requireFeature\("loen"\)/);
   assert.match(extendedRoutes, /app\.get\("\/api\/payroll-reports", requireFeature\("loen"\)/);
   assert.match(extendedRoutes, /app\.post\("\/api\/payroll-reports", requireFeature\("loen"\)/);

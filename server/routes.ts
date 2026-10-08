@@ -5699,26 +5699,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ── Lønbogføring ──
-  app.get("/api/payroll-entries", requireFeature("loen"), h(async (req, res) => {
+  app.get("/api/payroll-entries", h(async (req, res) => {
     res.json(await storage.all("payroll_entries", tenantId(req)));
   }));
-  app.post("/api/payroll-entries", requireFeature("loen"), h(async (req, res) => {
+  app.post("/api/payroll-entries", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const data = validate(insertPayrollEntrySchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
-    // Auto-beregn løn
-    const gross = ((data.regularHours ?? 0) * (data.hourlyRate ?? 0)) + ((data.overtimeHours ?? 0) * (data.hourlyRate ?? 0) * 1.5);
-    const holidayPay = gross * 0.125;
-    const pension = gross * 0.03;
-    const atp = gross > 0 ? 90 : 0;
-    const amContribution = gross * 0.08;
-    const aTax = Math.max(0, (gross - holidayPay) * 0.27); // forenklet
-    const net = gross - aTax - amContribution - pension - atp;
-    const enriched = { ...data, grossSalary: gross, holidayPay, pension, atp, amContribution, aTax, netSalary: net };
-    res.status(201).json(await storage.insert("payroll_entries", enriched));
+    res.status(201).json(await storage.insert("payroll_entries", data));
   }));
-  app.patch("/api/payroll-entries/:id", requireFeature("loen"), h(async (req, res) => {
+  app.patch("/api/payroll-entries/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const updates: Record<string, any> = {};
     for (const k of ["status", "journalEntryId"]) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     res.json(await storage.update("payroll_entries", Number(req.params.id), updates, tenantId(req)));
+  }));
+  app.post("/api/payroll-entries/:id/post", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const payrollId = Number(req.params.id);
+    const payroll = await storage.get("payroll_entries", payrollId, cid);
+    if (!payroll) return res.status(404).json({ error: "Løngrundlaget findes ikke." });
+    if (payroll.journalEntryId || ["bogfort", "bogført"].includes(String(payroll.status))) {
+      return res.status(409).json({ error: "Lønudgiften er allerede bogført." });
+    }
+    const expenseAccountId = Number(req.body?.expenseAccountId);
+    const counterAccountId = Number(req.body?.counterAccountId);
+    const accounts = await storage.all("accounts", cid);
+    const expenseAccount = accounts.find((account: any) => account.id === expenseAccountId);
+    const counterAccount = accounts.find((account: any) => account.id === counterAccountId);
+    if (!expenseAccount || !counterAccount) return res.status(400).json({ error: "Vælg to gyldige konti fra virksomhedens kontoplan." });
+    if (expenseAccount.id === counterAccount.id) return res.status(400).json({ error: "Udgiftskonto og modkonto skal være forskellige." });
+    const amount = Number(payroll.grossSalary || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Lønudgiften skal være større end 0 kr." });
+    const limit = await checkAccountingLimit(cid, "entries");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
+    const date = String(req.body?.date || nowIso().slice(0, 10));
+    const entryNumber = `LON-${String(payroll.period).replace(/[^0-9A-Za-z-]/g, "-")}-${payroll.id}`;
+    const description = `Lønudgift ${payroll.period} – ${payroll.employeeName}`;
+    const journal = await storage.insert("journal_entries", {
+      companyId: cid, entryNumber, date, description, reference: String(payroll.period),
+      sourceType: "løn", sourceId: payroll.id, status: "bogført",
+      createdBy: req.auth?.user.email, createdAt: nowIso(),
+    } as any);
+    await storage.insert("journal_lines", { companyId: cid, journalEntryId: journal.id, accountId: expenseAccount.id, description, debit: amount, credit: 0, vatCode: "ingen" });
+    await storage.insert("journal_lines", { companyId: cid, journalEntryId: journal.id, accountId: counterAccount.id, description, debit: 0, credit: amount, vatCode: "ingen" });
+    const updated = await storage.update("payroll_entries", payroll.id, { status: "bogfort", journalEntryId: journal.id }, cid);
+    await audit(req, "bogfør", "payroll_entry", payroll.id, entryNumber);
+    res.status(201).json({ payrollEntry: updated, journalEntry: journal });
   }));
   // Auto-generer lønposter fra tidsregistreringer
   app.post("/api/payroll-entries/auto-generate", requireFeature("loen"), h(async (req, res) => {

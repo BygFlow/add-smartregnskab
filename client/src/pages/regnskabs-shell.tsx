@@ -51,6 +51,7 @@ const COMPANY_GROUPS: NavGroup[] = [
     item("bilagsindbakke", "Bilagsindbakke", Inbox),
     item("bilag", "Bilag & udgifter", Receipt),
     item("kontoplan", "Bogføring", FileText),
+    item("lon", "Lønudgifter", Users),
     item("bank", "Bankafstemning", Landmark),
   ] },
   { label: "Salg og køb", items: [

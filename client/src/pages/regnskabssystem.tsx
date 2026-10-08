@@ -1605,41 +1605,88 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
   const payrollEntries = payrollQuery.data ?? [];
 
-  const [payrollPeriodOpen, setPayrollPeriodOpen] = useState(false);
-  const [payrollPeriod, setPayrollPeriod] = useState("");
+  const emptyPayrollExpenseForm = {
+    source: "Ekstern lønudbyder",
+    period: "",
+    amount: "",
+  };
+  const [payrollExpenseOpen, setPayrollExpenseOpen] = useState(false);
+  const [payrollExpenseForm, setPayrollExpenseForm] = useState(emptyPayrollExpenseForm);
+  const [payrollToPost, setPayrollToPost] = useState<PayrollEntry | null>(null);
+  const [payrollPostingForm, setPayrollPostingForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    expenseAccountId: "",
+    counterAccountId: "",
+  });
 
-  const autoPayrollMut = useMutation({
+  const createPayrollExpenseMut = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/payroll-entries/auto-generate", {
-        period: payrollPeriod,
+      const amount = Number(payrollExpenseForm.amount.replace(",", "."));
+      const res = await apiRequest("POST", "/api/payroll-entries", {
         companyId: effectiveCompanyId,
+        employeeId: 0,
+        employeeName: payrollExpenseForm.source.trim() || "Ekstern lønudbyder",
+        period: payrollExpenseForm.period,
+        regularHours: 0,
+        overtimeHours: 0,
+        hourlyRate: 0,
+        grossSalary: amount,
+        holidayPay: 0,
+        pension: 0,
+        atp: 0,
+        aTax: 0,
+        amContribution: 0,
+        netSalary: amount,
+        status: "kladde",
       });
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/payroll-entries"] });
-      toast({ title: "Løn auto-genereret", description: "Lønposter er oprettet fra tidsregistreringer." });
-      setPayrollPeriodOpen(false);
-      setPayrollPeriod("");
+      toast({ title: "Løngrundlag registreret", description: "Kontrollér konti, før lønudgiften bogføres." });
+      setPayrollExpenseOpen(false);
+      setPayrollExpenseForm(emptyPayrollExpenseForm);
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
-      toast({ title: "Auto-generering fejlede", description: message, variant: "destructive" });
+      toast({ title: "Kunne ikke registrere løngrundlaget", description: message, variant: "destructive" });
     },
   });
 
+  const openPayrollPosting = (entry: PayrollEntry) => {
+    const companyAccounts = detail?.accounts ?? [];
+    const expenseAccount = companyAccounts.find((account) => account.accountNumber === "5100")
+      ?? companyAccounts.find((account) => account.type === "omkostning" && /løn/i.test(account.name));
+    const counterAccount = companyAccounts.find((account) => account.accountNumber === "2400")
+      ?? companyAccounts.find((account) => account.accountNumber === "1810")
+      ?? companyAccounts.find((account) => ["passiv", "aktiv"].includes(account.type));
+    setPayrollToPost(entry);
+    setPayrollPostingForm({
+      date: new Date().toISOString().slice(0, 10),
+      expenseAccountId: expenseAccount ? String(expenseAccount.id) : "",
+      counterAccountId: counterAccount ? String(counterAccount.id) : "",
+    });
+  };
+
   const postPayrollMut = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("PATCH", `/api/payroll-entries/${id}`, { status: "bogfort" });
+    mutationFn: async () => {
+      if (!payrollToPost) throw new Error("Vælg et løngrundlag.");
+      const res = await apiRequest("POST", `/api/payroll-entries/${payrollToPost.id}/post`, {
+        date: payrollPostingForm.date,
+        expenseAccountId: Number(payrollPostingForm.expenseAccountId),
+        counterAccountId: Number(payrollPostingForm.counterAccountId),
+      });
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/payroll-entries"] });
-      toast({ title: "Løn bogført" });
+      qc.invalidateQueries({ queryKey: ["/api/company-detail"] });
+      toast({ title: "Lønudgift bogført", description: "Den balancerede postering er gemt i regnskabet." });
+      setPayrollToPost(null);
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
-      toast({ title: "Kunne ikke bogføre løn", description: message, variant: "destructive" });
+      toast({ title: "Kunne ikke bogføre lønudgiften", description: message, variant: "destructive" });
     },
   });
 
@@ -4479,19 +4526,25 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                 </Dialog>
               </TabsContent>
 
-              {/* ---------- LØNBOGFØRING ---------- */}
+              {/* ---------- LØNUDGIFTER ---------- */}
               <TabsContent value="lon" className="space-y-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
+                  <p className="font-medium">SmartRegnskab beregner ikke løn i grundpakken</p>
+                  <p className="mt-1 text-xs opacity-80">
+                    Registrér det godkendte løngrundlag fra eksempelvis Danløn eller Dataløn. Her bogføres kun den samlede lønudgift. Lønsedler og indberetning til eIndkomst/FerieKonto findes som tillægsmodul.
+                  </p>
+                </div>
                 <SectionCard
-                  title="Lønbogføring"
+                  title="Lønudgifter"
                   icon={<Users className="size-4" />}
                   action={
                     <Button
                       size="sm"
-                      data-testid="btn-auto-lon"
-                      onClick={() => setPayrollPeriodOpen(true)}
+                      data-testid="btn-register-payroll-expense"
+                      onClick={() => setPayrollExpenseOpen(true)}
                     >
-                      <Wand2 className="size-4" />
-                      Auto-generer løn
+                      <Plus className="size-4" />
+                      Registrer løngrundlag
                     </Button>
                   }
                   noPadding
@@ -4502,25 +4555,17 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       <Skeleton className="h-10 w-full" />
                     </div>
                   ) : payrollQuery.isError ? (
-                    <p className="text-xs text-destructive p-3">Kunne ikke hente lønposter.</p>
+                    <p className="text-xs text-destructive p-3">Kunne ikke hente løngrundlag.</p>
                   ) : payrollEntries.length === 0 ? (
-                    <p className="text-xs text-muted-foreground p-3">Ingen lønposter.</p>
+                    <p className="text-xs text-muted-foreground p-3">Ingen lønudgifter er registreret endnu.</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs" data-testid="table-payroll">
                         <thead>
                           <tr className="text-left text-muted-foreground border-b border-border">
-                            <th className="font-medium px-3 py-1.5">Medarbejder</th>
+                            <th className="font-medium px-3 py-1.5">Kilde</th>
                             <th className="font-medium px-3 py-1.5">Periode</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Timer</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Timepris</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Bruttoløn</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Ferie</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Pension</th>
-                            <th className="font-medium px-3 py-1.5 text-right">ATP</th>
-                            <th className="font-medium px-3 py-1.5 text-right">A-skat</th>
-                            <th className="font-medium px-3 py-1.5 text-right">AM-bidrag</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Nettoløn</th>
+                            <th className="font-medium px-3 py-1.5 text-right">Samlet lønudgift</th>
                             <th className="font-medium px-3 py-1.5">Status</th>
                             <th className="font-medium px-3 py-1.5 text-right">Handlinger</th>
                           </tr>
@@ -4532,15 +4577,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                               <tr key={p.id} className="border-b border-border/50 last:border-0">
                                 <td className="px-3 py-1.5 font-medium">{p.employeeName ?? "—"}</td>
                                 <td className="px-3 py-1.5 whitespace-nowrap">{p.period ?? "—"}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{num(p.regularHours)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.hourlyRate)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.grossSalary)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.holidayPay)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.pension)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.atp)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.aTax)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(p.amContribution)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums font-medium">{money(p.netSalary)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums font-medium">{money(p.grossSalary)}</td>
                                 <td className="px-3 py-1.5">
                                   {status && (
                                     <StatusChip status={status} variant={status === "bogfort" || status === "bogført" ? "green" : "amber"} />
@@ -4551,7 +4588,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                     size="sm"
                                     variant="outline"
                                     data-testid={`btn-bogfoer-lon-${p.id}`}
-                                    onClick={() => postPayrollMut.mutate(p.id)}
+                                    onClick={() => openPayrollPosting(p)}
                                     disabled={postPayrollMut.isPending || status === "bogfort" || status === "bogført"}
                                   >
                                     <FileCheck2 className="size-3.5" />
@@ -4567,35 +4604,77 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   )}
                 </SectionCard>
 
-                {/* Dialog: Auto-generer løn */}
-                <Dialog open={payrollPeriodOpen} onOpenChange={setPayrollPeriodOpen}>
-                  <DialogContent data-testid="dialog-auto-lon">
+                <Dialog open={payrollExpenseOpen} onOpenChange={setPayrollExpenseOpen}>
+                  <DialogContent data-testid="dialog-register-payroll-expense">
                     <DialogHeader>
-                      <DialogTitle className="text-xl">Auto-generer løn</DialogTitle>
+                      <DialogTitle className="text-xl">Registrer godkendt løngrundlag</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <Label htmlFor="payroll-period">Periode (f.eks. 2026-08)</Label>
+                        <Label htmlFor="payroll-source">Kilde eller lønudbyder</Label>
+                        <Input id="payroll-source" value={payrollExpenseForm.source} onChange={(event) => setPayrollExpenseForm((form) => ({ ...form, source: event.target.value }))} placeholder="Eksempelvis Danløn" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="payroll-period">Lønperiode</Label>
                         <Input
                           id="payroll-period"
                           data-testid="input-payroll-period"
-                          value={payrollPeriod}
-                          onChange={(e) => setPayrollPeriod(e.target.value)}
+                          value={payrollExpenseForm.period}
+                          onChange={(event) => setPayrollExpenseForm((form) => ({ ...form, period: event.target.value }))}
                           placeholder="2026-08"
                         />
                       </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="payroll-amount">Samlet lønudgift</Label>
+                        <Input id="payroll-amount" inputMode="decimal" value={payrollExpenseForm.amount} onChange={(event) => setPayrollExpenseForm((form) => ({ ...form, amount: event.target.value }))} placeholder="0,00" />
+                        <p className="text-xs text-muted-foreground">Beløbet skal komme fra det godkendte løngrundlag. SmartRegnskab beregner det ikke.</p>
+                      </div>
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" data-testid="btn-payroll-annuller" onClick={() => setPayrollPeriodOpen(false)}>
+                      <Button variant="outline" data-testid="btn-payroll-annuller" onClick={() => setPayrollExpenseOpen(false)}>
                         Annuller
                       </Button>
                       <Button
-                        data-testid="btn-payroll-generer"
-                        onClick={() => autoPayrollMut.mutate()}
-                        disabled={autoPayrollMut.isPending || !payrollPeriod}
+                        data-testid="btn-payroll-register"
+                        onClick={() => createPayrollExpenseMut.mutate()}
+                        disabled={createPayrollExpenseMut.isPending || !payrollExpenseForm.period || !(Number(payrollExpenseForm.amount.replace(",", ".")) > 0)}
                       >
-                        {autoPayrollMut.isPending && <Loader2 className="size-4 animate-spin" />}
-                        Generer
+                        {createPayrollExpenseMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Registrer
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!payrollToPost} onOpenChange={(open) => { if (!open) setPayrollToPost(null); }}>
+                  <DialogContent data-testid="dialog-post-payroll-expense">
+                    <DialogHeader><DialogTitle className="text-xl">Bogfør lønudgift</DialogTitle></DialogHeader>
+                    <p className="text-sm text-muted-foreground">Vælg udgiftskonto og modkonto. Posteringen oprettes med samme beløb i debet og kredit.</p>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="payroll-posting-date">Bogføringsdato</Label>
+                        <Input id="payroll-posting-date" type="date" value={payrollPostingForm.date} onChange={(event) => setPayrollPostingForm((form) => ({ ...form, date: event.target.value }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Udgiftskonto (debet)</Label>
+                        <Select value={payrollPostingForm.expenseAccountId} onValueChange={(value) => setPayrollPostingForm((form) => ({ ...form, expenseAccountId: value }))}>
+                          <SelectTrigger><SelectValue placeholder="Vælg lønudgiftskonto" /></SelectTrigger>
+                          <SelectContent>{accounts.filter((account) => account.type === "omkostning").map((account) => <SelectItem key={account.id} value={String(account.id)}>{account.accountNumber} · {account.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Modkonto (kredit)</Label>
+                        <Select value={payrollPostingForm.counterAccountId} onValueChange={(value) => setPayrollPostingForm((form) => ({ ...form, counterAccountId: value }))}>
+                          <SelectTrigger><SelectValue placeholder="Vælg bank- eller skyldig løn-konto" /></SelectTrigger>
+                          <SelectContent>{accounts.filter((account) => ["aktiv", "passiv"].includes(account.type)).map((account) => <SelectItem key={account.id} value={String(account.id)}>{account.accountNumber} · {account.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setPayrollToPost(null)}>Annuller</Button>
+                      <Button onClick={() => postPayrollMut.mutate()} disabled={postPayrollMut.isPending || !payrollPostingForm.date || !payrollPostingForm.expenseAccountId || !payrollPostingForm.counterAccountId}>
+                        {postPayrollMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Bogfør lønudgift
                       </Button>
                     </DialogFooter>
                   </DialogContent>
