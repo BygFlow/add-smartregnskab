@@ -16,6 +16,8 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(schema, /companyAccessMemberships/);
   assert.match(schema, /companyUnits/);
   assert.match(routes, /Pakken tillader.*virksomhed/);
+  assert.match(routes, /storage\.getCompany\(tenantId\(req\)\)/);
+  assert.match(routes, /app\.get\("\/api\/organization", requireRole\("leder", "holdleder", "bogholder", "revisor", "revisor_admin", "platform_admin"\)/);
   assert.match(routes, /req\.body\?\.parentCompanyId === null/);
   assert.match(routes, /parentCompanyId != null && !parent/);
   assert.match(routes, /ownershipPercent: parentCompanyId == null \? null : ownershipPercent/);

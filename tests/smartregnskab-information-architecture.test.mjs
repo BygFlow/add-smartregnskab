@@ -220,3 +220,27 @@ test("the audit trail stays core while the auditor collaboration portal is an en
   assert.match(publicPages, /export function Invitation\(\)/);
   assert.match(publicPages, /Din konto er oprettet\. Log ind nu\./);
 });
+
+test("company administration stays core while group consolidation is an enforced add-on", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const page = read("client/src/pages/regnskab-tabs/konsolidering.tsx");
+  const routes = read("server/extended-routes-2.ts");
+
+  assert.match(shell, /item\("selskabsstruktur", "Selskaber & SE-enheder"/);
+  assert.doesNotMatch(shell, /item\("konsolidering"/);
+  assert.match(catalog, /name: "Koncern"/);
+  assert.match(catalog, /feature: "konsolidering"/);
+  assert.match(catalog, /Almindelig administration af selskaber, afdelinger og SE-enheder er fortsat inkluderet/);
+  assert.match(catalog, /protectedRoutes: \["konsolidering"\]/);
+  assert.match(routes, /app\.get\("\/api\/consolidation", requireFeature\("konsolidering"\), requireRole\("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /app\.post\("\/api\/consolidation", requireFeature\("konsolidering"\), requireRole\("leder", "bogholder", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /app\.patch\("\/api\/consolidation\/:id", requireFeature\("konsolidering"\), requireRole\("leder", "bogholder", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /app\.delete\("\/api\/consolidation\/:id", requireFeature\("konsolidering"\), requireRole\("leder", "bogholder", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /activeCompany\.subscriptionOwnerId \|\| activeCompany\.id/);
+  assert.match(routes, /Konsolidering kræver mindst to juridiske virksomheder/);
+  assert.match(routes, /En bogført konsolideringspost er låst/);
+  assert.match(routes, /En bogført konsolideringspost kan ikke slettes/);
+  assert.match(page, /Afdelinger og SE-enheder tæller ikke som selvstændige juridiske virksomheder/);
+  assert.match(page, /disabled=\{entry\.status === "bogført"\}/);
+});

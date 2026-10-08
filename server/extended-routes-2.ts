@@ -30,6 +30,30 @@ function validate(schema: any, data: any) {
   return r.data;
 }
 
+async function consolidationContext(req: any) {
+  const activeCompany = await storage.getCompany(tid(req));
+  if (!activeCompany) throw { status: 404, message: "Virksomheden findes ikke." };
+  const ownerId = activeCompany.subscriptionOwnerId || activeCompany.id;
+  const companies = (await storage.getCompanies()).filter((company: any) =>
+    (company.subscriptionOwnerId || company.id) === ownerId,
+  );
+  return { ownerId, companies };
+}
+
+function validateConsolidationEntry(body: any, companies: any[]) {
+  const parentCompany = String(body.parentCompany ?? "").trim();
+  const subsidiaryCompany = String(body.subsidiaryCompany ?? "").trim();
+  const names = new Set(companies.map((company: any) => String(company.name)));
+  if (companies.length < 2) throw { status: 409, message: "Konsolidering kræver mindst to juridiske virksomheder i kundeorganisationen." };
+  if (!names.has(parentCompany) || !names.has(subsidiaryCompany)) {
+    throw { status: 400, message: "Vælg moder- og datterselskab fra kundeorganisationens registrerede virksomheder." };
+  }
+  if (parentCompany === subsidiaryCompany) throw { status: 400, message: "Moder- og datterselskab skal være forskellige virksomheder." };
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(body.period ?? ""))) throw { status: 400, message: "Perioden skal angives som YYYY-MM." };
+  if (!String(body.description ?? "").trim()) throw { status: 400, message: "Beskrivelse er påkrævet." };
+  if (!Number.isFinite(Number(body.amount))) throw { status: 400, message: "Beløbet skal være et gyldigt tal." };
+}
+
 // Helper: standard CRUD for a table
 function crud(app: Express, basePath: string, tableName: string, insertSchema: any, fields: string[], extra?: (app: Express) => void, guards: any[] = []) {
   app.get(basePath, ...guards, h(async (req, res) => { res.json(await storage.all(tableName, tid(req))); }));
@@ -68,7 +92,37 @@ export function registerExtendedRoutes2(app: Express) {
   // ══ SmartRegnskab (12) ══
   crud(app, "/api/integration-configs", "integration_configs", insertIntegrationConfigSchema, ["type", "provider", "displayName", "status", "authMethod", "config", "lastSync", "syncStatus", "errorMessage", "apiAgreement"]);
   crud(app, "/api/compliance-checks", "compliance_checks", insertComplianceCheckSchema, ["category", "checkName", "description", "status", "result", "checkedAt", "notes", "requiresLegal"]);
-  crud(app, "/api/consolidation", "consolidation_entries", insertConsolidationEntrySchema, ["period", "parentCompany", "subsidiaryCompany", "type", "accountNumber", "description", "amount", "eliminationType", "status"]);
+  const consolidationFields = ["period", "parentCompany", "subsidiaryCompany", "type", "accountNumber", "description", "amount", "eliminationType", "status"];
+  app.get("/api/consolidation", requireFeature("konsolidering"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    const { ownerId } = await consolidationContext(req);
+    res.json(await storage.all("consolidation_entries", ownerId));
+  }));
+  app.post("/api/consolidation", requireFeature("konsolidering"), requireRole("leder", "bogholder", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    const { ownerId, companies } = await consolidationContext(req);
+    const candidate = { ...req.body, status: "kladde" };
+    validateConsolidationEntry(candidate, companies);
+    const data = validate(insertConsolidationEntrySchema, { ...candidate, companyId: ownerId, createdAt: nowIso() });
+    res.status(201).json(await storage.insert("consolidation_entries", data));
+  }));
+  app.patch("/api/consolidation/:id", requireFeature("konsolidering"), requireRole("leder", "bogholder", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    const { ownerId, companies } = await consolidationContext(req);
+    const existing = await storage.get("consolidation_entries", Number(req.params.id), ownerId);
+    if (!existing) return res.status(404).json({ error: "Konsolideringsposten findes ikke." });
+    if (existing.status === "bogført") return res.status(409).json({ error: "En bogført konsolideringspost er låst. Opret en modpost i stedet." });
+    const change = updates(consolidationFields)(req);
+    const candidate = { ...existing, ...change };
+    if (!["kladde", "bogført"].includes(String(candidate.status))) return res.status(400).json({ error: "Status skal være kladde eller bogført." });
+    validateConsolidationEntry(candidate, companies);
+    res.json(await storage.update("consolidation_entries", Number(req.params.id), change, ownerId));
+  }));
+  app.delete("/api/consolidation/:id", requireFeature("konsolidering"), requireRole("leder", "bogholder", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    const { ownerId } = await consolidationContext(req);
+    const existing = await storage.get("consolidation_entries", Number(req.params.id), ownerId);
+    if (!existing) return res.status(404).json({ error: "Konsolideringsposten findes ikke." });
+    if (existing.status === "bogført") return res.status(409).json({ error: "En bogført konsolideringspost kan ikke slettes. Opret en modpost i stedet." });
+    await storage.delete("consolidation_entries", Number(req.params.id), ownerId);
+    res.json({ success: true });
+  }));
   crud(app, "/api/advanced-vat", "advanced_vat", insertAdvancedVatSchema, ["period", "vatType", "country", "basis", "vatRate", "vatAmount", "deductionRate", "deductibleAmount", "description", "status"], undefined, [requireFeature("avanceret_moms")]);
   crud(app, "/api/bank-payments", "bank_payments", insertBankPaymentSchema, ["paymentFileId", "recipientName", "recipientAccount", "recipientReg", "amount", "currency", "paymentDate", "reference", "message", "status", "approvedBy", "approvedAt", "bankStatus", "errorMessage"], undefined, [requireFeature("betalinger")]);
   crud(app, "/api/payroll-engine", "payroll_engine", insertPayrollEngineSchema, ["employeeId", "employeeName", "period", "payslipNumber", "grossSalary", "aTax", "atp", "amContribution", "holidayPay", "pension", "healthInsurance", "unionContribution", "netSalary", "hours", "hourlyRate", "overtime", "mileage", "deductions", "eindkomstStatus", "feriekontoStatus", "status", "approvedBy", "approvedAt"], undefined, [requireFeature("loen")]);

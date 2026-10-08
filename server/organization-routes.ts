@@ -18,8 +18,10 @@ function h(fn: (req: Request, res: Response) => Promise<unknown>) {
 const digits8 = (value: unknown) => String(value ?? "").replace(/\D/g, "");
 
 async function context(req: Request) {
-  const home = await storage.getCompany(req.auth!.homeCompanyId);
-  if (!home) throw new Error("Hjemvirksomheden findes ikke.");
+  // Brug altid den virksomhed, som den godkendte session aktuelt arbejder i.
+  // Det er afgørende for fagbrugere, som kan skifte mellem flere klienter.
+  const home = await storage.getCompany(tenantId(req));
+  if (!home) throw new Error("Den aktive virksomhed findes ikke.");
   const ownerId = home.subscriptionOwnerId || home.id;
   const all = await storage.getCompanies();
   const companies = all.filter((company) => (company.subscriptionOwnerId || company.id) === ownerId);
@@ -34,7 +36,7 @@ async function audit(req: Request, action: string, target: string, detail?: stri
 }
 
 export function registerOrganizationRoutes(app: Express) {
-  app.get("/api/organization", requireRole("leder", "holdleder", "platform_admin"), h(async (req, res) => {
+  app.get("/api/organization", requireRole("leder", "holdleder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
     const { ownerId, companies } = await context(req);
     const companyIds = companies.map((company) => company.id);
     const units = companyIds.length

@@ -40,6 +40,9 @@ type ConsolidationEntry = {
   createdAt?: string | null;
 };
 
+type OrganizationCompany = { id: number; name: string; cvr?: string | null };
+type OrganizationData = { companies: OrganizationCompany[] };
+
 const fmtDKK = new Intl.NumberFormat("da-DK", {
   style: "currency",
   currency: "DKK",
@@ -113,8 +116,11 @@ export default function Konsolidering({ companyId }: { companyId: number }) {
       return Array.isArray(json) ? json : (json?.items ?? []);
     },
   });
+  const organization = useQuery<OrganizationData>({ queryKey: ["/api/organization"] });
 
   const items = data ?? [];
+  const companies = organization.data?.companies ?? [];
+  const hasGroup = companies.length >= 2;
 
   const totalEliminations = items.reduce(
     (sum, i) => sum + (Number(i.amount) || 0),
@@ -195,10 +201,14 @@ export default function Konsolidering({ companyId }: { companyId: number }) {
             Gruppekonsolidering med eliminering af intern handel, intercompany og goodwill.
           </p>
         </div>
-        <Button data-testid="add-entry-btn" onClick={openCreate} size="sm">
+        <Button data-testid="add-entry-btn" onClick={openCreate} size="sm" disabled={!hasGroup}>
           <Plus className="mr-2 h-4 w-4" /> Tilføj postering
         </Button>
       </div>
+
+      {!organization.isLoading && !hasGroup && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        Konsolidering kræver mindst to juridiske virksomheder. Opret og forbind selskaber under Selskaber &amp; SE-enheder først. Afdelinger og SE-enheder tæller ikke som selvstændige juridiske virksomheder.
+      </div>}
 
       {/* Sammenfatning */}
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
@@ -306,6 +316,7 @@ export default function Konsolidering({ companyId }: { companyId: number }) {
                         variant="ghost"
                         size="sm"
                         data-testid={`edit-btn-${entry.id}`}
+                        disabled={entry.status === "bogført"}
                         onClick={() => openEdit(entry)}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -315,7 +326,7 @@ export default function Konsolidering({ companyId }: { companyId: number }) {
                         size="sm"
                         className="text-destructive"
                         data-testid={`delete-btn-${entry.id}`}
-                        disabled={deleteMutation.isPending}
+                        disabled={deleteMutation.isPending || entry.status === "bogført"}
                         onClick={() => deleteMutation.mutate(entry.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -340,6 +351,7 @@ export default function Konsolidering({ companyId }: { companyId: number }) {
         key={editing ? `edit-${editing.id}` : "new"}
         open={open}
         editing={editing}
+        companies={companies}
         onOpenChange={(o) => {
           setOpen(o);
           if (!o) setEditing(null);
@@ -362,12 +374,14 @@ export default function Konsolidering({ companyId }: { companyId: number }) {
 function ConsolidationDialog({
   open,
   editing,
+  companies,
   onOpenChange,
   onSubmit,
   pending,
 }: {
   open: boolean;
   editing: ConsolidationEntry | null;
+  companies: OrganizationCompany[];
   onOpenChange: (open: boolean) => void;
   onSubmit: (body: unknown) => void;
   pending: boolean;
@@ -456,23 +470,20 @@ function ConsolidationDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="c-parent">Moderselskab</Label>
-              <Input
-                id="c-parent"
-                data-testid="form-parentCompany"
-                value={parentCompany}
-                onChange={(e) => setParentCompany(e.target.value)}
-                placeholder="F.eks. Holding A/S"
-              />
+              <Select value={parentCompany} onValueChange={(value) => {
+                setParentCompany(value);
+                if (value === subsidiaryCompany) setSubsidiaryCompany("");
+              }}>
+                <SelectTrigger id="c-parent" data-testid="form-parentCompany"><SelectValue placeholder="Vælg moderselskab" /></SelectTrigger>
+                <SelectContent>{companies.map((company) => <SelectItem key={company.id} value={company.name}>{company.name}{company.cvr ? ` · ${company.cvr}` : ""}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="c-subsidiary">Datterselskab</Label>
-              <Input
-                id="c-subsidiary"
-                data-testid="form-subsidiaryCompany"
-                value={subsidiaryCompany}
-                onChange={(e) => setSubsidiaryCompany(e.target.value)}
-                placeholder="F.eks. Datter ApS"
-              />
+              <Select value={subsidiaryCompany} onValueChange={setSubsidiaryCompany}>
+                <SelectTrigger id="c-subsidiary" data-testid="form-subsidiaryCompany"><SelectValue placeholder="Vælg datterselskab" /></SelectTrigger>
+                <SelectContent>{companies.filter((company) => company.name !== parentCompany).map((company) => <SelectItem key={company.id} value={company.name}>{company.name}{company.cvr ? ` · ${company.cvr}` : ""}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -515,6 +526,7 @@ function ConsolidationDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="F.eks. Eliminering af intern salg"
+              required
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -555,7 +567,7 @@ function ConsolidationDialog({
             >
               Annuller
             </Button>
-            <Button type="submit" disabled={pending} data-testid="form-save">
+            <Button type="submit" disabled={pending || !parentCompany || !subsidiaryCompany || parentCompany === subsidiaryCompany} data-testid="form-save">
               {pending ? "Gemmer…" : editing ? "Gem ændringer" : "Opret postering"}
             </Button>
           </DialogFooter>
