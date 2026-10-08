@@ -3616,7 +3616,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               {/* ---------- PERIODEAFSLUTNING ---------- */}
               <TabsContent value="periode" className="space-y-4">
                 <SectionCard
-                  title="Periodeafslutning"
+                  title="Periode og årsafslutning"
                   icon={<CalendarCheck className="size-4" />}
                   action={
                     <Button
@@ -3632,6 +3632,39 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   <p className="text-xs text-muted-foreground">
                     Opret og gennemfør periodeafslutninger med automatisk tjekliste (måned, kvartal eller år).
                   </p>
+                </SectionCard>
+
+                <SectionCard title="Årsafslutning og rapportering" icon={<FileCheck2 className="size-4" />}>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">Årsafslutning</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Gennemfør årets kontroller, afstemninger og afsluttende tjekliste.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/aarafslutning"; }}
+                      >
+                        Åbn årsafslutning
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">Årsrapport</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Klargør årsrapportens data, dokumentation og status efter afslutningen.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/arsrapport"; }}
+                      >
+                        Åbn årsrapport
+                      </Button>
+                    </div>
+                  </div>
                 </SectionCard>
 
                 <SectionCard title="Perioder" icon={<CalendarCheck className="size-4" />} noPadding>

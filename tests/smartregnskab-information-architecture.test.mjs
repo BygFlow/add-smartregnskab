@@ -85,3 +85,16 @@ test("core VAT and paid international VAT rules are separated consistently", () 
   assert.doesNotMatch(catalog, /protectedRoutes: \["avanceret_moms", "valuta_moms"\]/);
   assert.match(routes, /requireFeature\("avanceret_moms"\)/);
 });
+
+test("period close is the single navigation hub for year-end work", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const router = read("client/src/pages/regnskabssystem.tsx");
+
+  assert.match(shell, /item\("periode", "Periode & årsafslutning"/);
+  assert.doesNotMatch(shell, /item\("aarafslutning"/);
+  assert.doesNotMatch(shell, /item\("arsrapport"/);
+  assert.match(router, /Åbn årsafslutning/);
+  assert.match(router, /Åbn årsrapport/);
+  assert.match(router, /\/smartregnskab\/app\/aarafslutning/);
+  assert.match(router, /\/smartregnskab\/app\/arsrapport/);
+});

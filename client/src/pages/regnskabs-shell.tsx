@@ -63,7 +63,7 @@ const COMPANY_GROUPS: NavGroup[] = [
   { label: "Afslutning", items: [
     item("moms", "Moms & skat", Calculator),
     item("lon", "Lønbogføring", Users),
-    item("periode", "Periodeafslutning", CalendarClock),
+    item("periode", "Periode & årsafslutning", CalendarClock),
     item("rapporter", "Rapporter", FileBarChart),
     item("revision", "Revisionsspor", ShieldCheck),
   ] },
@@ -97,8 +97,6 @@ const ADVANCED_GROUPS: NavGroup[] = [
     item("periodisering", "Periodisering", Calendar),
     item("omkostning", "Omkostningssteder", Briefcase),
     item("anlaeg", "Anlægsregister", Building2),
-    item("aarafslutning", "Årsafslutning", Calendar),
-    item("arsrapport", "Årsrapport", FileCheck),
     item("afstemningscenter", "Afstemningscenter", ShieldCheck),
     item("regler", "Regnskabsregler", Settings),
     item("kontoplan_skabeloner", "Kontoplanskabeloner", FileText),
