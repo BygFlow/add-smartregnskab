@@ -38,16 +38,22 @@ test("company and invoice settings persist through the tenant-scoped company end
 test("optional products are collected in Appmarked instead of normal accounting navigation", () => {
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const marketplace = read("client/src/pages/regnskab-tabs/appmarked.tsx");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const page = read("client/src/pages/regnskabssystem.tsx");
 
   assert.match(marketplace, /Tilkøb og tillægsmoduler/);
-  assert.match(marketplace, /Kundeportal/);
-  assert.match(marketplace, /Lagerregnskab/);
-  assert.match(marketplace, /Revisorportal/);
-  assert.match(marketplace, /API og webhooks/);
+  assert.match(catalog, /Kundeportal/);
+  assert.match(catalog, /Lagerregnskab/);
+  assert.match(catalog, /Revisorportal/);
+  assert.match(catalog, /API og webhooks/);
   assert.doesNotMatch(shell, /item\("kunde_portal_indstillinger"/);
   assert.doesNotMatch(shell, /item\("lagerregnskab"/);
   assert.doesNotMatch(shell, /item\("revisorportal"/);
   assert.doesNotMatch(shell, /item\("api_webhooks"/);
+  assert.match(page, /getSmartRegnskabAddonForRoute\(activeTab\)/);
+  assert.match(page, /notice-addon-locked/);
+  assert.match(page, /\["lagerregnskab", "Lagerregnskab"\]/);
+  assert.match(page, /\["kundeportal", "Kundeportal"\]/);
 });
 
 test("regnskabsopsætning uses precise guidance instead of a generic beta blocker", () => {

@@ -2,6 +2,7 @@ import { lazy, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, openAuthedFile, queryClient } from "@//lib/queryClient";
 import { useAuth } from "@//lib/auth";
+import { getSmartRegnskabAddonForRoute, isSmartRegnskabAddonIncluded } from "@/lib/smartregnskab-addons";
 import { useToast } from "@//hooks/use-toast";
 import { auditActionLabel, auditChangeLabels, auditEntityLabel, auditModuleLabel } from "@shared/audit-display";
 import { PageHeader, SectionCard, StatusChip } from "@/components/premium";
@@ -817,7 +818,7 @@ function getTabFromHash(): string {
 }
 
 function CompanyRegnskabssystemPage(props: any = {}) {
-  const { user, isPlatformAdmin, companyId: authCompanyId } = useAuth();
+  const { user, isPlatformAdmin, companyId: authCompanyId, hasFeature, hasAI } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
@@ -2198,6 +2199,8 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const entries = detail?.entries ?? [];
   const vatPeriods = detail?.vatPeriods ?? [];
   const selectedCompany = companies.find((company) => company.id === effectiveCompanyId);
+  const activeAddon = getSmartRegnskabAddonForRoute(activeTab);
+  const activeAddonIncluded = !activeAddon || isSmartRegnskabAddonIncluded(activeAddon, { hasFeature, hasAI });
   const platformOverview = isPlatformAdmin && activeTab === "dashboard";
   const companiesOverview = isPlatformAdmin && activeTab === "virksomheder";
   const showCompanyContext = isPlatformAdmin && ![
@@ -2240,6 +2243,19 @@ function CompanyRegnskabssystemPage(props: any = {}) {
           {!effectiveCompanyId && !(platformOverview || companiesOverview) ? (
             <SectionCard>
               <div className="py-8 text-center"><Building2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="text-sm font-medium">Vælg en virksomhed</p><p className="mt-1 text-xs text-muted-foreground">Åbn Virksomheder i menuen for at fortsætte.</p></div>
+            </SectionCard>
+          ) : !activeAddonIncluded && activeAddon ? (
+            <SectionCard>
+              <div className="mx-auto max-w-2xl py-8 text-center" data-testid="notice-addon-locked">
+                <Lock className="mx-auto h-9 w-9 text-muted-foreground" />
+                <h2 className="mt-4 text-xl font-semibold">{activeAddon.name} er ikke inkluderet</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{activeAddon.description}</p>
+                <p className="mt-3 text-sm text-muted-foreground">Modulet er låst for denne virksomhed. Det bliver først aktiveret, når det er føjet til abonnementet, og pris og vilkår er godkendt.</p>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  <Button onClick={() => { window.location.hash = "/smartregnskab/app/abonnement"; }}>Se abonnement og vilkår</Button>
+                  <Button variant="outline" onClick={() => { window.location.hash = "/smartregnskab/app/appmarked"; }}>Tilbage til Appmarked</Button>
+                </div>
+              </div>
             </SectionCard>
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -6034,7 +6050,10 @@ const PLAN_FEATURES = [
   ["backup", "Krypteret ekstern backup"],
   ["gdpr_vaerktoejer", "GDPR-værktøjer"],
   ["dimensioner", "Dimensioner og omkostningssteder"],
+  ["lagerregnskab", "Lagerregnskab"],
   ["konsolidering", "Koncern og konsolidering"],
+  ["kundeportal", "Kundeportal"],
+  ["avanceret_moms", "Avanceret moms og valuta"],
   ["workflow_builder", "Workflow Builder"],
   ["dedikeret_onboarding", "Dedikeret onboarding"],
   ["support_sla", "Prioriteret support og SLA"],

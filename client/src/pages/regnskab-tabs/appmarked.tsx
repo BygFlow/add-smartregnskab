@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { SMARTREGNSKAB_ADDONS, isSmartRegnskabAddonIncluded } from "@/lib/smartregnskab-addons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Building2, CheckCircle2, Plug, ShieldCheck, Sparkles } from "lucide-react";
@@ -32,28 +33,12 @@ const externalApps = [
   { name: "e-conomic", category: "Regnskab", description: "Valgfri udveksling med kundens eksisterende e-conomic-aftale.", route: "integration_configs" },
 ];
 
-const addonModules = [
-  { name: "AI-regnskab", category: "AI-tilkøb", feature: "ai_bogforing", description: "Forslag til kontering, bilagskontrol og forklaringer. Kritiske handlinger kræver fortsat godkendelse.", route: "abonnement" },
-  { name: "Automatisk fakturering", category: "Tillægsmodul", feature: "faste_fakturaer", description: "Faste fakturaer, planlagt oprettelse og rykkerflow til tilbagevendende kunder.", route: "faste_fakturaer" },
-  { name: "Budget og likviditet", category: "Tillægsmodul", feature: "budget", description: "Budgetter, prognoser og løbende overblik over virksomhedens likviditet.", route: "budget" },
-  { name: "Løn og lønindberetning", category: "Tillægsmodul", feature: "loen", description: "Lønmotor, lønlinjer og kundestyret forbindelse til ekstern lønudbyder.", route: "lonmotor_regnskab" },
-  { name: "Betalingskørsler", category: "Tillægsmodul", feature: "betalinger", description: "Saml leverandørbetalinger i kontrollerede kørsler med udtrykkelig godkendelse.", route: "betaling" },
-  { name: "Lagerregnskab", category: "Tillægsmodul", feature: "lagerregnskab", description: "Varelager, lagerbevægelser og regnskabsmæssig lagerværdi.", route: "lagerregnskab" },
-  { name: "Revisorportal", category: "Tillægsmodul", feature: "revision", description: "Afgrænset adgang, revisionspakker og dokumenteret samarbejde med revisor.", route: "revisorportal" },
-  { name: "Koncern", category: "Tillægsmodul", feature: "konsolidering", description: "Konsolidering og elimineringer på tværs af juridiske virksomheder.", route: "konsolidering" },
-  { name: "API og webhooks", category: "Tillægsmodul", feature: "api_integration", description: "Forbind et eksternt fagsystem til faktura-, kladde- og regnskabsflowet.", route: "api_webhooks" },
-  { name: "Kundeportal", category: "Tillægsmodul", feature: "kundeportal", description: "En privat selvbetjening, hvor virksomhedens egne kunder kan se fakturaer og delte dokumenter.", route: "kunde_portal_indstillinger" },
-  { name: "Avancerede arbejdsgange", category: "Tillægsmodul", feature: "workflow_builder", description: "Byg godkendelses- og automatiseringsflow til organisationens særlige processer.", route: "workflow_builder" },
-  { name: "Avanceret moms og valuta", category: "Tillægsmodul", feature: "avanceret_moms", description: "Udenlandsk moms, flere valutaer og særlige momsregler samlet i ét modul.", route: "avanceret_moms" },
-  { name: "Datamigrering og onboarding", category: "Engangsydelse", feature: "dedikeret_onboarding", description: "Hjælp til import, kontrol og overgang fra virksomhedens tidligere regnskabssystem.", route: "migration_wizard" },
-];
-
 function openTab(tab: string) {
   window.location.hash = `/smartregnskab/app/${tab}`;
 }
 
 export default function Appmarked({ companyId }: { companyId: number }) {
-  const { features, hasAI } = useAuth();
+  const { hasFeature, hasAI } = useAuth();
   const catalog = useQuery<Catalog>({
     queryKey: ["/api/add-connect/catalog"],
     queryFn: async () => (await apiRequest("GET", "/api/add-connect/catalog")).json(),
@@ -94,8 +79,8 @@ export default function Appmarked({ companyId }: { companyId: number }) {
     <section className="space-y-3" data-testid="addon-module-catalog">
       <div><h2 className="text-lg font-semibold">Tilkøb og tillægsmoduler</h2><p className="text-sm text-muted-foreground">Valgfrie moduler findes her, så de ikke blander sig med virksomhedens daglige arbejdsgange.</p></div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {addonModules.map((module) => {
-          const included = module.feature === "ai_bogforing" ? hasAI || features.includes(module.feature) : features.includes(module.feature);
+        {SMARTREGNSKAB_ADDONS.map((module) => {
+          const included = isSmartRegnskabAddonIncluded(module, { hasFeature, hasAI });
           return <article key={module.name} className="flex min-h-44 flex-col rounded-xl border bg-card p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3"><div><Badge variant={included ? "default" : "secondary"} className="mb-2">{included ? "Inkluderet" : module.category}</Badge><h3 className="font-semibold">{module.name}</h3></div><Sparkles className="h-5 w-5 text-primary" /></div>
           <p className="mt-2 flex-1 text-sm leading-5 text-muted-foreground">{module.description}</p>
