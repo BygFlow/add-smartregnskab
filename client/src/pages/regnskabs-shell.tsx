@@ -99,8 +99,6 @@ const ADVANCED_GROUPS: NavGroup[] = [
     item("anlaeg", "Anlægsregister", Building2),
     item("aarafslutning", "Årsafslutning", Calendar),
     item("arsrapport", "Årsrapport", FileCheck),
-    item("momsafstemning", "Momsafstemning", Calculator),
-    item("skattekonto", "Skattekonto", Landmark),
     item("afstemningscenter", "Afstemningscenter", ShieldCheck),
     item("regler", "Regnskabsregler", Settings),
     item("kontoplan_skabeloner", "Kontoplanskabeloner", FileText),

@@ -3018,6 +3018,34 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                 <SectionCard title="Momsfunktioner" icon={<Calculator className="size-4" />}>
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">Momsafstemning</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Kontrollér udgående og indgående moms mod bogføringen, før perioden afsluttes.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/momsafstemning"; }}
+                      >
+                        Åbn momsafstemning
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">Skattekonto</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Sammenhold momsafregningen med virksomhedens skattekonto og find differencer.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/skattekonto"; }}
+                      >
+                        Åbn skattekonto
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border p-4">
                       <h3 className="font-medium">EU, import og valuta</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         EU-moms, reverse charge, importmoms og valutaposteringer er en del af det almindelige regnskab.

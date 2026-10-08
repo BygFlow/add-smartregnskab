@@ -73,6 +73,10 @@ test("core VAT and paid international VAT rules are separated consistently", () 
 
   assert.match(shell, /EU, import og valuta/);
   assert.match(router, /EU-moms, reverse charge, importmoms/);
+  assert.doesNotMatch(shell, /item\("momsafstemning"/);
+  assert.doesNotMatch(shell, /item\("skattekonto"/);
+  assert.match(router, /Åbn momsafstemning/);
+  assert.match(router, /Åbn skattekonto/);
   assert.match(coreVat, /const VAT_TYPES = \["eu_moms", "reverse_charge", "import_moms"\]/);
   assert.doesNotMatch(coreVat, /const VAT_TYPES = \[[^\]]*"oss"/);
   assert.match(internationalVat, /const VAT_TYPES = \["oss", "intrastat", "delvist_fradrag", "momsregistrering_udland"\]/);
