@@ -2,7 +2,7 @@
 // This file is imported and called from routes.ts
 import type { Express } from "express";
 import { storage } from "./storage";
-import { requireFeature } from "./auth";
+import { requireFeature, requireRole } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
@@ -397,13 +397,13 @@ export function registerExtendedRoutes(app: Express) {
 
   // ── Lagerregnskab ──
   const iaFields = ["itemName", "quantity", "unitCost", "totalValue", "location", "lastCountDate", "status"];
-  app.get("/api/inventory-accounts", h(async (req, res) => { res.json(await storage.all("inventory_accounts", tenantId(req))); }));
-  app.post("/api/inventory-accounts", h(async (req, res) => {
+  app.get("/api/inventory-accounts", requireFeature("lagerregnskab"), h(async (req, res) => { res.json(await storage.all("inventory_accounts", tenantId(req))); }));
+  app.post("/api/inventory-accounts", requireFeature("lagerregnskab"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     const data = validate(insertInventoryAccountSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
     data.totalValue = (data.quantity || 0) * (data.unitCost || 0);
     res.status(201).json(await storage.insert("inventory_accounts", data));
   }));
-  app.patch("/api/inventory-accounts/:id", h(async (req, res) => {
+  app.patch("/api/inventory-accounts/:id", requireFeature("lagerregnskab"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     const updates = UPDATABLE(iaFields)(req);
     if (updates.quantity !== undefined || updates.unitCost !== undefined) {
       // Recalculate totalValue
@@ -417,7 +417,7 @@ export function registerExtendedRoutes(app: Express) {
     }
     res.json(await storage.update("inventory_accounts", Number(req.params.id), updates, tenantId(req)));
   }));
-  app.delete("/api/inventory-accounts/:id", h(async (req, res) => {
+  app.delete("/api/inventory-accounts/:id", requireFeature("lagerregnskab"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     await storage.delete("inventory_accounts", Number(req.params.id), tenantId(req)); res.status(204).send();
   }));
 

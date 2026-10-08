@@ -163,3 +163,20 @@ test("manual payment bookkeeping stays core while payment runs are enforced as a
   assert.match(routes, /app\.delete\("\/api\/payment-runs\/:id", requireFeature\("betalinger"\), requireRole\("leder", "platform_admin"\)/);
   assert.match(extendedRoutes2, /\/api\/bank-payments[\s\S]*requireFeature\("betalinger"\)/);
 });
+
+test("the product catalog stays core while inventory accounting is an enforced add-on", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/extended-routes.ts");
+
+  assert.match(shell, /item\("produktkartotek", "Produkter & ydelser"/);
+  assert.doesNotMatch(shell, /item\("lagerregnskab"/);
+  assert.match(catalog, /name: "Lagerregnskab"/);
+  assert.match(catalog, /feature: "lagerregnskab"/);
+  assert.match(catalog, /Det almindelige produktkartotek med varer, ydelser og fakturapriser er altid inkluderet/);
+  assert.match(catalog, /protectedRoutes: \["lagerregnskab"\]/);
+  assert.match(routes, /app\.get\("\/api\/inventory-accounts", requireFeature\("lagerregnskab"\)/);
+  assert.match(routes, /app\.post\("\/api\/inventory-accounts", requireFeature\("lagerregnskab"\), requireRole\("leder", "platform_admin"\)/);
+  assert.match(routes, /app\.patch\("\/api\/inventory-accounts\/:id", requireFeature\("lagerregnskab"\), requireRole\("leder", "platform_admin"\)/);
+  assert.match(routes, /app\.delete\("\/api\/inventory-accounts\/:id", requireFeature\("lagerregnskab"\), requireRole\("leder", "platform_admin"\)/);
+});
