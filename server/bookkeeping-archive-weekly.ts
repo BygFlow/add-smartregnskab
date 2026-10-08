@@ -4,6 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { archiveRealCompanyYearStream, fingerprintRealBookkeepingYear } from "./bookkeeping-archive-stream";
 import { archivePeriod } from "./bookkeeping-archive-readiness";
+import { recordBookkeepingArchiveReceipt } from "./bookkeeping-archive-receipts";
 
 /** Bevidst lukket indtil fuld datadækning og en produktionsgendannelse er godkendt. */
 export function weeklyArchiveEnabled(env: NodeJS.ProcessEnv = process.env) {
@@ -85,8 +86,12 @@ export async function runWeeklyBookkeepingArchive(
             referenceDate: year.referenceDate, preparedFingerprint });
           if (!result.verified) throw new Error("Arkivet blev ikke gendannelseskontrolleret.");
           if (result.receipt.sourceSha256 !== sourceSha256) throw new Error("Arkivkvitteringen stemmer ikke med databasens årsudtræk.");
-          ledger.prepare("INSERT INTO bookkeeping_archive_receipts (company_id, fiscal_year_start, archived_at, source_sha256, receipt_json) VALUES (?,?,?,?,?)")
-            .run(companyId, year.start, now.toISOString(), sourceSha256, JSON.stringify(result.receipt));
+          recordBookkeepingArchiveReceipt(ledger, {
+            companyId,
+            fiscalYearStart: year.start,
+            archivedAt: now.toISOString(),
+            receipt: result.receipt,
+          });
           archived++;
         }
       } catch (error) {
