@@ -5856,10 +5856,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ── Betalingskørsler ──
-  app.get("/api/payment-runs", h(async (req, res) => {
+  app.get("/api/payment-runs", requireFeature("betalinger"), h(async (req, res) => {
     res.json(await storage.all("payment_runs", tenantId(req)));
   }));
-  app.post("/api/payment-runs", h(async (req, res) => {
+  app.post("/api/payment-runs", requireFeature("betalinger"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     // Auto-generer fra åbne kreditorbilag
     const vouchers = await storage.all("vouchers", cid);
@@ -5872,13 +5872,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     res.status(201).json(await storage.insert("payment_runs", data));
   }));
-  app.patch("/api/payment-runs/:id", h(async (req, res) => {
+  app.patch("/api/payment-runs/:id", requireFeature("betalinger"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     const updates: Record<string, any> = {};
     for (const k of ["status", "exportFile", "approvedBy", "approvedAt"]) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     if (req.body.status === "godkendt") { updates.approvedAt = nowIso(); }
     res.json(await storage.update("payment_runs", Number(req.params.id), updates, tenantId(req)));
   }));
-  app.delete("/api/payment-runs/:id", h(async (req, res) => {
+  app.delete("/api/payment-runs/:id", requireFeature("betalinger"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     await storage.delete("payment_runs", Number(req.params.id), tenantId(req));
     res.status(204).send();
   }));

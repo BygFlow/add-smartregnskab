@@ -147,3 +147,19 @@ test("core payroll expense posting stays separate from the payroll add-on", () =
   assert.match(extendedRoutes2, /\/api\/payroll-calculations[\s\S]*requireFeature\("loen"\)/);
   assert.match(extendedRoutes2, /\/api\/payroll-engine[\s\S]*requireFeature\("loen"\)/);
 });
+
+test("manual payment bookkeeping stays core while payment runs are enforced as an add-on", () => {
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/routes.ts");
+  const extendedRoutes2 = read("server/extended-routes-2.ts");
+
+  assert.match(catalog, /name: "Betalingskørsler"/);
+  assert.match(catalog, /feature: "betalinger"/);
+  assert.match(catalog, /Manuel betalingsregistrering og bankafstemning er fortsat en del af grundregnskabet/);
+  assert.match(catalog, /protectedRoutes: \["betaling", "bank_payments"\]/);
+  assert.match(routes, /app\.get\("\/api\/payment-runs", requireFeature\("betalinger"\)/);
+  assert.match(routes, /app\.post\("\/api\/payment-runs", requireFeature\("betalinger"\), requireRole\("leder", "platform_admin"\)/);
+  assert.match(routes, /app\.patch\("\/api\/payment-runs\/:id", requireFeature\("betalinger"\), requireRole\("leder", "platform_admin"\)/);
+  assert.match(routes, /app\.delete\("\/api\/payment-runs\/:id", requireFeature\("betalinger"\), requireRole\("leder", "platform_admin"\)/);
+  assert.match(extendedRoutes2, /\/api\/bank-payments[\s\S]*requireFeature\("betalinger"\)/);
+});
