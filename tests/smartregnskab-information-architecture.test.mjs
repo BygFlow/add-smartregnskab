@@ -180,3 +180,43 @@ test("the product catalog stays core while inventory accounting is an enforced a
   assert.match(routes, /app\.patch\("\/api\/inventory-accounts\/:id", requireFeature\("lagerregnskab"\), requireRole\("leder", "platform_admin"\)/);
   assert.match(routes, /app\.delete\("\/api\/inventory-accounts\/:id", requireFeature\("lagerregnskab"\), requireRole\("leder", "platform_admin"\)/);
 });
+
+test("the audit trail stays core while the auditor collaboration portal is an enforced add-on", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/extended-routes.ts");
+  const extendedRoutes2 = read("server/extended-routes-2.ts");
+  const auth = read("server/auth.ts");
+  const auditorPortal = read("client/src/pages/regnskab-tabs/revisorportal.tsx");
+  const professionalRoutes = read("server/professional-routes.ts");
+  const publicPages = read("client/src/pages/offentlig.tsx");
+
+  assert.match(shell, /item\("revision", "Revisionsspor"/);
+  assert.doesNotMatch(shell, /item\("revisorportal"/);
+  assert.match(catalog, /name: "Revisorportal"/);
+  assert.match(catalog, /feature: "revision"/);
+  assert.match(catalog, /Revisionsspor, SAF-T og almindelig regnskabseksport er fortsat inkluderet/);
+  assert.match(catalog, /protectedRoutes: \["revisorportal", "revisionspakke"\]/);
+  assert.match(routes, /const tenantId = authTenantId/);
+  assert.doesNotMatch(routes, /req\.query\.companyId \|\| 1/);
+  assert.match(routes, /app\.get\("\/api\/auditor-portal", requireFeature\("revision"\), requireRole\("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /app\.post\("\/api\/auditor-portal", requireFeature\("revision"\), requireRole\("leder", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /app\.patch\("\/api\/auditor-portal\/:id", requireFeature\("revision"\), requireRole\("leder", "revisor", "revisor_admin", "platform_admin"\)/);
+  assert.match(routes, /app\.delete\("\/api\/auditor-portal\/:id", requireFeature\("revision"\), requireRole\("leder", "revisor_admin", "platform_admin"\)/);
+  assert.match(extendedRoutes2, /app\.get\("\/api\/audit-package", requireFeature\("revision"\)/);
+  assert.match(extendedRoutes2, /app\.post\("\/api\/audit-package", requireFeature\("revision"\), requireRole\("leder", "revisor_admin", "platform_admin"\)/);
+  assert.match(extendedRoutes2, /app\.patch\("\/api\/audit-package\/:id", requireFeature\("revision"\), requireRole\("leder", "revisor", "revisor_admin", "platform_admin"\)/);
+  assert.match(extendedRoutes2, /app\.delete\("\/api\/audit-package\/:id", requireFeature\("revision"\), requireRole\("leder", "revisor_admin", "platform_admin"\)/);
+  assert.match(auth, /!req\.path\.startsWith\("\/audit-package"\)/);
+
+  assert.match(auditorPortal, /Revisoren skal logge ind med sin egen konto/);
+  assert.match(auditorPortal, /fuld læseadgang til regnskabsmaterialet/);
+  assert.match(auditorPortal, /Tofaktorgodkendelse er obligatorisk/);
+  assert.match(auditorPortal, /href="#\/smartregnskab\/app\/fagportal"/);
+  assert.match(auditorPortal, /canManageAccess && <CreateDialog/);
+  assert.match(professionalRoutes, /app\.post\("\/api\/professional\/invite"/);
+  assert.match(professionalRoutes, /requiresTwoFactor: 1/);
+  assert.match(professionalRoutes, /Opret din adgang her/);
+  assert.match(publicPages, /export function Invitation\(\)/);
+  assert.match(publicPages, /Din konto er oprettet\. Log ind nu\./);
+});

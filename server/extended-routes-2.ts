@@ -1,7 +1,7 @@
 // Extended routes batch 2 — 24 new features
 import type { Express } from "express";
 import { storage } from "./storage";
-import { requireFeature, tenantId } from "./auth";
+import { requireFeature, requireRole, tenantId } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
@@ -72,7 +72,21 @@ export function registerExtendedRoutes2(app: Express) {
   crud(app, "/api/advanced-vat", "advanced_vat", insertAdvancedVatSchema, ["period", "vatType", "country", "basis", "vatRate", "vatAmount", "deductionRate", "deductibleAmount", "description", "status"], undefined, [requireFeature("avanceret_moms")]);
   crud(app, "/api/bank-payments", "bank_payments", insertBankPaymentSchema, ["paymentFileId", "recipientName", "recipientAccount", "recipientReg", "amount", "currency", "paymentDate", "reference", "message", "status", "approvedBy", "approvedAt", "bankStatus", "errorMessage"], undefined, [requireFeature("betalinger")]);
   crud(app, "/api/payroll-engine", "payroll_engine", insertPayrollEngineSchema, ["employeeId", "employeeName", "period", "payslipNumber", "grossSalary", "aTax", "atp", "amContribution", "holidayPay", "pension", "healthInsurance", "unionContribution", "netSalary", "hours", "hourlyRate", "overtime", "mileage", "deductions", "eindkomstStatus", "feriekontoStatus", "status", "approvedBy", "approvedAt"], undefined, [requireFeature("loen")]);
-  crud(app, "/api/audit-package", "audit_package", insertAuditPackageSchema, ["year", "type", "title", "description", "content", "preparedBy", "reviewedBy", "status", "signedOffAt"]);
+  const auditPackageFields = ["year", "type", "title", "description", "content", "preparedBy", "reviewedBy", "status", "signedOffAt"];
+  app.get("/api/audit-package", requireFeature("revision"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(await storage.all("audit_package", tid(req)));
+  }));
+  app.post("/api/audit-package", requireFeature("revision"), requireRole("leder", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    const data = validate(insertAuditPackageSchema, { ...req.body, companyId: tid(req), createdAt: nowIso() });
+    res.status(201).json(await storage.insert("audit_package", data));
+  }));
+  app.patch("/api/audit-package/:id", requireFeature("revision"), requireRole("leder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(await storage.update("audit_package", Number(req.params.id), updates(auditPackageFields)(req), tid(req)));
+  }));
+  app.delete("/api/audit-package/:id", requireFeature("revision"), requireRole("leder", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    await storage.delete("audit_package", Number(req.params.id), tid(req));
+    res.json({ success: true });
+  }));
   crud(app, "/api/budget-versions", "budget_versions", insertBudgetVersionSchema, ["name", "year", "scenario", "version", "data", "totalRevenue", "totalCosts", "totalResult", "approvedBy", "approvedAt", "status"]);
   crud(app, "/api/reconciliation-center", "reconciliation_center", insertReconciliationCenterSchema, ["period", "type", "accountNumber", "bookAmount", "externalAmount", "difference", "matchedTransactions", "unmatchedTransactions", "autoMatched", "status", "notes"]);
   crud(app, "/api/api-keys", "api_keys", insertApiKeySchema, ["name", "keyPrefix", "keyHash", "scopes", "rateLimit", "lastUsed", "webhookUrl", "webhookEvents", "webhookLog", "status", "expiresAt"]);

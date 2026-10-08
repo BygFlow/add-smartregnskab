@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,7 @@ type AuditorRequest = {
 
 export default function Revisorportal({ companyId }: { companyId: number }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [respondItem, setRespondItem] = useState<AuditorRequest | null>(null);
@@ -101,6 +103,7 @@ export default function Revisorportal({ companyId }: { companyId: number }) {
   const overdue = items.filter(
     (i) => i.status === "afventer" && i.dueDate && i.dueDate.slice(0, 10) < today(),
   ).length;
+  const canManageAccess = ["leder", "revisor_admin", "platform_admin"].includes(user?.role ?? "");
 
   const createMutation = useMutation({
     mutationFn: async (body: unknown) =>
@@ -144,16 +147,20 @@ export default function Revisorportal({ companyId }: { companyId: number }) {
     <div className="space-y-3">
       <PageHeader
         title="Revisorportal (beta)"
-        description="Sikker kommunikation og dokumentudveksling med revisor."
+        description="Sikker kommunikation og dokumentudveksling med en inviteret revisor."
         action={
-          <Button data-testid="create-request-btn" onClick={() => setCreateOpen(true)} size="sm">
+          canManageAccess ? <Button data-testid="create-request-btn" onClick={() => setCreateOpen(true)} size="sm">
             <Plus className="w-4 h-4 mr-1" /> Opret anmodning
-          </Button>
+          </Button> : undefined
         }
       />
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-        Beta: Revisorportalet er under aktiv udvikling. Funktioner kan ændres.
+      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <p className="font-semibold">Revisoren skal logge ind med sin egen konto</p>
+        <p className="mt-1">Adgang gives kun via en personlig e-mailinvitation under Bogholder &amp; Revisor. Revisoren får fuld læseadgang til regnskabsmaterialet samt adgang til kommentarer, dokumenter og sign-off, men kan ikke ændre bogføring, slette data eller gennemføre betalinger. Tofaktorgodkendelse er obligatorisk, adgangen gælder kun den inviterede virksomhed og kan altid tilbagekaldes. Der findes ingen offentlig deling.</p>
+        {canManageAccess && <Button asChild variant="outline" size="sm" className="mt-2 bg-background">
+          <a href="#/smartregnskab/app/fagportal">Administrer revisoradgang</a>
+        </Button>}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-border">
@@ -190,7 +197,7 @@ export default function Revisorportal({ companyId }: { companyId: number }) {
           </div>
         ) : items.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            Ingen anmodninger endnu. Tryk “Opret anmodning” for at starte dialogen med revisor.
+            {canManageAccess ? "Ingen anmodninger endnu. Invitér først revisoren, og opret derefter en anmodning." : "Ingen anmodninger er tildelt virksomheden endnu."}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -262,14 +269,14 @@ export default function Revisorportal({ companyId }: { companyId: number }) {
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                           </Button>
-                          <Button
-                            data-testid={`delete-btn-${req.id}`}
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteMutation.mutate(req.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          {canManageAccess && <Button
+                              data-testid={`delete-btn-${req.id}`}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteMutation.mutate(req.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>}
                         </div>
                       </td>
                     </tr>
@@ -281,13 +288,13 @@ export default function Revisorportal({ companyId }: { companyId: number }) {
         )}
       </SectionCard>
 
-      <CreateDialog
+      {canManageAccess && <CreateDialog
         key="create"
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={(body) => createMutation.mutate(body)}
         pending={createMutation.isPending}
-      />
+      />}
 
       <RespondDialog
         key={respondItem ? `respond-${respondItem.id}` : "respond-none"}

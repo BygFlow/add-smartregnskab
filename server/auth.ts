@@ -284,6 +284,7 @@ export function professionalAccessGuard(req: Request, res: Response, next: NextF
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)
       && !req.path.startsWith("/professional")
       && !req.path.startsWith("/auditor-portal")
+      && !req.path.startsWith("/audit-package")
       && !permissions.has("accounting:write")) {
     return res.status(403).json({ error: "Denne fagprofil har skrivebeskyttet adgang." });
   }

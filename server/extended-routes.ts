@@ -2,12 +2,14 @@
 // This file is imported and called from routes.ts
 import type { Express } from "express";
 import { storage } from "./storage";
-import { requireFeature, requireRole } from "./auth";
+import { requireFeature, requireRole, tenantId as authTenantId } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
   Promise.resolve(fn(req, res, next)).catch(next);
-const tenantId = (req: any): number => req.user?.companyId || req.query.companyId || 1;
+// Brug altid den servervaliderede virksomhed fra sessionen. Et companyId i URL'en
+// må aldrig kunne flytte en forespørgsel til en anden kundes data.
+const tenantId = authTenantId;
 
 type SafeParse<T> = {
   safeParse(data: unknown): { success: true; data: T } | { success: false; error: { issues: unknown } };
@@ -439,15 +441,15 @@ export function registerExtendedRoutes(app: Express) {
 
   // ── Revisorportal ──
   const apFields = ["auditorName", "requestType", "description", "status", "response", "dueDate"];
-  app.get("/api/auditor-portal", h(async (req, res) => { res.json(await storage.all("auditor_portal", tenantId(req))); }));
-  app.post("/api/auditor-portal", h(async (req, res) => {
+  app.get("/api/auditor-portal", requireFeature("revision"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => { res.json(await storage.all("auditor_portal", tenantId(req))); }));
+  app.post("/api/auditor-portal", requireFeature("revision"), requireRole("leder", "revisor_admin", "platform_admin"), h(async (req, res) => {
     const data = validate(insertAuditorPortalSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
     res.status(201).json(await storage.insert("auditor_portal", data));
   }));
-  app.patch("/api/auditor-portal/:id", h(async (req, res) => {
+  app.patch("/api/auditor-portal/:id", requireFeature("revision"), requireRole("leder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
     res.json(await storage.update("auditor_portal", Number(req.params.id), UPDATABLE(apFields)(req), tenantId(req)));
   }));
-  app.delete("/api/auditor-portal/:id", h(async (req, res) => {
+  app.delete("/api/auditor-portal/:id", requireFeature("revision"), requireRole("leder", "revisor_admin", "platform_admin"), h(async (req, res) => {
     await storage.delete("auditor_portal", Number(req.params.id), tenantId(req)); res.status(204).send();
   }));
 
