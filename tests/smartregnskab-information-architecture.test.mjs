@@ -62,3 +62,22 @@ test("regnskabsopsætning uses precise guidance instead of a generic beta blocke
   assert.match(profile, /Regnskabsår og moms påvirker indberetning/);
   assert.doesNotMatch(profile, /BETA — Ændringer i branche-profilen kræver revisor-godkendelse/);
 });
+
+test("core VAT and paid international VAT rules are separated consistently", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const router = read("client/src/pages/regnskabssystem.tsx");
+  const coreVat = read("client/src/pages/regnskab-tabs/valuta-moms.tsx");
+  const internationalVat = read("client/src/pages/regnskab-tabs/avanceret-moms.tsx");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/extended-routes-2.ts");
+
+  assert.match(shell, /EU, import og valuta/);
+  assert.match(router, /EU-moms, reverse charge, importmoms/);
+  assert.match(coreVat, /const VAT_TYPES = \["eu_moms", "reverse_charge", "import_moms"\]/);
+  assert.doesNotMatch(coreVat, /const VAT_TYPES = \[[^\]]*"oss"/);
+  assert.match(internationalVat, /const VAT_TYPES = \["oss", "intrastat", "delvist_fradrag", "momsregistrering_udland"\]/);
+  assert.match(catalog, /name: "International moms og specialregler"/);
+  assert.match(catalog, /protectedRoutes: \["avanceret_moms"\]/);
+  assert.doesNotMatch(catalog, /protectedRoutes: \["avanceret_moms", "valuta_moms"\]/);
+  assert.match(routes, /requireFeature\("avanceret_moms"\)/);
+});

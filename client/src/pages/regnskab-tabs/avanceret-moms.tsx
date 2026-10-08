@@ -23,7 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Trash2, Pencil, Receipt, Calculator, Globe } from "lucide-react";
 
-/* Avanceret moms — avanceret momsbehandling og fradrag */
+/* International moms og specialregler — betalt tillægsmodul */
 
 type AdvancedVatEntry = {
   id: number;
@@ -76,6 +76,8 @@ const VAT_TYPE_COLOR: Record<string, string> = {
   import_moms: "purple",
   oss: "red",
   intrastat: "gray",
+  delvist_fradrag: "orange",
+  momsregistrering_udland: "purple",
 };
 
 const VAT_TYPE_LABEL: Record<string, string> = {
@@ -86,6 +88,8 @@ const VAT_TYPE_LABEL: Record<string, string> = {
   import_moms: "Importmoms",
   oss: "OSS",
   intrastat: "Intrastat",
+  delvist_fradrag: "Delvist momsfradrag",
+  momsregistrering_udland: "Momsregistrering i flere lande",
 };
 
 const COUNTRY_COLOR: Record<string, string> = {
@@ -100,15 +104,7 @@ const COUNTRY_COLOR: Record<string, string> = {
   FI: "green",
 };
 
-const VAT_TYPES = [
-  "indenlandsk",
-  "eu_med_vat",
-  "eu_uden_vat",
-  "reverse_charge",
-  "import_moms",
-  "oss",
-  "intrastat",
-] as const;
+const VAT_TYPES = ["oss", "intrastat", "delvist_fradrag", "momsregistrering_udland"] as const;
 
 const COUNTRIES = ["DK", "DE", "SE", "NL", "GB", "FR", "PL", "NO", "FI"] as const;
 
@@ -196,9 +192,9 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Avanceret moms</h2>
+          <h2 className="text-xl font-semibold tracking-tight">International moms og specialregler</h2>
           <p className="text-sm text-muted-foreground">
-            Avanceret momsbehandling med fradragsberegning for indenlandsk, EU, import, OSS og Intrastat.
+            OSS, Intrastat, delvist momsfradrag og momsregistrering i flere lande med udvidet kontrol.
           </p>
         </div>
         <Button data-testid="add-entry-btn" onClick={openCreate} size="sm">
@@ -248,7 +244,7 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
       ) : items.length === 0 ? (
         <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
           <Receipt className="mx-auto mb-2 h-8 w-8 opacity-40" />
-          Ingen momsposteringer endnu. Tilføj en postering for at starte.
+          Ingen internationale specialposteringer endnu. Tilføj en postering for at starte.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border">
@@ -372,7 +368,7 @@ function VatDialog({
   pending: boolean;
 }) {
   const [period, setPeriod] = useState(currentPeriod());
-  const [vatType, setVatType] = useState<string>("indenlandsk");
+  const [vatType, setVatType] = useState<string>("oss");
   const [country, setCountry] = useState<string>("DK");
   const [basis, setBasis] = useState("");
   const [vatRate, setVatRate] = useState("25");
@@ -383,7 +379,7 @@ function VatDialog({
     if (!open) return;
     if (editing) {
       setPeriod(editing.period ?? currentPeriod());
-      setVatType(editing.vatType ?? "indenlandsk");
+      setVatType(editing.vatType ?? "oss");
       setCountry(editing.country ?? "DK");
       setBasis(String(editing.basis ?? ""));
       setVatRate(String(editing.vatRate ?? "25"));
@@ -391,7 +387,7 @@ function VatDialog({
       setDescription(editing.description ?? "");
     } else {
       setPeriod(currentPeriod());
-      setVatType("indenlandsk");
+      setVatType("oss");
       setCountry("DK");
       setBasis("");
       setVatRate("25");

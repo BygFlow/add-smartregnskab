@@ -106,7 +106,7 @@ const ADVANCED_GROUPS: NavGroup[] = [
     item("kontoplan_skabeloner", "Kontoplanskabeloner", FileText),
     item("dimensioner", "Dimensioner", Layers),
     item("regnskabskategorier", "Regnskabskategorier", Tags),
-    item("valuta_moms", "Valuta & udenlandsk moms", Wallet),
+    item("valuta_moms", "EU, import og valuta", Wallet),
     item("budget_scenarier", "Budgetscenarier", FileBarChart),
   ] },
   { label: "Løn, revision og kontrol", items: [

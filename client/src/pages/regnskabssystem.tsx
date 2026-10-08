@@ -3014,6 +3014,39 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </div>
                   )}
                 </SectionCard>
+
+                <SectionCard title="Momsfunktioner" icon={<Calculator className="size-4" />}>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">EU, import og valuta</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        EU-moms, reverse charge, importmoms og valutaposteringer er en del af det almindelige regnskab.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/valuta_moms"; }}
+                      >
+                        Åbn EU, import og valuta
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">International moms og specialregler</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        OSS, Intrastat, delvist momsfradrag og momsregistrering i flere lande kan aktiveres i Appmarked.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/appmarked"; }}
+                      >
+                        Se modulet i Appmarked
+                      </Button>
+                    </div>
+                  </div>
+                </SectionCard>
               </TabsContent>
 
               {/* ---------- RAPPORTER ---------- */}
@@ -6053,7 +6086,7 @@ const PLAN_FEATURES = [
   ["lagerregnskab", "Lagerregnskab"],
   ["konsolidering", "Koncern og konsolidering"],
   ["kundeportal", "Kundeportal"],
-  ["avanceret_moms", "Avanceret moms og valuta"],
+  ["avanceret_moms", "International moms og specialregler"],
   ["workflow_builder", "Workflow Builder"],
   ["dedikeret_onboarding", "Dedikeret onboarding"],
   ["support_sla", "Prioriteret support og SLA"],

@@ -52,12 +52,15 @@ const CURRENCY_VARIANT: Record<string, "blue" | "green" | "purple" | "gray"> = {
 const VAT_VARIANT: Record<string, "blue" | "amber" | "green" | "red" | "gray"> = {
   eu_moms: "blue",
   reverse_charge: "amber",
+  import_moms: "green",
   oss: "green",
   intrastat: "red",
 };
 const VAT_LABEL: Record<string, string> = {
   eu_moms: "EU-moms",
   reverse_charge: "Reverse charge",
+  import_moms: "Importmoms",
+  // Behold labels for historiske posteringer, der blev oprettet før funktionsopdelingen.
   oss: "OSS",
   intrastat: "Intrastat",
 };
@@ -75,7 +78,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "CHF"] as const;
-const VAT_TYPES = ["eu_moms", "reverse_charge", "oss", "intrastat"] as const;
+const VAT_TYPES = ["eu_moms", "reverse_charge", "import_moms"] as const;
 
 /* ---------- typer ---------- */
 
@@ -184,8 +187,8 @@ export default function ValutaMoms({ companyId }: { companyId: number }) {
   return (
     <div className="space-y-3">
       <PageHeader
-        title="Valuta & udenlandsk moms"
-        description="Valutaposteringer, kurser og udenlandsk moms (EU-moms, reverse charge, OSS, Intrastat)."
+        title="EU, import og valuta"
+        description="Kernefunktioner til EU-moms, reverse charge, importmoms og posteringer i udenlandsk valuta."
         action={
           <Button data-testid="add-tx-btn" onClick={openCreate} size="sm">
             <Plus className="w-4 h-4 mr-1" /> Tilføj postering

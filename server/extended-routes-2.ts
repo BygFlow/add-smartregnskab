@@ -1,7 +1,7 @@
 // Extended routes batch 2 — 24 new features
 import type { Express } from "express";
 import { storage } from "./storage";
-import { tenantId } from "./auth";
+import { requireFeature, tenantId } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
@@ -31,18 +31,18 @@ function validate(schema: any, data: any) {
 }
 
 // Helper: standard CRUD for a table
-function crud(app: Express, basePath: string, tableName: string, insertSchema: any, fields: string[], extra?: (app: Express) => void) {
-  app.get(basePath, h(async (req, res) => { res.json(await storage.all(tableName, tid(req))); }));
-  app.post(basePath, h(async (req, res) => {
+function crud(app: Express, basePath: string, tableName: string, insertSchema: any, fields: string[], extra?: (app: Express) => void, guards: any[] = []) {
+  app.get(basePath, ...guards, h(async (req, res) => { res.json(await storage.all(tableName, tid(req))); }));
+  app.post(basePath, ...guards, h(async (req, res) => {
     if (!req.auth?.isPlatformAdmin && !["leder", "holdleder"].includes(req.auth?.role)) return res.status(403).json({ error: "Ingen adgang." });
     const data = validate(insertSchema, { ...req.body, companyId: tid(req), createdAt: nowIso() });
     res.status(201).json(await storage.insert(tableName, data));
   }));
-  app.patch(`${basePath}/:id`, h(async (req, res) => {
+  app.patch(`${basePath}/:id`, ...guards, h(async (req, res) => {
     if (!req.auth?.isPlatformAdmin && !["leder", "holdleder"].includes(req.auth?.role)) return res.status(403).json({ error: "Ingen adgang." });
     res.json(await storage.update(tableName, Number(req.params.id), updates(fields)(req), tid(req)));
   }));
-  app.delete(`${basePath}/:id`, h(async (req, res) => {
+  app.delete(`${basePath}/:id`, ...guards, h(async (req, res) => {
     if (!req.auth?.isPlatformAdmin && !["leder", "holdleder"].includes(req.auth?.role)) return res.status(403).json({ error: "Ingen adgang." });
     await storage.delete(tableName, Number(req.params.id), tid(req));
     res.json({ success: true });
@@ -69,7 +69,7 @@ export function registerExtendedRoutes2(app: Express) {
   crud(app, "/api/integration-configs", "integration_configs", insertIntegrationConfigSchema, ["type", "provider", "displayName", "status", "authMethod", "config", "lastSync", "syncStatus", "errorMessage", "apiAgreement"]);
   crud(app, "/api/compliance-checks", "compliance_checks", insertComplianceCheckSchema, ["category", "checkName", "description", "status", "result", "checkedAt", "notes", "requiresLegal"]);
   crud(app, "/api/consolidation", "consolidation_entries", insertConsolidationEntrySchema, ["period", "parentCompany", "subsidiaryCompany", "type", "accountNumber", "description", "amount", "eliminationType", "status"]);
-  crud(app, "/api/advanced-vat", "advanced_vat", insertAdvancedVatSchema, ["period", "vatType", "country", "basis", "vatRate", "vatAmount", "deductionRate", "deductibleAmount", "description", "status"]);
+  crud(app, "/api/advanced-vat", "advanced_vat", insertAdvancedVatSchema, ["period", "vatType", "country", "basis", "vatRate", "vatAmount", "deductionRate", "deductibleAmount", "description", "status"], undefined, [requireFeature("avanceret_moms")]);
   crud(app, "/api/bank-payments", "bank_payments", insertBankPaymentSchema, ["paymentFileId", "recipientName", "recipientAccount", "recipientReg", "amount", "currency", "paymentDate", "reference", "message", "status", "approvedBy", "approvedAt", "bankStatus", "errorMessage"]);
   crud(app, "/api/payroll-engine", "payroll_engine", insertPayrollEngineSchema, ["employeeId", "employeeName", "period", "payslipNumber", "grossSalary", "aTax", "atp", "amContribution", "holidayPay", "pension", "healthInsurance", "unionContribution", "netSalary", "hours", "hourlyRate", "overtime", "mileage", "deductions", "eindkomstStatus", "feriekontoStatus", "status", "approvedBy", "approvedAt"]);
   crud(app, "/api/audit-package", "audit_package", insertAuditPackageSchema, ["year", "type", "title", "description", "content", "preparedBy", "reviewedBy", "status", "signedOffAt"]);
