@@ -4,6 +4,7 @@ import { eq, and, desc } from "drizzle-orm";
 import * as schema from "../shared/schema";
 import { tenantId } from "./auth";
 import { ensureRegulatorySources, monitorRegulatorySources } from "./regulatory-monitor";
+import { registerFileObjectRoutes } from "./file-object-routes";
 
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -312,8 +313,7 @@ export function registerExtendedRoutes3(app: Express) {
   }));
 
   // ── Filhåndtering ──
-  crud(app, "/api/file-objects", schema.fileObjects, true);
-  crud(app, "/api/file-versions", schema.fileVersions, true);
+  registerFileObjectRoutes(app);
 
   // ── Compliance & dokumentation ──
   crud(app, "/api/compliance-documents", schema.complianceDocuments, true);

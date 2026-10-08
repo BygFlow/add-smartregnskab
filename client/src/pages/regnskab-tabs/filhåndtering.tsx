@@ -31,9 +31,9 @@ import {
   ShieldCheck,
   ShieldAlert,
   MoreVertical,
-  Trash2,
   Archive,
   FileText,
+  Download,
 } from "lucide-react";
 
 /* Filhåndtering — filobjekter (bilag, kontrakter, fotos, dokumenter, rapporter) */
@@ -103,12 +103,8 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({
-    fileName: "",
-    fileType: "pdf",
-    category: "bilag",
-    fileSize: "",
-  });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [category, setCategory] = useState("bilag");
 
   const queryKey = ["/api/file-objects", companyId];
 
@@ -126,24 +122,27 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
 
   const createMut = useMutation({
     mutationFn: async () => {
+      if (!selectedFile) throw new Error("Vælg en fil først.");
+      if (selectedFile.size > 8 * 1024 * 1024) throw new Error("Filen må højst være 8 MB.");
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Filen kunne ikke læses."));
+        reader.readAsDataURL(selectedFile);
+      });
       const res = await apiRequest("POST", "/api/file-objects", {
-        companyId,
-        fileName: form.fileName,
-        fileType: form.fileType,
-        category: form.category,
-        fileSize: form.fileSize ? parseInt(form.fileSize, 10) : null,
-        mimeType: null,
-        uploadedBy: "Nuværende bruger",
-        isVirusScanned: false,
-        status: "aktiv",
+        fileName: selectedFile.name,
+        category,
+        dataUrl,
       });
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/file-objects"] });
-      toast({ title: "Fil uploadet", description: "Filen er registreret." });
+      toast({ title: "Fil uploadet", description: "Originalfilen er gemt og kontrolleret." });
       setDialogOpen(false);
-      setForm({ fileName: "", fileType: "pdf", category: "bilag", fileSize: "" });
+      setSelectedFile(null);
+      setCategory("bilag");
     },
     onError: (err: unknown) => {
       const message =
@@ -168,20 +167,22 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
     },
   });
 
-  const deleteMut = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/file-objects/${id}`);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/file-objects"] });
-      toast({ title: "Fil slettet" });
-    },
-    onError: (err: unknown) => {
-      const message =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Ukendt fejl";
-      toast({ title: "Kunne ikke slette fil", description: message, variant: "destructive" });
-    },
-  });
+  async function downloadFile(file: FileObject) {
+    try {
+      const response = await apiRequest("GET", `/api/file-objects/${file.id}/fil`);
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = file.fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Filen kunne ikke hentes", description: message, variant: "destructive" });
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -189,7 +190,7 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Filhåndtering</h2>
           <p className="text-sm text-muted-foreground">
-            Overblik over uploadede filer, bilag, kontrakter og dokumenter.
+            Upload og hent faktiske PDF- og billedfiler. Ældre registreringer uden originalfil kan ikke hentes.
           </p>
         </div>
         <Button data-testid="upload-file-btn" onClick={() => setDialogOpen(true)}>
@@ -222,9 +223,12 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
             <tbody className="divide-y divide-border">
               {files.map((f) => (
                 <tr key={f.id} data-testid={`file-row-${f.id}`}>
-                  <td className="px-3 py-2 font-medium flex items-center gap-1.5">
-                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                    {f.fileName}
+                  <td className="px-3 py-2 font-medium">
+                    <button type="button" className="flex items-center gap-1.5 underline-offset-2 hover:underline"
+                      onClick={() => downloadFile(f)}>
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground" /> {f.fileName}
+                      <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground uppercase">{f.fileType}</td>
                   <td className="px-3 py-2 text-muted-foreground">{formatSize(f.fileSize)}</td>
@@ -281,13 +285,6 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
                         >
                           <Archive className="mr-2 h-3.5 w-3.5" /> Arkiver
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          data-testid={`delete-file-${f.id}`}
-                          className="text-red-600"
-                          onClick={() => deleteMut.mutate(f.id)}
-                        >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" /> Slet
-                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
@@ -305,30 +302,20 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="fo-name">Filnavn</Label>
+              <Label htmlFor="fo-name">Vælg fil (PDF eller billede, maks. 8 MB)</Label>
               <Input
                 id="fo-name"
-                data-testid="form-fileName"
-                value={form.fileName}
-                onChange={(e) => setForm((f) => ({ ...f, fileName: e.target.value }))}
-                placeholder="F.eks. faktura_2026_08.pdf"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fo-type">Filtype</Label>
-              <Input
-                id="fo-type"
-                data-testid="form-fileType"
-                value={form.fileType}
-                onChange={(e) => setForm((f) => ({ ...f, fileType: e.target.value }))}
-                placeholder="pdf, jpg, docx…"
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
+                data-testid="form-file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="fo-category">Kategori</Label>
               <Select
-                value={form.category}
-                onValueChange={(v) => setForm((f) => ({ ...f, category: v }))}
+                value={category}
+                onValueChange={setCategory}
               >
                 <SelectTrigger id="fo-category" data-testid="form-category">
                   <SelectValue />
@@ -342,17 +329,6 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="fo-size">Filstørrelse (bytes)</Label>
-              <Input
-                id="fo-size"
-                type="number"
-                data-testid="form-fileSize"
-                value={form.fileSize}
-                onChange={(e) => setForm((f) => ({ ...f, fileSize: e.target.value }))}
-                placeholder="F.eks. 204800"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" data-testid="form-cancel" onClick={() => setDialogOpen(false)}>
@@ -360,7 +336,7 @@ export default function Filhåndtering({ companyId }: { companyId: number }) {
             </Button>
             <Button
               data-testid="form-save"
-              disabled={createMut.isPending || !form.fileName.trim()}
+              disabled={createMut.isPending || !selectedFile}
               onClick={() => createMut.mutate()}
             >
               {createMut.isPending ? "Uploader…" : "Upload"}

@@ -1285,6 +1285,16 @@ export const insertBackupJobSchema = createInsertSchema(backupJobs).omit({ id: t
 export type InsertBackupJob = z.infer<typeof insertBackupJobSchema>;
 export type BackupJob = typeof backupJobs.$inferSelect;
 
+// Kvitteringer for det særskilte, låste bogføringsarkiv – ikke rullende backup.
+export const bookkeepingArchiveReceipts = sqliteTable("bookkeeping_archive_receipts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  fiscalYearStart: text("fiscal_year_start").notNull(),
+  archivedAt: text("archived_at").notNull(),
+  sourceSha256: text("source_sha256").notNull(),
+  receiptJson: text("receipt_json").notNull(),
+});
+
 // ── Dashboard Widgets (tilpasset dashboard) ──
 export const dashboardWidgets = sqliteTable("dashboard_widgets", {
   id: integer("id").primaryKey({ autoIncrement: true }),

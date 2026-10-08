@@ -41,5 +41,6 @@ try {
 } finally {
   try { source?.close(); } catch {}
   try { restored?.close(); } catch {}
-  rmSync(drillDir, { recursive: true, force: true });
+  // Windows kan kortvarigt holde SQLite-filer åbne efter close().
+  rmSync(drillDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

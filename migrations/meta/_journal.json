@@ -92,6 +92,13 @@
       "when": 1790144845055,
       "tag": "0012_striped_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791324000000,
+      "tag": "0013_bookkeeping_archive_receipts",
+      "breakpoints": true
     }
   ]
 }

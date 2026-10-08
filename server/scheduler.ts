@@ -6,6 +6,7 @@ import { runDunning, renewSubscriptions } from "./payments";
 import { applyRetention } from "./gdpr";
 import { monitorRegulatorySources } from "./regulatory-monitor";
 import { createExternalBackup, externalBackupConfigured } from "./backup-service";
+import { runWeeklyBookkeepingArchive, weeklyArchiveEnabled } from "./bookkeeping-archive-weekly";
 import { syncAllAiia } from "./aiia";
 
 /**
@@ -25,16 +26,16 @@ import { syncAllAiia } from "./aiia";
 const nowIso = () => new Date().toISOString();
 const today = () => new Date().toISOString().slice(0, 10);
 
-async function recordBackupHealth(status: "ok" | "warning" | "error", message: string, metrics: Record<string, unknown> = {}) {
+async function recordBackupHealth(status: "ok" | "warning" | "error", message: string, metrics: Record<string, unknown> = {}, component = "external_backup") {
   const active = (await storage.all("systemHealthEvents", undefined, 500))
-    .find((event: any) => event.component === "external_backup" && !event.resolvedAt);
+    .find((event: any) => event.component === component && !event.resolvedAt);
   if (status === "ok") {
     if (active) await storage.update("systemHealthEvents", active.id, { status: "ok", severity: "info", message, metrics: JSON.stringify(metrics), resolvedAt: nowIso() });
     return;
   }
   const data = { status, severity: status === "error" ? "critical" : "warning", message, metrics: JSON.stringify(metrics) };
   if (active) await storage.update("systemHealthEvents", active.id, data);
-  else await storage.insert("systemHealthEvents", { component: "external_backup", ...data, resolvedAt: null, createdAt: nowIso() });
+  else await storage.insert("systemHealthEvents", { component, ...data, resolvedAt: null, createdAt: nowIso() });
 }
 
 export interface JobResult {
@@ -340,6 +341,24 @@ const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Pro
       } catch (error: any) {
         const detail = `Ekstern backup fejlede: ${String(error?.message || error).slice(0, 300)}`;
         await recordBackupHealth("error", detail, { configured: true });
+        throw new Error(detail);
+      }
+    },
+  },
+  bogfoeringsarkiv: {
+    label: "Kontrollér og opret særskilt låst bogføringsarkiv",
+    everyMinutes: 60 * 24,
+    run: async () => {
+      if (!weeklyArchiveEnabled()) {
+        return { job: "bogfoeringsarkiv", affected: 0, detail: "Ikke aktiveret før fuld datadækning og produktionsdrill er godkendt." };
+      }
+      try {
+        const result = await runWeeklyBookkeepingArchive();
+        await recordBackupHealth("ok", result.detail, { archived: result.archived, skipped: result.skipped }, "bookkeeping_archive");
+        return { job: "bogfoeringsarkiv", affected: result.archived, detail: result.detail };
+      } catch (error: any) {
+        const detail = `Bogføringsarkiv fejlede: ${String(error?.message || error).slice(0, 300)}`;
+        await recordBackupHealth("error", detail, {}, "bookkeeping_archive");
         throw new Error(detail);
       }
     },

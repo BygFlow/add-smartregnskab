@@ -162,6 +162,16 @@ if (!hasApplicationSchema) {
         auto_topup_enabled integer DEFAULT 0 NOT NULL, auto_topup_pack_credits integer DEFAULT 500 NOT NULL,
         hard_cost_cap_override real, created_at text NOT NULL, updated_at text NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS bookkeeping_archive_receipts (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        company_id integer NOT NULL,
+        fiscal_year_start text NOT NULL,
+        archived_at text NOT NULL,
+        source_sha256 text NOT NULL,
+        receipt_json text NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS bookkeeping_archive_company_year_idx
+        ON bookkeeping_archive_receipts(company_id, fiscal_year_start, archived_at);
     `);
 
     addColumn("dimension_values", "company_id", "integer");

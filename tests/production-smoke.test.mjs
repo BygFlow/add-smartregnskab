@@ -237,6 +237,42 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(leaderLogin.status, 200);
     let leaderToken = (await leaderLogin.json()).token;
 
+    const originalPdf = Buffer.from("%PDF-1.4\noriginal smoke test\n");
+    const revisedPdf = Buffer.from("%PDF-1.4\nrevised smoke test\n");
+    const fileHeaders = { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" };
+    const originalUpload = await fetch(`${base}/api/file-objects`, {
+      method: "POST", headers: fileHeaders,
+      body: JSON.stringify({ fileName: "smoke.pdf", category: "bilag", dataUrl: `data:application/pdf;base64,${originalPdf.toString("base64")}` }),
+    });
+    assert.equal(originalUpload.status, 201, await originalUpload.clone().text());
+    const originalFile = await originalUpload.json();
+    assert.match(originalFile.storagePath, new RegExp(`^disk:${companyResult.company.id}/`));
+    assert.match(originalFile.checksum, /^[a-f0-9]{64}$/);
+    const originalDownload = await fetch(`${base}/api/file-objects/${originalFile.id}/fil`, {
+      headers: { Authorization: `Bearer ${leaderToken}` },
+    });
+    assert.equal(originalDownload.status, 200);
+    assert.deepEqual(Buffer.from(await originalDownload.arrayBuffer()), originalPdf);
+
+    const versionUpload = await fetch(`${base}/api/file-versions`, {
+      method: "POST", headers: fileHeaders,
+      body: JSON.stringify({ fileId: originalFile.id, fileName: "smoke-v2.pdf", changeNote: "Smoke test", dataUrl: `data:application/pdf;base64,${revisedPdf.toString("base64")}` }),
+    });
+    assert.equal(versionUpload.status, 201, await versionUpload.clone().text());
+    const version = await versionUpload.json();
+    assert.equal(version.versionNumber, 2);
+    assert.match(version.checksum, /^[a-f0-9]{64}$/);
+    const versionDownload = await fetch(`${base}/api/file-versions/${version.id}/fil`, {
+      headers: { Authorization: `Bearer ${leaderToken}` },
+    });
+    assert.equal(versionDownload.status, 200);
+    assert.deepEqual(Buffer.from(await versionDownload.arrayBuffer()), revisedPdf);
+    const fakeVersion = await fetch(`${base}/api/file-versions`, {
+      method: "POST", headers: fileHeaders,
+      body: JSON.stringify({ fileId: originalFile.id, fileName: "fake.pdf", storagePath: "/storage/fake.pdf" }),
+    });
+    assert.equal(fakeVersion.status, 400, "metadata-only versions must not be accepted");
+
     const initialOrganizationResponse = await fetch(`${base}/api/organization`, {
       headers: { Authorization: `Bearer ${leaderToken}` },
     });

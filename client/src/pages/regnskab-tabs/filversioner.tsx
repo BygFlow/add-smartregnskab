@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, History } from "lucide-react";
+import { Plus, Download, History } from "lucide-react";
 
 /* Filversioner — versionshistorik for uploadede filer */
 
@@ -41,10 +42,9 @@ export default function Filversioner({ companyId }: { companyId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [form, setForm] = useState({
     fileId: "",
-    versionNumber: "1",
-    fileName: "",
     changeNote: "",
   });
 
@@ -63,24 +63,35 @@ export default function Filversioner({ companyId }: { companyId: number }) {
     if (a.fileId !== b.fileId) return a.fileId - b.fileId;
     return b.versionNumber - a.versionNumber;
   });
+  const { data: fileObjects = [] } = useQuery<Array<{ id: number; fileName: string; storagePath?: string | null }>>({
+    queryKey: ["/api/file-objects", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/file-objects")).json(),
+  });
 
   const createMut = useMutation({
     mutationFn: async () => {
+      if (!selectedFile) throw new Error("Vælg en fil først.");
+      if (selectedFile.size > 8 * 1024 * 1024) throw new Error("Filen må højst være 8 MB.");
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Filen kunne ikke læses."));
+        reader.readAsDataURL(selectedFile);
+      });
       const res = await apiRequest("POST", "/api/file-versions", {
         fileId: parseInt(form.fileId, 10),
-        versionNumber: parseInt(form.versionNumber, 10) || 1,
-        fileName: form.fileName,
-        storagePath: `/storage/${form.fileName}`,
-        uploadedBy: "Nuværende bruger",
+        fileName: selectedFile.name,
+        dataUrl,
         changeNote: form.changeNote || null,
       });
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/file-versions"] });
-      toast({ title: "Version tilføjet", description: "Ny filversion registreret." });
+      toast({ title: "Version uploadet", description: "Originalfilen er gemt med checksum." });
       setDialogOpen(false);
-      setForm({ fileId: "", versionNumber: "1", fileName: "", changeNote: "" });
+      setSelectedFile(null);
+      setForm({ fileId: "", changeNote: "" });
     },
     onError: (err: unknown) => {
       const message =
@@ -89,20 +100,22 @@ export default function Filversioner({ companyId }: { companyId: number }) {
     },
   });
 
-  const deleteMut = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/file-versions/${id}`);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/file-versions"] });
-      toast({ title: "Version slettet" });
-    },
-    onError: (err: unknown) => {
-      const message =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Ukendt fejl";
-      toast({ title: "Kunne ikke slette version", description: message, variant: "destructive" });
-    },
-  });
+  async function downloadVersion(version: FileVersion) {
+    try {
+      const response = await apiRequest("GET", `/api/file-versions/${version.id}/fil`);
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = version.fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Versionen kunne ikke hentes", description: message, variant: "destructive" });
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -110,7 +123,7 @@ export default function Filversioner({ companyId }: { companyId: number }) {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Filversioner</h2>
           <p className="text-sm text-muted-foreground">
-            Versionshistorik for uploadede filer — spor ændringer over tid.
+            Hver version er en separat originalfil. Ældre registreringer uden fil kan ikke hentes.
           </p>
         </div>
         <Button data-testid="add-version-btn" onClick={() => setDialogOpen(true)}>
@@ -122,7 +135,7 @@ export default function Filversioner({ companyId }: { companyId: number }) {
         <Skeleton className="h-64 w-full" data-testid="versions-loading" />
       ) : versions.length === 0 ? (
         <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground" data-testid="versions-empty">
-          Ingen filversioner endnu. Opret den første version ovenfor.
+          Ingen ekstra filversioner endnu. Den oprindelige fil er version 1.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
@@ -160,10 +173,10 @@ export default function Filversioner({ companyId }: { companyId: number }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      data-testid={`delete-version-${v.id}`}
-                      onClick={() => deleteMut.mutate(v.id)}
+                      data-testid={`download-version-${v.id}`}
+                      onClick={() => downloadVersion(v)}
                     >
-                      <Trash2 className="h-4 w-4 text-red-600" />
+                      <Download className="h-4 w-4" />
                     </Button>
                   </td>
                 </tr>
@@ -180,34 +193,23 @@ export default function Filversioner({ companyId }: { companyId: number }) {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="fv-fileid">Fil-ID</Label>
-              <Input
-                id="fv-fileid"
-                type="number"
-                data-testid="form-fileId"
-                value={form.fileId}
-                onChange={(e) => setForm((f) => ({ ...f, fileId: e.target.value }))}
-                placeholder="F.eks. 12"
-              />
+              <Label htmlFor="fv-fileid">Oprindelig fil</Label>
+              <Select value={form.fileId} onValueChange={(fileId) => setForm((f) => ({ ...f, fileId }))}>
+                <SelectTrigger id="fv-fileid" data-testid="form-fileId"><SelectValue placeholder="Vælg en fil" /></SelectTrigger>
+                <SelectContent>
+                  {fileObjects.filter((file) => file.storagePath?.startsWith("s3:") || file.storagePath?.startsWith("disk:"))
+                    .map((file) => <SelectItem key={file.id} value={String(file.id)}>{file.fileName}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fv-version">Versionsnummer</Label>
-              <Input
-                id="fv-version"
-                type="number"
-                data-testid="form-versionNumber"
-                value={form.versionNumber}
-                onChange={(e) => setForm((f) => ({ ...f, versionNumber: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fv-name">Filnavn</Label>
+              <Label htmlFor="fv-name">Ny fil (PDF eller billede, maks. 8 MB)</Label>
               <Input
                 id="fv-name"
-                data-testid="form-fileName"
-                value={form.fileName}
-                onChange={(e) => setForm((f) => ({ ...f, fileName: e.target.value }))}
-                placeholder="F.eks. faktura_2026_08_v2.pdf"
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
+                data-testid="form-file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
               />
             </div>
             <div className="space-y-2">
@@ -227,10 +229,10 @@ export default function Filversioner({ companyId }: { companyId: number }) {
             </Button>
             <Button
               data-testid="form-save"
-              disabled={createMut.isPending || !form.fileId.trim() || !form.fileName.trim()}
+              disabled={createMut.isPending || !form.fileId.trim() || !selectedFile}
               onClick={() => createMut.mutate()}
             >
-              {createMut.isPending ? "Gemmer…" : "Gem version"}
+              {createMut.isPending ? "Uploader…" : "Upload version"}
             </Button>
           </DialogFooter>
         </DialogContent>

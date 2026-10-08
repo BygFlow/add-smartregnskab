@@ -68,6 +68,28 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Manuel arkivering af et virkeligt virksomhedsregnskabsår. Køres aldrig ved opstart.
+  await esbuild({
+    entryPoints: ["scripts/archive-real-bookkeeping.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/archive-real-bookkeeping.cjs",
+    external: externals,
+    logLevel: "info",
+  });
+
+  // Læsende gendannelseskontrol af én faktisk arkivkvittering; køres kun manuelt.
+  await esbuild({
+    entryPoints: ["scripts/verify-bookkeeping-archive.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/archive-verify.cjs",
+    external: externals,
+    logLevel: "info",
+  });
 }
 
 buildAll().catch((err) => {

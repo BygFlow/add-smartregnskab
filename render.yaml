@@ -115,3 +115,18 @@ services:
         value: smartregnskab/backups
       - key: S3_BACKUP_RETENTION_DAYS
         value: "35"
+
+      # Særskilt, låst arkiv til bogføringsmateriale. Må aldrig genbruge
+      # backup-bucketen eller den rullende backups opbevaringspolitik.
+      - key: ARCHIVE_S3_BUCKET
+        sync: false
+      - key: ARCHIVE_S3_REGION
+        sync: false
+      - key: ARCHIVE_S3_ENDPOINT
+        sync: false
+      - key: ARCHIVE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: ARCHIVE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: ARCHIVE_ENCRYPTION_KEY
+        sync: false
