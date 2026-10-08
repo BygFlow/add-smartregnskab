@@ -2,6 +2,7 @@
 // This file is imported and called from routes.ts
 import type { Express } from "express";
 import { storage } from "./storage";
+import { requireFeature } from "./auth";
 
 const nowIso = () => new Date().toISOString();
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
@@ -335,12 +336,12 @@ export function registerExtendedRoutes(app: Express) {
 
   // ── Årsrapport ──
   const annualFields = ["year", "result", "taxResult", "balanceTotal", "equity", "xbrlStatus", "auditorPackage", "status", "submittedToErhvervsstyrelsen"];
-  app.get("/api/annual-reports", h(async (req, res) => { res.json(await storage.all("annual_reports", tenantId(req))); }));
-  app.post("/api/annual-reports", h(async (req, res) => {
+  app.get("/api/annual-reports", requireFeature("aarsrapport"), h(async (req, res) => { res.json(await storage.all("annual_reports", tenantId(req))); }));
+  app.post("/api/annual-reports", requireFeature("aarsrapport"), h(async (req, res) => {
     const data = validate(insertAnnualReportSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
     res.status(201).json(await storage.insert("annual_reports", data));
   }));
-  app.patch("/api/annual-reports/:id", h(async (req, res) => {
+  app.patch("/api/annual-reports/:id", requireFeature("aarsrapport"), h(async (req, res) => {
     res.json(await storage.update("annual_reports", Number(req.params.id), UPDATABLE(annualFields)(req), tenantId(req)));
   }));
 

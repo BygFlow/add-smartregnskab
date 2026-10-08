@@ -46,6 +46,9 @@ test("optional products are collected in Appmarked instead of normal accounting 
   assert.match(catalog, /Lagerregnskab/);
   assert.match(catalog, /Revisorportal/);
   assert.match(catalog, /API og webhooks/);
+  assert.match(catalog, /name: "Årsrapport"/);
+  assert.match(catalog, /feature: "aarsrapport"/);
+  assert.match(catalog, /protectedRoutes: \["arsrapport"\]/);
   assert.doesNotMatch(shell, /item\("kunde_portal_indstillinger"/);
   assert.doesNotMatch(shell, /item\("lagerregnskab"/);
   assert.doesNotMatch(shell, /item\("revisorportal"/);
@@ -101,7 +104,16 @@ test("period close is the single navigation hub for year-end work", () => {
   assert.match(router, /Åbn periodisering/);
   assert.match(router, /Åbn afstemningscenter/);
   assert.match(router, /Åbn årsafslutning/);
-  assert.match(router, /Åbn årsrapport/);
+  assert.doesNotMatch(router, /Åbn årsrapport/);
   assert.match(router, /\/smartregnskab\/app\/aarafslutning/);
-  assert.match(router, /\/smartregnskab\/app\/arsrapport/);
+});
+
+test("annual report add-on is enforced by both client and API", () => {
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/extended-routes.ts");
+
+  assert.match(catalog, /route: "arsrapport", protectedRoutes: \["arsrapport"\]/);
+  assert.match(routes, /app\.get\("\/api\/annual-reports", requireFeature\("aarsrapport"\)/);
+  assert.match(routes, /app\.post\("\/api\/annual-reports", requireFeature\("aarsrapport"\)/);
+  assert.match(routes, /app\.patch\("\/api\/annual-reports\/:id", requireFeature\("aarsrapport"\)/);
 });

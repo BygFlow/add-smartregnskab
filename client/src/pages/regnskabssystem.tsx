@@ -3678,20 +3678,6 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         Åbn årsafslutning
                       </Button>
                     </div>
-                    <div className="rounded-xl border p-4">
-                      <h3 className="font-medium">Årsrapport</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Klargør årsrapportens data, dokumentation og status efter afslutningen.
-                      </p>
-                      <Button
-                        className="mt-3"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { window.location.hash = "/smartregnskab/app/arsrapport"; }}
-                      >
-                        Åbn årsrapport
-                      </Button>
-                    </div>
                   </div>
                 </SectionCard>
 
