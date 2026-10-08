@@ -5,12 +5,12 @@ import { useAuth } from "@/lib/auth";
 import Regnskabssystem from "@/pages/regnskabssystem";
 import { Button } from "@/components/ui/button";
 import {
-  Activity, AlertCircle, Archive, BookOpen, Bot, BrainCircuit, Briefcase,
+  Activity, AlertCircle, Archive, BrainCircuit, Briefcase,
   Building2, Calculator, Calendar, CalendarClock, ChevronDown, ClipboardCheck,
-  Code, CreditCard, Download, FileBarChart, FileCheck, FileText, GitBranch,
+  CreditCard, Download, FileBarChart, FileCheck, FileText, GitBranch,
   Inbox, KeyRound, Landmark, Layers, Link2, Lock, LogOut, Menu, Package,
-  Receipt, RefreshCw, Send, Settings, ShieldCheck, Sparkles, Tags, Truck,
-  Upload, Users, Wallet, Workflow, X, Zap,
+  Receipt, RefreshCw, Settings, ShieldCheck, Tags, Truck,
+  Upload, Users, Wallet, X, Zap,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { SMARTREGNSKAB_BRAND } from "@/components/smartregnskab-brand";
@@ -70,8 +70,17 @@ const COMPANY_GROUPS: NavGroup[] = [
   { label: "Automatisering", items: [
     item("ai_styring", "AI-styring", BrainCircuit),
     item("automatisering", "Automatisering", Zap),
+  ] },
+  { label: "Apps og forbindelser", items: [
     item("appmarked", "Appmarked", Package),
     item("integrationer", "Integrationer", Link2),
+  ] },
+  { label: "Indstillinger", items: [
+    item("indstillinger", "Alle indstillinger", Settings),
+    item("virksomhedsindstillinger", "Virksomhedsoplysninger", Building2),
+    item("branche_profil", "Regnskab & moms", Calculator),
+    item("faktura_indstillinger", "Fakturaindstillinger", FileText),
+    item("backup_regnskab", "Backup & data", Archive),
   ] },
   { label: "Konto", items: [
     item("selskabsstruktur", "Selskaber & SE-enheder", Building2),
@@ -79,58 +88,43 @@ const COMPANY_GROUPS: NavGroup[] = [
   ] },
 ];
 
-const ADVANCED_ITEMS: NavItem[] = [
-  item("faste_fakturaer", "Faste fakturaer", RefreshCw),
-  item("debitorstyring", "Rykkerflow", AlertCircle),
-  item("periodisering", "Periodisering", Calendar),
-  item("budget", "Budget & prognoser", FileBarChart),
-  item("cashflow", "Likviditet & cashflow", Wallet),
-  item("omkostning", "Omkostningssteder", Briefcase),
-  item("anlaeg", "Anlægsregister", Building2),
-  item("betaling", "Betalingskørsler", CreditCard),
-  item("aarafslutning", "Årsafslutning", Calendar),
-  item("arsrapport", "Årsrapport", FileCheck),
-  item("momsafstemning", "Momsafstemning", Calculator),
-  item("skattekonto", "Skattekonto", Landmark),
-  item("afstemningscenter", "Afstemningscenter", ShieldCheck),
-  item("revisorportal", "Revisorportal", FileCheck),
-  item("revisionspakke", "Revisionspakke", Archive),
-  item("roller_kontrol", "Roller & kontrol", KeyRound),
-  item("saft", "SAF-T 2.1", Download),
-  item("regler", "Regnskabsregler", Settings),
-  item("bank_integrationer", "Bank, SKAT & NemHandel", Landmark),
-  item("integration_configs", "Integrationsopsætning", Link2),
-  item("arkivering", "Lovpligtig arkivering", Archive),
-  item("bank_payments", "Bankbetalinger", CreditCard),
-  item("einvoice_queue", "OIOUBL & NemHandel", Inbox),
-  item("lonindberetning", "Lønindberetning", Users),
-  item("lonmotor_regnskab", "Lønmotor", Users),
-  item("importguide", "Importguide", Upload),
-  item("migration_wizard", "Datamigrering", Upload),
-  item("api_webhooks", "API & webhooks", Code),
-  item("api_keys_mgmt", "API-nøgler", KeyRound),
-  item("workflow_builder", "Workflow Builder", Workflow),
-  item("integration_runs", "Integrationslog", Activity),
-  item("retry_queue", "Retry-kø", RefreshCw),
-  item("filhaandtering", "Filhåndtering", FileText),
-  item("filversioner", "Filversioner", GitBranch),
-  item("compliance_dokumenter", "Compliance-dokumenter", ShieldCheck),
-  item("kontroltests", "Kontroltests", ClipboardCheck),
-  item("rbac_rettigheder", "Rettigheder", KeyRound),
-  item("kunde_portal_indstillinger", "Kundeportal", Settings),
-  item("portal_dokumenter", "Portaldokumenter", FileText),
-  item("backup_regnskab", "Backup", Archive),
-  item("ai_chef", "AI-regnskabschef", Bot),
-  item("ai", "AI-regnskab", Sparkles),
-  item("branche_profil", "Brancheprofil", Building2),
-  item("kontoplan_skabeloner", "Kontoplanskabeloner", FileText),
-  item("dimensioner", "Dimensioner", Layers),
-  item("regnskabskategorier", "Regnskabskategorier", Tags),
-  item("konsolidering", "Koncern", Building2),
-  item("avanceret_moms", "Avanceret moms", Calculator),
-  item("lagerregnskab", "Lagerregnskab", Archive),
-  item("valuta_moms", "Valuta & udenlandsk moms", Wallet),
-  item("budget_scenarier", "Budgetscenarier", FileBarChart),
+const ADVANCED_GROUPS: NavGroup[] = [
+  { label: "Fakturering og betaling", items: [
+    item("bank_payments", "Bankbetalinger", CreditCard),
+    item("einvoice_queue", "OIOUBL & NemHandel", Inbox),
+  ] },
+  { label: "Regnskab og afslutning", items: [
+    item("periodisering", "Periodisering", Calendar),
+    item("omkostning", "Omkostningssteder", Briefcase),
+    item("anlaeg", "Anlægsregister", Building2),
+    item("aarafslutning", "Årsafslutning", Calendar),
+    item("arsrapport", "Årsrapport", FileCheck),
+    item("momsafstemning", "Momsafstemning", Calculator),
+    item("skattekonto", "Skattekonto", Landmark),
+    item("afstemningscenter", "Afstemningscenter", ShieldCheck),
+    item("regler", "Regnskabsregler", Settings),
+    item("kontoplan_skabeloner", "Kontoplanskabeloner", FileText),
+    item("dimensioner", "Dimensioner", Layers),
+    item("regnskabskategorier", "Regnskabskategorier", Tags),
+    item("valuta_moms", "Valuta & udenlandsk moms", Wallet),
+    item("budget_scenarier", "Budgetscenarier", FileBarChart),
+  ] },
+  { label: "Løn, revision og kontrol", items: [
+    item("saft", "SAF-T 2.1", Download),
+    item("arkivering", "Lovpligtig arkivering", Archive),
+    item("compliance_dokumenter", "Compliance-dokumenter", ShieldCheck),
+    item("kontroltests", "Kontroltests", ClipboardCheck),
+  ] },
+  { label: "Integration og data", items: [
+    item("bank_integrationer", "Bank, SKAT & NemHandel", Landmark),
+    item("integration_configs", "Integrationsopsætning", Link2),
+    item("importguide", "Importguide", Upload),
+    item("api_keys_mgmt", "API-nøgler", KeyRound),
+    item("integration_runs", "Integrationslog", Activity),
+    item("retry_queue", "Retry-kø", RefreshCw),
+    item("filhaandtering", "Filhåndtering", FileText),
+    item("filversioner", "Filversioner", GitBranch),
+  ] },
 ];
 
 export function RegnskabsPlatformShell({ user, role, companyName }: {
@@ -147,7 +141,7 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
     ? currentLocation === path
     : currentLocation === path || currentLocation.startsWith(path + "/");
   const initials = (user?.name || user?.email || "??").split(" ").map((part: string) => part[0]).slice(0, 2).join("").toUpperCase();
-  const allItems = [...groups.flatMap((group) => group.items), ...ADVANCED_ITEMS];
+  const allItems = [...groups.flatMap((group) => group.items), ...ADVANCED_GROUPS.flatMap((group) => group.items)];
   const currentTabLabel = allItems.find((navItem) => isActive(navItem.path))?.label || "Regnskab";
 
   const renderItem = (navItem: NavItem, closeMobile = false) => {
@@ -169,10 +163,13 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
       <button type="button" onClick={() => setAdvancedOpen((open) => !open)}
         className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-medium text-sidebar-foreground/72 hover:bg-sidebar-accent/60"
         aria-expanded={advancedOpen} data-testid="button-advanced-navigation">
-        <span className="flex items-center gap-2.5"><Settings className="h-4 w-4" />Flere funktioner</span>
+        <span className="flex items-center gap-2.5"><Settings className="h-4 w-4" />Avancerede moduler</span>
         <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
       </button>
-      {advancedOpen && <div className="mt-1 space-y-0.5">{ADVANCED_ITEMS.map((navItem) => renderItem(navItem, mobile))}</div>}
+      {advancedOpen && <div className="mt-3 space-y-4">{ADVANCED_GROUPS.map((group) => <div key={group.label}>
+        <p className="mb-1 px-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/40">{group.label}</p>
+        <div className="space-y-0.5">{group.items.map((navItem) => renderItem(navItem, mobile))}</div>
+      </div>)}</div>}
     </section>}
   </div></nav>;
 

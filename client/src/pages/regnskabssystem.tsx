@@ -144,6 +144,9 @@ const Driftsklarhed = lazy(() => import("@/pages/regnskab-tabs/driftsklarhed"));
 const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
 const Abonnement = lazy(() => import("@/pages/regnskab-tabs/abonnement"));
 const Selskabsstruktur = lazy(() => import("@/pages/regnskab-tabs/selskabsstruktur"));
+const Indstillinger = lazy(() => import("@/pages/regnskab-tabs/indstillinger"));
+const Virksomhedsindstillinger = lazy(() => import("@/pages/regnskab-tabs/virksomhedsindstillinger"));
+const FakturaIndstillinger = lazy(() => import("@/pages/regnskab-tabs/faktura-indstillinger"));
 
 /* ---------- typer ---------- */
 
@@ -5772,6 +5775,15 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               {/* ── Ruge 3 SmartRegnskab tabs ── */}
               <TabsContent value="branche_profil" className="space-y-4">
                 <BrancheProfil companyId={effectiveCompanyId} />
+              </TabsContent>
+              <TabsContent value="indstillinger" className="space-y-4">
+                <Indstillinger />
+              </TabsContent>
+              <TabsContent value="virksomhedsindstillinger" className="space-y-4">
+                <Virksomhedsindstillinger />
+              </TabsContent>
+              <TabsContent value="faktura_indstillinger" className="space-y-4">
+                <FakturaIndstillinger />
               </TabsContent>
               <TabsContent value="kontoplan_skabeloner" className="space-y-4">
                 <KontoplanSkabeloner companyId={effectiveCompanyId} />

@@ -5,7 +5,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -22,9 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Pencil, Building2, ShieldAlert } from "lucide-react";
+import { Pencil, Building2, CircleHelp } from "lucide-react";
 
-/* Branche-profil — virksomhedsopsætning for branche-uafhængig regnskab */
+/* Regnskabsopsætning for den valgte juridiske virksomhed. */
 
 type BusinessProfile = {
   id: number;
@@ -218,19 +217,19 @@ export default function BrancheProfil({ companyId }: { companyId: number }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Branche-profil</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">Regnskab og moms</h2>
           <p className="text-sm text-muted-foreground">
-            Opsætning af branche, selskabsform, moms og regnskabsstandard for virksomheden.
+            Regnskabsår, branche, selskabsform, moms og regnskabsstandard for virksomheden.
           </p>
         </div>
         <Button data-testid="edit-profile-btn" onClick={openEdit}>
-          <Pencil className="mr-2 h-4 w-4" /> {profile ? "Rediger profil" : "Opret profil"}
+          <Pencil className="mr-2 h-4 w-4" /> {profile ? "Rediger opsætning" : "Opret opsætning"}
         </Button>
       </div>
 
       <div className="flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>BETA — Ændringer i branche-profilen kræver revisor-godkendelse.</span>
+        <CircleHelp className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>Regnskabsår og moms påvirker indberetning og den lovpligtige arkivering. Kontrollér ændringerne med bogholder eller revisor, hvis du er i tvivl.</span>
       </div>
 
       {isLoading ? (
@@ -240,7 +239,7 @@ export default function BrancheProfil({ companyId }: { companyId: number }) {
           className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
           data-testid="no-profile-state"
         >
-          Ingen virksomhedsprofil oprettet endnu. Opret profilen ovenfor for at komme i gang.
+          Grundopsætningen er endnu ikke udfyldt. Vælg <strong>Opret opsætning</strong> for at angive regnskabsår, moms og selskabsform.
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
@@ -297,10 +296,6 @@ export default function BrancheProfil({ companyId }: { companyId: number }) {
                 ))
               )}
             </div>
-            <div className="font-medium text-sm pt-2">Custom fields (JSON)</div>
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-xs text-muted-foreground">
-              {profile.customFields || "—"}
-            </pre>
           </div>
         </div>
       )}
@@ -308,7 +303,7 @@ export default function BrancheProfil({ companyId }: { companyId: number }) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{profile ? "Rediger branche-profil" : "Opret branche-profil"}</DialogTitle>
+            <DialogTitle>{profile ? "Rediger regnskabsopsætning" : "Opret regnskabsopsætning"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -446,17 +441,6 @@ export default function BrancheProfil({ companyId }: { companyId: number }) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="bp-customFields">Custom fields (JSON)</Label>
-              <Textarea
-                id="bp-customFields"
-                data-testid="form-customFields"
-                value={form.customFields}
-                onChange={(e) => setForm((f) => ({ ...f, customFields: e.target.value }))}
-                placeholder='{"cvrEkstra":"...","kontaktperson":"..."}'
-                className="font-mono text-xs"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" data-testid="form-cancel" onClick={() => setDialogOpen(false)}>

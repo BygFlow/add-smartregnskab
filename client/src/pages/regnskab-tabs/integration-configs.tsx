@@ -241,7 +241,7 @@ export default function IntegrationConfigs({ companyId }: { companyId: number })
       </div>
 
       <div className="rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-        Kræver API-aftale hos bank, SKAT, NemHandel, MitID. BETA.
+        Eksterne forbindelser aktiveres først, når virksomheden har den nødvendige aftale og gyldige adgangsoplysninger hos den valgte udbyder.
       </div>
 
       {isLoading ? (
