@@ -62,7 +62,6 @@ const COMPANY_GROUPS: NavGroup[] = [
   ] },
   { label: "Afslutning", items: [
     item("moms", "Moms & skat", Calculator),
-    item("lon", "Lønbogføring", Users),
     item("periode", "Periode & årsafslutning", CalendarClock),
     item("rapporter", "Rapporter", FileBarChart),
     item("revision", "Revisionsspor", ShieldCheck),

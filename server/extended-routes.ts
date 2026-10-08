@@ -309,8 +309,8 @@ export function registerExtendedRoutes(app: Express) {
 
   // ── Lønindberetning ──
   const prFields = ["period", "employeeCount", "grossTotal", "taxTotal", "holidayPayTotal", "pensionTotal", "atpTotal", "amContributionTotal", "netTotal", "eindkomstStatus", "feriekontoStatus", "status", "submittedAt"];
-  app.get("/api/payroll-reports", h(async (req, res) => { res.json(await storage.all("payroll_reports", tenantId(req))); }));
-  app.post("/api/payroll-reports", h(async (req, res) => {
+  app.get("/api/payroll-reports", requireFeature("loen"), h(async (req, res) => { res.json(await storage.all("payroll_reports", tenantId(req))); }));
+  app.post("/api/payroll-reports", requireFeature("loen"), h(async (req, res) => {
     const cid = tenantId(req);
     const { period } = req.body;
     // Auto-generate from payroll entries
@@ -330,7 +330,7 @@ export function registerExtendedRoutes(app: Express) {
     });
     res.status(201).json(await storage.insert("payroll_reports", data));
   }));
-  app.patch("/api/payroll-reports/:id", h(async (req, res) => {
+  app.patch("/api/payroll-reports/:id", requireFeature("loen"), h(async (req, res) => {
     res.json(await storage.update("payroll_reports", Number(req.params.id), UPDATABLE(prFields)(req), tenantId(req)));
   }));
 

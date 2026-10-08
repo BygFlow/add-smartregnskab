@@ -5699,10 +5699,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ── Lønbogføring ──
-  app.get("/api/payroll-entries", h(async (req, res) => {
+  app.get("/api/payroll-entries", requireFeature("loen"), h(async (req, res) => {
     res.json(await storage.all("payroll_entries", tenantId(req)));
   }));
-  app.post("/api/payroll-entries", h(async (req, res) => {
+  app.post("/api/payroll-entries", requireFeature("loen"), h(async (req, res) => {
     const data = validate(insertPayrollEntrySchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
     // Auto-beregn løn
     const gross = ((data.regularHours ?? 0) * (data.hourlyRate ?? 0)) + ((data.overtimeHours ?? 0) * (data.hourlyRate ?? 0) * 1.5);
@@ -5715,13 +5715,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const enriched = { ...data, grossSalary: gross, holidayPay, pension, atp, amContribution, aTax, netSalary: net };
     res.status(201).json(await storage.insert("payroll_entries", enriched));
   }));
-  app.patch("/api/payroll-entries/:id", h(async (req, res) => {
+  app.patch("/api/payroll-entries/:id", requireFeature("loen"), h(async (req, res) => {
     const updates: Record<string, any> = {};
     for (const k of ["status", "journalEntryId"]) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     res.json(await storage.update("payroll_entries", Number(req.params.id), updates, tenantId(req)));
   }));
   // Auto-generer lønposter fra tidsregistreringer
-  app.post("/api/payroll-entries/auto-generate", h(async (req, res) => {
+  app.post("/api/payroll-entries/auto-generate", requireFeature("loen"), h(async (req, res) => {
     const cid = tenantId(req);
     const { period } = req.body;
     if (!period) return res.status(400).json({ error: "Periode mangler" });

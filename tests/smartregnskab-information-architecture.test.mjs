@@ -117,3 +117,25 @@ test("annual report add-on is enforced by both client and API", () => {
   assert.match(routes, /app\.post\("\/api\/annual-reports", requireFeature\("aarsrapport"\)/);
   assert.match(routes, /app\.patch\("\/api\/annual-reports\/:id", requireFeature\("aarsrapport"\)/);
 });
+
+test("payroll stays in Appmarked and all payroll APIs require the add-on", () => {
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/routes.ts");
+  const extendedRoutes = read("server/extended-routes.ts");
+  const extendedRoutes2 = read("server/extended-routes-2.ts");
+
+  assert.doesNotMatch(shell, /item\("lon", "Lønbogføring"/);
+  assert.match(catalog, /name: "Løn og lønindberetning"/);
+  assert.match(catalog, /feature: "loen"/);
+  assert.match(catalog, /protectedRoutes: \["lon", "lonindberetning", "lonmotor_regnskab"\]/);
+  assert.match(routes, /app\.get\("\/api\/payroll-entries", requireFeature\("loen"\)/);
+  assert.match(routes, /app\.post\("\/api\/payroll-entries", requireFeature\("loen"\)/);
+  assert.match(routes, /app\.patch\("\/api\/payroll-entries\/:id", requireFeature\("loen"\)/);
+  assert.match(routes, /app\.post\("\/api\/payroll-entries\/auto-generate", requireFeature\("loen"\)/);
+  assert.match(extendedRoutes, /app\.get\("\/api\/payroll-reports", requireFeature\("loen"\)/);
+  assert.match(extendedRoutes, /app\.post\("\/api\/payroll-reports", requireFeature\("loen"\)/);
+  assert.match(extendedRoutes, /app\.patch\("\/api\/payroll-reports\/:id", requireFeature\("loen"\)/);
+  assert.match(extendedRoutes2, /\/api\/payroll-calculations[\s\S]*requireFeature\("loen"\)/);
+  assert.match(extendedRoutes2, /\/api\/payroll-engine[\s\S]*requireFeature\("loen"\)/);
+});
