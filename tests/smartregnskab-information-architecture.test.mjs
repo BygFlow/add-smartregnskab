@@ -15,7 +15,7 @@ test("SmartRegnskab exposes core settings without hiding them among advanced mod
   assert.match(shell, /Fakturaindstillinger/);
   assert.match(shell, /Backup & data/);
   assert.match(shell, /Avancerede moduler/);
-  assert.match(shell, /Fakturering og betaling/);
+  assert.match(shell, /E-fakturering/);
   assert.match(shell, /Regnskab og afslutning/);
   assert.match(shell, /Integration og data/);
   assert.match(router, /value="virksomhedsindstillinger"/);
@@ -50,6 +50,8 @@ test("optional products are collected in Appmarked instead of normal accounting 
   assert.doesNotMatch(shell, /item\("lagerregnskab"/);
   assert.doesNotMatch(shell, /item\("revisorportal"/);
   assert.doesNotMatch(shell, /item\("api_webhooks"/);
+  assert.doesNotMatch(shell, /item\("bank_payments"/);
+  assert.doesNotMatch(shell, /item\("budget_scenarier"/);
   assert.match(page, /getSmartRegnskabAddonForRoute\(activeTab\)/);
   assert.match(page, /notice-addon-locked/);
   assert.match(page, /\["lagerregnskab", "Lagerregnskab"\]/);
@@ -71,10 +73,11 @@ test("core VAT and paid international VAT rules are separated consistently", () 
   const catalog = read("client/src/lib/smartregnskab-addons.ts");
   const routes = read("server/extended-routes-2.ts");
 
-  assert.match(shell, /EU, import og valuta/);
+  assert.match(router, /EU, import og valuta/);
   assert.match(router, /EU-moms, reverse charge, importmoms/);
   assert.doesNotMatch(shell, /item\("momsafstemning"/);
   assert.doesNotMatch(shell, /item\("skattekonto"/);
+  assert.doesNotMatch(shell, /item\("valuta_moms"/);
   assert.match(router, /Åbn momsafstemning/);
   assert.match(router, /Åbn skattekonto/);
   assert.match(coreVat, /const VAT_TYPES = \["eu_moms", "reverse_charge", "import_moms"\]/);
@@ -93,6 +96,10 @@ test("period close is the single navigation hub for year-end work", () => {
   assert.match(shell, /item\("periode", "Periode & årsafslutning"/);
   assert.doesNotMatch(shell, /item\("aarafslutning"/);
   assert.doesNotMatch(shell, /item\("arsrapport"/);
+  assert.doesNotMatch(shell, /item\("periodisering"/);
+  assert.doesNotMatch(shell, /item\("afstemningscenter"/);
+  assert.match(router, /Åbn periodisering/);
+  assert.match(router, /Åbn afstemningscenter/);
   assert.match(router, /Åbn årsafslutning/);
   assert.match(router, /Åbn årsrapport/);
   assert.match(router, /\/smartregnskab\/app\/aarafslutning/);

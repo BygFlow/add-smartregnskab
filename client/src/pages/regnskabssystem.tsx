@@ -3634,8 +3634,36 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   </p>
                 </SectionCard>
 
-                <SectionCard title="Årsafslutning og rapportering" icon={<FileCheck2 className="size-4" />}>
+                <SectionCard title="Afslutningsværktøjer" icon={<FileCheck2 className="size-4" />}>
                   <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">Periodisering</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Fordel indtægter og omkostninger korrekt på de perioder, de vedrører.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/periodisering"; }}
+                      >
+                        Åbn periodisering
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border p-4">
+                      <h3 className="font-medium">Afstemningscenter</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Saml og følg afstemninger, differencer og afsluttende kontroller ét sted.
+                      </p>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { window.location.hash = "/smartregnskab/app/afstemningscenter"; }}
+                      >
+                        Åbn afstemningscenter
+                      </Button>
+                    </div>
                     <div className="rounded-xl border p-4">
                       <h3 className="font-medium">Årsafslutning</h3>
                       <p className="mt-1 text-sm text-muted-foreground">

@@ -6,8 +6,8 @@ import Regnskabssystem from "@/pages/regnskabssystem";
 import { Button } from "@/components/ui/button";
 import {
   Activity, AlertCircle, Archive, BrainCircuit, Briefcase,
-  Building2, Calculator, Calendar, CalendarClock, ChevronDown, ClipboardCheck,
-  CreditCard, Download, FileBarChart, FileCheck, FileText, GitBranch,
+  Building2, Calculator, CalendarClock, ChevronDown, ClipboardCheck,
+  CreditCard, Download, FileBarChart, FileText, GitBranch,
   Inbox, KeyRound, Landmark, Layers, Link2, Lock, LogOut, Menu, Package,
   Receipt, RefreshCw, Settings, ShieldCheck, Tags, Truck,
   Upload, Users, Wallet, X, Zap,
@@ -89,21 +89,16 @@ const COMPANY_GROUPS: NavGroup[] = [
 ];
 
 const ADVANCED_GROUPS: NavGroup[] = [
-  { label: "Fakturering og betaling", items: [
-    item("bank_payments", "Bankbetalinger", CreditCard),
+  { label: "E-fakturering", items: [
     item("einvoice_queue", "OIOUBL & NemHandel", Inbox),
   ] },
   { label: "Regnskab og afslutning", items: [
-    item("periodisering", "Periodisering", Calendar),
     item("omkostning", "Omkostningssteder", Briefcase),
     item("anlaeg", "Anlægsregister", Building2),
-    item("afstemningscenter", "Afstemningscenter", ShieldCheck),
     item("regler", "Regnskabsregler", Settings),
     item("kontoplan_skabeloner", "Kontoplanskabeloner", FileText),
     item("dimensioner", "Dimensioner", Layers),
     item("regnskabskategorier", "Regnskabskategorier", Tags),
-    item("valuta_moms", "EU, import og valuta", Wallet),
-    item("budget_scenarier", "Budgetscenarier", FileBarChart),
   ] },
   { label: "Løn, revision og kontrol", items: [
     item("saft", "SAF-T 2.1", Download),
