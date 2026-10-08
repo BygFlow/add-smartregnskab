@@ -21,6 +21,7 @@ import { registerProfessionalRoutes } from "./professional-routes";
 import { registerOrganizationRoutes } from "./organization-routes";
 import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import { registerPublicAddConnectRoutes } from "./add-connect";
+import { registerExternalAccountingApi } from "./external-accounting-api";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
@@ -593,6 +594,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerPublicAiiaRoutes(app);
   registerPublicAddConnectRoutes(app);
   registerPublicDocumentIntakeRoutes(app);
+  registerExternalAccountingApi(app);
 
   app.use("/api", requireAuth);
   app.use("/api", platformCustomerDataGuard);
@@ -627,7 +629,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.use("/api", (req, res, next) => {
     if (req.auth!.role !== "kunde") return next();
-    const readOnlyPrefixes = ["/company", "/tasks", "/invoices", "/attachments", "/notifications"];
+    const readOnlyPrefixes = ["/company", "/tasks", "/invoices", "/attachments", "/notifications", "/customer-portal-settings", "/portal-documents"];
     const selfServicePrefixes = ["/auth/me", "/auth/logout", "/auth/password", "/security", "/support", "/support-cases"];
     const relativePath = req.path;
     if (req.method === "GET" && readOnlyPrefixes.some((prefix) => relativePath.startsWith(prefix))) return next();

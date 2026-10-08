@@ -1,13 +1,40 @@
 import { Router, type Express } from "express";
+import { createHash } from "node:crypto";
 import { db } from "../server/storage";
 import { eq, and, desc } from "drizzle-orm";
 import * as schema from "../shared/schema";
-import { tenantId } from "./auth";
+import { requireFeature, requireRole, tenantId } from "./auth";
 import { ensureRegulatorySources, monitorRegulatorySources } from "./regulatory-monitor";
 import { registerFileObjectRoutes } from "./file-object-routes";
+import { readFile } from "./files";
+import { parseStoredFileObjectPath } from "./file-object-location";
 
 const h = (fn: (req: any, res: any, next?: any) => any) => (req: any, res: any, next: any) =>
   Promise.resolve(fn(req, res, next)).catch(next);
+
+const workflowTriggers = new Set(["tilbud_oprettet", "kontrakt_underskrevet", "opgave_afsluttet", "faktura_sendt", "betaling_modtaget"]);
+const workflowStepTypes = new Set(["opret_kontrakt", "opret_opgave", "opret_fakturakladde", "opret_bogfoeringskladde", "send_til_godkendelse", "send_besked"]);
+
+function validatedWorkflow(body: any) {
+  const name = String(body?.name ?? "").trim().slice(0, 120);
+  const trigger = String(body?.trigger ?? "").trim();
+  const description = body?.description ? String(body.description).trim().slice(0, 1_000) : null;
+  if (!name) throw { status: 400, message: "Workflowet skal have et navn." };
+  if (!workflowTriggers.has(trigger)) throw { status: 400, message: "Vælg en gyldig udløser." };
+  let steps: unknown;
+  try { steps = typeof body?.steps === "string" ? JSON.parse(body.steps) : body?.steps; }
+  catch { throw { status: 400, message: "Workflowets trin skal være gyldig JSON." }; }
+  if (!Array.isArray(steps) || steps.length < 1 || steps.length > 50) {
+    throw { status: 400, message: "Workflowet skal indeholde mellem 1 og 50 trin." };
+  }
+  const sanitized = steps.map((step: any) => {
+    if (!step || typeof step !== "object" || !workflowStepTypes.has(String(step.type))) {
+      throw { status: 400, message: "Workflowet indeholder et trin, som ikke er godkendt." };
+    }
+    return { type: String(step.type) };
+  });
+  return { name, trigger, description, steps: JSON.stringify(sanitized), isActive: Boolean(body?.isActive) };
+}
 
 // Tables that have companyId column
 const COMPANY_TABLES = new Set([
@@ -24,7 +51,7 @@ const SYSTEM_TABLES = new Set([
   "industryAccountTemplates", "systemHealthEvents",
 ]);
 
-function crud(app: Express, basePath: string, table: any, hasCompany: boolean) {
+function crud(app: Express, basePath: string, table: any, hasCompany: boolean, guards: any[] = []) {
   const authorize = (req: any, res: any, write = false): boolean => {
     if (!hasCompany && !req.auth?.isPlatformAdmin) {
       res.status(403).json({ error: "Kun platformadministratorer har adgang." });
@@ -41,7 +68,7 @@ function crud(app: Express, basePath: string, table: any, hasCompany: boolean) {
     return tenantId(req);
   };
 
-  app.get(basePath, h(async (req, res) => {
+  app.get(basePath, ...guards, h(async (req, res) => {
     if (!authorize(req, res)) return;
     const cid = getCompanyId(req);
     if (cid !== null && "companyId" in table) {
@@ -53,7 +80,7 @@ function crud(app: Express, basePath: string, table: any, hasCompany: boolean) {
     }
   }));
 
-  app.post(basePath, h(async (req, res) => {
+  app.post(basePath, ...guards, h(async (req, res) => {
     if (!authorize(req, res, true)) return;
     const cid = getCompanyId(req);
     const data = cid !== null && "companyId" in table
@@ -63,7 +90,7 @@ function crud(app: Express, basePath: string, table: any, hasCompany: boolean) {
     res.json(row);
   }));
 
-  app.patch(`${basePath}/:id`, h(async (req, res) => {
+  app.patch(`${basePath}/:id`, ...guards, h(async (req, res) => {
     if (!authorize(req, res, true)) return;
     const cid = getCompanyId(req);
     const id = parseInt(req.params.id);
@@ -76,7 +103,7 @@ function crud(app: Express, basePath: string, table: any, hasCompany: boolean) {
     }
   }));
 
-  app.delete(`${basePath}/:id`, h(async (req, res) => {
+  app.delete(`${basePath}/:id`, ...guards, h(async (req, res) => {
     if (!authorize(req, res, true)) return;
     const cid = getCompanyId(req);
     const id = parseInt(req.params.id);
@@ -265,8 +292,34 @@ export function registerExtendedRoutes3(app: Express) {
   // ── Sammenkobling & workflow ──
   crud(app, "/api/platform-sync-jobs", schema.platformSyncJobs, true);
   crud(app, "/api/platform-sync-mappings", schema.platformSyncMappings, true);
-  crud(app, "/api/workflow-definitions", schema.workflowDefinitions, true);
-  crud(app, "/api/workflow-runs", schema.workflowRuns, true);
+  app.get("/api/workflow-definitions", requireFeature("workflow_builder"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(db.select().from(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.companyId, tenantId(req))).all());
+  }));
+  app.post("/api/workflow-definitions", requireFeature("workflow_builder"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const data = validatedWorkflow(req.body);
+    const row = db.insert(schema.workflowDefinitions).values({ ...data, companyId: tenantId(req), createdAt: new Date().toISOString() }).returning().get();
+    res.status(201).json(row);
+  }));
+  app.patch("/api/workflow-definitions/:id", requireFeature("workflow_builder"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req); const id = Number(req.params.id);
+    const current = db.select().from(schema.workflowDefinitions).where(and(eq(schema.workflowDefinitions.id, id), eq(schema.workflowDefinitions.companyId, cid))).get();
+    if (!current) return res.status(404).json({ error: "Workflowet findes ikke." });
+    const data = validatedWorkflow({ ...current, ...req.body });
+    res.json(db.update(schema.workflowDefinitions).set(data).where(and(eq(schema.workflowDefinitions.id, id), eq(schema.workflowDefinitions.companyId, cid))).returning().get());
+  }));
+  app.delete("/api/workflow-definitions/:id", requireFeature("workflow_builder"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req); const id = Number(req.params.id);
+    const current = db.select().from(schema.workflowDefinitions).where(and(eq(schema.workflowDefinitions.id, id), eq(schema.workflowDefinitions.companyId, cid))).get();
+    if (!current) return res.status(404).json({ error: "Workflowet findes ikke." });
+    db.transaction((tx) => {
+      tx.delete(schema.workflowRuns).where(and(eq(schema.workflowRuns.workflowId, id), eq(schema.workflowRuns.companyId, cid))).run();
+      tx.delete(schema.workflowDefinitions).where(and(eq(schema.workflowDefinitions.id, id), eq(schema.workflowDefinitions.companyId, cid))).run();
+    });
+    res.json({ success: true });
+  }));
+  app.get("/api/workflow-runs", requireFeature("workflow_builder"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(db.select().from(schema.workflowRuns).where(eq(schema.workflowRuns.companyId, tenantId(req))).all());
+  }));
 
   // Extra: trigger sync
   app.post("/api/platform-sync-jobs/trigger", h(async (req, res) => {
@@ -290,21 +343,27 @@ export function registerExtendedRoutes3(app: Express) {
   }));
 
   // Extra: trigger workflow
-  app.post("/api/workflow-definitions/:id/run", h(async (req, res) => {
+  app.post("/api/workflow-definitions/:id/run", requireFeature("workflow_builder"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     const wf = db.select().from(schema.workflowDefinitions).where(and(
       eq(schema.workflowDefinitions.id, parseInt(req.params.id)),
       eq(schema.workflowDefinitions.companyId, cid),
     )).get();
     if (!wf) return res.status(404).json({ error: "Workflow not found" });
+    if (!wf.isActive) return res.status(409).json({ error: "Workflowet er ikke aktivt." });
+    let steps: any[];
+    try { steps = JSON.parse(wf.steps || "[]"); } catch { return res.status(409).json({ error: "Workflowets trin er ikke gyldig JSON." }); }
+    if (!Array.isArray(steps) || !steps.length) return res.status(409).json({ error: "Workflowet skal indeholde mindst ét trin." });
+    const invalidStep = steps.find((step) => !step || typeof step !== "object" || !workflowStepTypes.has(String(step.type)));
+    if (invalidStep) return res.status(400).json({ error: "Workflowet indeholder et trin, som ikke er godkendt." });
     const run = db.insert(schema.workflowRuns).values({
       companyId: cid,
       workflowId: wf.id,
       trigger: wf.trigger,
       status: "gennemført",
-      currentStep: 1,
-      totalSteps: 1,
-      result: "Workflow gennemført automatisk",
+      currentStep: steps.length,
+      totalSteps: steps.length,
+      result: "Testkørsel valideret. Ingen fakturaer, betalinger eller bogføringer blev udført.",
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
@@ -346,8 +405,104 @@ export function registerExtendedRoutes3(app: Express) {
   }));
 
   // ── Portal & navigation ──
-  crud(app, "/api/customer-portal-settings", schema.customerPortalSettings, true);
-  crud(app, "/api/portal-documents", schema.portalDocuments, true);
+  app.get("/api/customer-portal-settings", requireFeature("kundeportal"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "kunde", "platform_admin"), h(async (req, res) => {
+    res.json(db.select().from(schema.customerPortalSettings).where(eq(schema.customerPortalSettings.companyId, tenantId(req))).all());
+  }));
+  app.post("/api/customer-portal-settings", requireFeature("kundeportal"), requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const existing = db.select().from(schema.customerPortalSettings).where(eq(schema.customerPortalSettings.companyId, cid)).get();
+    if (existing) return res.status(409).json({ error: "Portalindstillingerne findes allerede. Opdater dem i stedet." });
+    const row = db.insert(schema.customerPortalSettings).values({
+      companyId: cid,
+      allowBooking: Boolean(req.body?.allowBooking), allowApprovals: Boolean(req.body?.allowApprovals),
+      allowComplaints: Boolean(req.body?.allowComplaints), allowReports: Boolean(req.body?.allowReports),
+      allowDocuments: Boolean(req.body?.allowDocuments), allowInvoices: Boolean(req.body?.allowInvoices),
+      theme: ["light", "dark"].includes(String(req.body?.theme)) ? String(req.body.theme) : "light",
+      welcomeMessage: req.body?.welcomeMessage ? String(req.body.welcomeMessage).trim().slice(0, 1_000) : null,
+      portalUrl: null, updatedAt: new Date().toISOString(),
+    }).returning().get();
+    res.status(201).json(row);
+  }));
+  app.patch("/api/customer-portal-settings/:id", requireFeature("kundeportal"), requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const id = Number(req.params.id);
+    const existing = db.select().from(schema.customerPortalSettings).where(and(eq(schema.customerPortalSettings.id, id), eq(schema.customerPortalSettings.companyId, cid))).get();
+    if (!existing) return res.status(404).json({ error: "Portalindstillingerne findes ikke." });
+    const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    for (const key of ["allowBooking", "allowApprovals", "allowComplaints", "allowReports", "allowDocuments", "allowInvoices"]) {
+      if (req.body?.[key] !== undefined) patch[key] = Boolean(req.body[key]);
+    }
+    if (req.body?.theme !== undefined) patch.theme = ["light", "dark"].includes(String(req.body.theme)) ? String(req.body.theme) : "light";
+    if (req.body?.welcomeMessage !== undefined) patch.welcomeMessage = req.body.welcomeMessage ? String(req.body.welcomeMessage).trim().slice(0, 1_000) : null;
+    res.json(db.update(schema.customerPortalSettings).set(patch).where(and(eq(schema.customerPortalSettings.id, id), eq(schema.customerPortalSettings.companyId, cid))).returning().get());
+  }));
+
+  app.get("/api/portal-documents", requireFeature("kundeportal"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "kunde", "platform_admin"), h(async (req, res) => {
+    const rows = db.select().from(schema.portalDocuments).where(eq(schema.portalDocuments.companyId, tenantId(req))).all();
+    if (req.auth?.role === "kunde") {
+      return res.json(rows.filter((row) => row.visibleToCustomer && row.customerId === req.auth?.user?.customerId));
+    }
+    res.json(rows);
+  }));
+  app.get("/api/portal-documents/:id/file", requireFeature("kundeportal"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "kunde", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req); const id = Number(req.params.id);
+    const document = db.select().from(schema.portalDocuments).where(and(eq(schema.portalDocuments.id, id), eq(schema.portalDocuments.companyId, cid))).get();
+    if (!document || !document.fileObjectId) return res.status(404).json({ error: "Dokumentfilen findes ikke." });
+    if (req.auth?.role === "kunde" && (!document.visibleToCustomer || document.customerId !== req.auth?.user?.customerId)) {
+      return res.status(403).json({ error: "Du har ikke adgang til dokumentet." });
+    }
+    const file = db.select().from(schema.fileObjects).where(and(eq(schema.fileObjects.id, document.fileObjectId), eq(schema.fileObjects.companyId, cid))).get();
+    if (!file || file.status !== "aktiv") return res.status(404).json({ error: "Dokumentfilen er ikke tilgængelig." });
+    let location: ReturnType<typeof parseStoredFileObjectPath>;
+    try { location = parseStoredFileObjectPath(file.storagePath || "", cid); }
+    catch { return res.status(409).json({ error: "Dokumentet mangler en gyldig originalfil." }); }
+    const bytes = await readFile(location.storage, location.key);
+    if (bytes.length !== file.fileSize || createHash("sha256").update(bytes).digest("hex") !== file.checksum) {
+      return res.status(409).json({ error: "Dokumentet bestod ikke integritetskontrollen." });
+    }
+    res.setHeader("Content-Type", file.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${file.fileName.replace(/[\r\n"\\]/g, "_")}"`);
+    return res.send(bytes);
+  }));
+  app.post("/api/portal-documents", requireFeature("kundeportal"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const customerId = Number(req.body?.customerId);
+    const customer = db.select().from(schema.customers).where(and(eq(schema.customers.id, customerId), eq(schema.customers.companyId, cid))).get();
+    if (!customer) return res.status(400).json({ error: "Vælg en gyldig kunde." });
+    const fileObjectId = Number(req.body?.fileObjectId);
+    const file = Number.isSafeInteger(fileObjectId) && fileObjectId > 0
+      ? db.select().from(schema.fileObjects).where(and(eq(schema.fileObjects.id, fileObjectId), eq(schema.fileObjects.companyId, cid))).get()
+      : undefined;
+    if (!file || file.status !== "aktiv") return res.status(400).json({ error: "Upload en gyldig, aktiv dokumentfil først." });
+    const title = String(req.body?.title ?? "").trim().slice(0, 200);
+    const documentType = String(req.body?.documentType ?? "");
+    if (!title) return res.status(400).json({ error: "Titel er påkrævet." });
+    if (!new Set(["kontrakt", "tilbud", "rapport", "faktura", "certifikat"]).has(documentType)) return res.status(400).json({ error: "Ugyldig dokumenttype." });
+    const row = db.insert(schema.portalDocuments).values({
+      companyId: cid, customerId, fileObjectId, title, documentType,
+      fileName: file.fileName, fileType: file.fileType,
+      description: req.body?.description ? String(req.body.description).trim().slice(0, 1_000) : null,
+      visibleToCustomer: Boolean(req.body?.visibleToCustomer), uploadedBy: req.auth?.user?.email ?? null,
+      createdAt: new Date().toISOString(),
+    }).returning().get();
+    res.status(201).json(row);
+  }));
+  app.patch("/api/portal-documents/:id", requireFeature("kundeportal"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req); const id = Number(req.params.id);
+    const existing = db.select().from(schema.portalDocuments).where(and(eq(schema.portalDocuments.id, id), eq(schema.portalDocuments.companyId, cid))).get();
+    if (!existing) return res.status(404).json({ error: "Portaldokumentet findes ikke." });
+    const patch: Record<string, unknown> = {};
+    if (req.body?.visibleToCustomer !== undefined) patch.visibleToCustomer = Boolean(req.body.visibleToCustomer);
+    if (req.body?.title !== undefined) patch.title = String(req.body.title).trim().slice(0, 200);
+    if (req.body?.description !== undefined) patch.description = req.body.description ? String(req.body.description).trim().slice(0, 1_000) : null;
+    res.json(db.update(schema.portalDocuments).set(patch).where(and(eq(schema.portalDocuments.id, id), eq(schema.portalDocuments.companyId, cid))).returning().get());
+  }));
+  app.delete("/api/portal-documents/:id", requireFeature("kundeportal"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req); const id = Number(req.params.id);
+    const deleted = db.delete(schema.portalDocuments).where(and(eq(schema.portalDocuments.id, id), eq(schema.portalDocuments.companyId, cid))).returning().get();
+    if (!deleted) return res.status(404).json({ error: "Portaldokumentet findes ikke." });
+    res.json({ success: true });
+  }));
   crud(app, "/api/offline-conflicts", schema.offlineConflicts, true);
   crud(app, "/api/push-subscriptions", schema.pushSubscriptions, true);
   crud(app, "/api/navigation-favorites", schema.navigationFavorites, true);

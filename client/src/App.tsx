@@ -13,6 +13,7 @@ import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig
 import { Marketing } from "@/pages/marketing";
 
 const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
+const CustomerPortal = lazy(() => import("@/pages/customer-portal"));
 
 function useRouteLocation(): [string, (to: string, options?: { replace?: boolean }) => void] {
   const [location, navigate] = useHashLocation();
@@ -77,7 +78,15 @@ function Root() {
     );
   }
 
-  if (user.role === "assistent" || user.role === "kunde") {
+  if (user.role === "kunde") {
+    return (
+      <Suspense fallback={<main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser kundeportal…</p></main>}>
+        <CustomerPortal />
+      </Suspense>
+    );
+  }
+
+  if (user.role === "assistent") {
     return (
       <main className="min-h-screen grid place-items-center bg-background p-6">
         <section className="max-w-md rounded-lg border bg-card p-6 text-center shadow-sm">

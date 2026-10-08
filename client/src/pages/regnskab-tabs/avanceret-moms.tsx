@@ -37,6 +37,7 @@ type AdvancedVatEntry = {
   deductionRate?: number | null;
   deductibleAmount?: number | null;
   description?: string | null;
+  status?: string | null;
   createdAt?: string | null;
 };
 
@@ -202,6 +203,10 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
         </Button>
       </div>
 
+      <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">
+        Dette tilkøb dækker OSS, Intrastat, delvist fradrag og udenlandske momsregistreringer. Dansk moms, EU-moms, reverse charge og importmoms er fortsat inkluderet i grundregnskabet. Beløb beregnes og valideres igen på serveren.
+      </div>
+
       {/* Sammenfatning */}
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <div className="kpi-card flex items-center gap-3">
@@ -260,6 +265,7 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
                 <th className="px-3 py-2 font-medium text-right">Fradrag %</th>
                 <th className="px-3 py-2 font-medium text-right">Fradragsbeløb</th>
                 <th className="px-3 py-2 font-medium">Beskrivelse</th>
+                <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -294,11 +300,15 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
                     {entry.description ?? "—"}
                   </td>
                   <td className="px-3 py-2">
+                    <Badge color={entry.status === "kladde" ? "gray" : "green"}>{entry.status ?? "kladde"}</Badge>
+                  </td>
+                  <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
                         data-testid={`edit-btn-${entry.id}`}
+                        disabled={entry.status !== "kladde"}
                         onClick={() => openEdit(entry)}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -308,7 +318,7 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
                         size="sm"
                         className="text-destructive"
                         data-testid={`delete-btn-${entry.id}`}
-                        disabled={deleteMutation.isPending}
+                        disabled={deleteMutation.isPending || entry.status !== "kladde"}
                         onClick={() => deleteMutation.mutate(entry.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -324,7 +334,7 @@ export default function AvanceretMoms({ companyId }: { companyId: number }) {
                 <td className="px-3 py-2 text-right tabular-nums">{fmtDKK.format(totalVat)}</td>
                 <td className="px-3 py-2"></td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmtDKK.format(totalDeductible)}</td>
-                <td colSpan={2}></td>
+                <td colSpan={3}></td>
               </tr>
             </tfoot>
           </table>

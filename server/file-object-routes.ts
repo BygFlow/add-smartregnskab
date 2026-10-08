@@ -12,7 +12,7 @@ const extensions: Record<string, string[]> = {
   "application/pdf": ["pdf"], "image/jpeg": ["jpg", "jpeg"], "image/png": ["png"],
   "image/gif": ["gif"], "image/webp": ["webp"],
 };
-const canWrite = (role?: string) => role === "leder" || role === "holdleder" || role === "platform_admin";
+const canWrite = (role?: string) => role === "leder" || role === "holdleder" || role === "bogholder" || role === "platform_admin";
 const wrap = (fn: (req: any, res: any) => Promise<unknown>) =>
   (req: any, res: any, next: any) => Promise.resolve(fn(req, res)).catch(next);
 

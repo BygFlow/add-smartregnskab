@@ -181,6 +181,7 @@ if (!hasApplicationSchema) {
     addColumn("platform_sync_jobs", "company_id", "integer");
     addColumn("platform_sync_mappings", "company_id", "integer");
     addColumn("workflow_runs", "company_id", "integer");
+    addColumn("portal_documents", "file_object_id", "integer");
     addColumn("accounts", "standard_account_number", "text");
     addColumn("einvoice_queue", "document_type", "text DEFAULT 'invoice' NOT NULL");
     addColumn("einvoice_queue", "recipient_endpoint_id", "text");

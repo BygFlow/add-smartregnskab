@@ -244,3 +244,87 @@ test("company administration stays core while group consolidation is an enforced
   assert.match(page, /Afdelinger og SE-enheder tæller ikke som selvstændige juridiske virksomheder/);
   assert.match(page, /disabled=\{entry\.status === "bogført"\}/);
 });
+
+test("external accounting API is tenant-bound, scoped, idempotent and books only final invoices", () => {
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+  const routes = read("server/routes.ts");
+  const api = read("server/external-accounting-api.ts");
+  const docs = read("client/src/pages/regnskab-tabs/api-webhooks.tsx");
+  const keyRoutes = read("server/extended-routes-2.ts");
+
+  assert.match(catalog, /protectedRoutes: \["api_webhooks", "api_keys_mgmt"\]/);
+  assert.ok(routes.indexOf("registerExternalAccountingApi(app)") < routes.indexOf('app.use("/api", requireAuth)'));
+  assert.match(api, /createHash\("sha256"\)\.update\(rawKey\)/);
+  assert.match(api, /requireScope\("read"\)/);
+  assert.match(api, /requireScope\("write"\)/);
+  assert.match(api, /Idempotency-Key-headeren er påkrævet/);
+  assert.match(api, /documentType === "invoice"/);
+  assert.match(api, /journalEntryId/);
+  assert.match(api, /deliverWebhook\(cid, "invoice\.created"/);
+  assert.match(keyRoutes, /app\.post\("\/api\/api-keys\/generate", requireFeature\("api_integration"\)/);
+  assert.match(keyRoutes, /status: "tilbagekaldt"/);
+  assert.match(docs, /POST \/api\/external\/v1\/invoices/);
+  assert.match(docs, /Idempotency-Key/);
+  assert.doesNotMatch(docs, /api\.smartregnskab\.dk/);
+});
+
+test("customer portal exposes only the signed-in customer's private files and invoices", () => {
+  const app = read("client/src/App.tsx");
+  const portal = read("client/src/pages/customer-portal.tsx");
+  const manager = read("client/src/pages/regnskab-tabs/portal-dokumenter.tsx");
+  const routes = read("server/extended-routes-3.ts");
+  const schema = read("shared/schema.ts");
+  const storage = read("server/storage.ts");
+
+  assert.match(app, /user\.role === "kunde"/);
+  assert.match(app, /<CustomerPortal/);
+  assert.match(portal, /Privat kundeportal/);
+  assert.match(portal, /\/api\/portal-documents\/\$\{document\.id\}\/file/);
+  assert.match(manager, /\/api\/file-objects/);
+  assert.match(manager, /fileObjectId/);
+  assert.match(routes, /row\.customerId === req\.auth\?\.user\?\.customerId/);
+  assert.match(routes, /document\.customerId !== req\.auth\?\.user\?\.customerId/);
+  assert.match(routes, /createHash\("sha256"\)\.update\(bytes\)/);
+  assert.match(routes, /requireFeature\("kundeportal"\)/);
+  assert.match(schema, /fileObjectId: integer\("file_object_id"\)/);
+  assert.match(storage, /addColumn\("portal_documents", "file_object_id"/);
+});
+
+test("workflow builder validates definitions and only performs safe test runs", () => {
+  const routes = read("server/extended-routes-3.ts");
+  const page = read("client/src/pages/regnskab-tabs/workflow-builder.tsx");
+
+  assert.match(routes, /workflowStepTypes = new Set/);
+  assert.match(routes, /app\.post\("\/api\/workflow-definitions", requireFeature\("workflow_builder"\)/);
+  assert.match(routes, /app\.get\("\/api\/workflow-runs", requireFeature\("workflow_builder"\)/);
+  assert.doesNotMatch(routes, /app\.post\("\/api\/workflow-runs"/);
+  assert.match(routes, /Ingen fakturaer, betalinger eller bogføringer blev udført/);
+  assert.match(page, /Testkørsler udfører aldrig fakturaer, betalinger eller bogføringer/);
+});
+
+test("international VAT is server-calculated and non-draft rows are locked", () => {
+  const routes = read("server/extended-routes-2.ts");
+  const page = read("client/src/pages/regnskab-tabs/avanceret-moms.tsx");
+
+  assert.match(routes, /advancedVatTypes = new Set\(\["oss", "intrastat", "delvist_fradrag", "momsregistrering_udland"\]\)/);
+  assert.match(routes, /const vatAmount = Math\.round/);
+  assert.match(routes, /status: "kladde"/);
+  assert.match(routes, /existing\.status !== "kladde"/);
+  assert.match(page, /Beløb beregnes og valideres igen på serveren/);
+  assert.match(page, /disabled=\{entry\.status !== "kladde"\}/);
+});
+
+test("migration is a guarded preview-commit service with signed preview and rollback", () => {
+  const routes = read("server/migration-routes.ts");
+  const jobs = read("server/extended-routes-2.ts");
+  const catalog = read("client/src/lib/smartregnskab-addons.ts");
+
+  assert.match(catalog, /name: "Datamigrering og onboarding", category: "Engangsydelse"/);
+  assert.match(routes, /\/api\/migration\/preview", requireFeature\("dedikeret_onboarding"\)/);
+  assert.match(routes, /\/api\/migration\/commit", requireFeature\("dedikeret_onboarding"\)/);
+  assert.match(routes, /tokenFor\(cid, value\.source, value\.entity, value\.content\)/);
+  assert.match(routes, /createdIds/);
+  assert.match(routes, /\/rollback", requireFeature\("dedikeret_onboarding"\)/);
+  assert.match(jobs, /app\.get\("\/api\/migration-jobs", requireFeature\("dedikeret_onboarding"\)/);
+  assert.doesNotMatch(jobs, /app\.post\("\/api\/migration-jobs"/);
+});

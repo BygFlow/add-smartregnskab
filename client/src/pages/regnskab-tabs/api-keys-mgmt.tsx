@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Copy, Trash2, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Plus, Copy, Ban, KeyRound, Eye, EyeOff } from "lucide-react";
 
 /* API-nøglestyring */
 
@@ -33,24 +33,24 @@ type ApiKey = {
 const SCOPE_STYLE: Record<string, string> = {
   read: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
   write: "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400",
-  admin: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400",
 };
 const SCOPE_LABEL: Record<string, string> = {
   read: "read",
   write: "write",
-  admin: "admin",
 };
-const ALL_SCOPES = ["read", "write", "admin"];
+const ALL_SCOPES = ["read", "write"];
 
 const STATUS_STYLE: Record<string, string> = {
   aktiv: "badge-soft badge-soft-green",
   inaktiv: "badge-soft badge-soft-gray",
   udløbet: "badge-soft badge-soft-red",
+  tilbagekaldt: "badge-soft badge-soft-red",
 };
 const STATUS_LABEL: Record<string, string> = {
   aktiv: "Aktiv",
   inaktiv: "Inaktiv",
   udløbet: "Udløbet",
+  tilbagekaldt: "Tilbagekaldt",
 };
 
 function parseScopes(s?: string | null): string[] {
@@ -88,6 +88,8 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
     scopes: ["read"] as string[],
     rateLimit: 1000,
     expiresAt: "",
+    webhookUrl: "",
+    webhookEvents: [] as string[],
   });
 
   const queryKey = ["/api/api-keys", companyId];
@@ -110,6 +112,8 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
         scopes: JSON.stringify(form.scopes),
         rateLimit: Number(form.rateLimit) || null,
         expiresAt: form.expiresAt || null,
+        webhookUrl: form.webhookUrl || null,
+        webhookEvents: form.webhookEvents,
         companyId,
       });
       return await res.json();
@@ -145,18 +149,18 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
     },
   });
 
-  const deleteMut = useMutation({
+  const revokeMut = useMutation({
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/api-keys/${id}?companyId=${companyId}`);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/api-keys"] });
-      toast({ title: "API-nøgle slettet" });
+      toast({ title: "API-nøgle tilbagekaldt" });
     },
     onError: (err: unknown) => {
       const message =
         err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Ukendt fejl";
-      toast({ title: "Kunne ikke slette", description: message, variant: "destructive" });
+      toast({ title: "Kunne ikke tilbagekalde", description: message, variant: "destructive" });
     },
   });
 
@@ -195,7 +199,7 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
       </div>
 
       <div className="rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-        API-nøglestyring (beta).
+        Nøgler er tenant-isolerede. Hemmeligheden vises kun ved oprettelsen og gemmes derefter kun som hash. Tilbagekaldte nøgler kan ikke genaktiveres.
       </div>
 
       {isLoading ? (
@@ -245,7 +249,7 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {k.rateLimit ? `${k.rateLimit}/t` : "—"}
+                      {k.rateLimit ? `${k.rateLimit}/min.` : "—"}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{dkDate(k.lastUsed)}</td>
                     <td className="px-3 py-2">
@@ -272,6 +276,7 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                           size="sm"
                           variant="ghost"
                           data-testid={`toggle-btn-${k.id}`}
+                          disabled={k.status === "tilbagekaldt"}
                           onClick={() =>
                             patchMut.mutate({
                               id: k.id,
@@ -286,9 +291,11 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                           variant="ghost"
                           className="text-destructive"
                           data-testid={`delete-btn-${k.id}`}
-                          onClick={() => deleteMut.mutate(k.id)}
+                          disabled={k.status === "tilbagekaldt" || revokeMut.isPending}
+                          onClick={() => revokeMut.mutate(k.id)}
+                          title="Tilbagekald API-nøgle permanent"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Ban className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </td>
@@ -384,10 +391,12 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label htmlFor="ak-rate">Rate limit (pr. time)</Label>
+                    <Label htmlFor="ak-rate">Rate limit (pr. minut)</Label>
                     <Input
                       id="ak-rate"
                       type="number"
+                      min={60}
+                      max={10000}
                       data-testid="form-rateLimit"
                       value={form.rateLimit}
                       onChange={(e) => setForm((f) => ({ ...f, rateLimit: Number(e.target.value) }))}
@@ -403,6 +412,25 @@ export default function ApiKeysMgmt({ companyId }: { companyId: number }) {
                       onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
                     />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ak-webhook">Webhook-URL (valgfrit, HTTPS)</Label>
+                  <Input
+                    id="ak-webhook"
+                    type="url"
+                    data-testid="form-webhookUrl"
+                    value={form.webhookUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
+                    placeholder="https://integration.eksempel.dk/webhooks/smartregnskab"
+                  />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.webhookEvents.includes("invoice.created")}
+                      onChange={(e) => setForm((f) => ({ ...f, webhookEvents: e.target.checked ? ["invoice.created"] : [] }))}
+                    />
+                    Send webhook når en faktura modtages via API
+                  </label>
                 </div>
               </div>
               <DialogFooter>

@@ -38,6 +38,7 @@ interface PortalDocument {
   id: number;
   companyId: number;
   customerId?: number | null;
+  fileObjectId?: number | null;
   title: string;
   documentType: string;
   fileName?: string | null;
@@ -48,12 +49,14 @@ interface PortalDocument {
   createdAt: string;
 }
 
+type Customer = { id: number; name: string; cvr?: string | null };
+
 const DOC_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
   kontrakt: { label: "Kontrakt", className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" },
   tilbud: { label: "Tilbud", className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" },
   rapport: { label: "Rapport", className: "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400" },
   faktura: { label: "Faktura", className: "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400" },
-  certificat: { label: "Certifikat", className: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400" },
+  certifikat: { label: "Certifikat", className: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400" },
 };
 
 function docBadge(type: string) {
@@ -80,6 +83,10 @@ export default function PortalDokumenter({ companyId }: { companyId: number }) {
     queryFn: async () =>
       (await apiRequest("GET", `/api/portal-documents?companyId=${companyId}`)).json(),
   });
+  const customersQuery = useQuery<Customer[]>({
+    queryKey: ["/api/customers", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/customers")).json(),
+  });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/portal-documents"] });
 
@@ -89,10 +96,10 @@ export default function PortalDokumenter({ companyId }: { companyId: number }) {
     onSuccess: () => {
       invalidate();
       setCreateOpen(false);
-      toast({ title: "Dokument uploadet" });
+      toast({ title: "Dokument delt" });
     },
     onError: (e: any) =>
-      toast({ title: "Kunne ikke uploade dokument", description: e.message, variant: "destructive" }),
+      toast({ title: "Kunne ikke dele dokument", description: e.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -145,14 +152,15 @@ export default function PortalDokumenter({ companyId }: { companyId: number }) {
           <DialogTrigger asChild>
             <Button data-testid="button-upload-document" onClick={() => setCreateOpen(true)}>
               <Upload className="w-4 h-4 mr-1.5" />
-              Upload dokument
+              Del dokument
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Upload dokument</DialogTitle>
+              <DialogTitle>Del dokument med en kunde</DialogTitle>
             </DialogHeader>
             <DocumentForm
+              customers={customersQuery.data ?? []}
               pending={createMutation.isPending}
               onSubmit={async (data) => {
                 await createMutation.mutateAsync(data);
@@ -254,21 +262,22 @@ export default function PortalDokumenter({ companyId }: { companyId: number }) {
   );
 }
 
-/* ---------- upload-formular ---------- */
+/* ---------- formular til privat dokumentreference ---------- */
 
 function DocumentForm({
+  customers,
   pending,
   onSubmit,
 }: {
+  customers: Customer[];
   pending: boolean;
   onSubmit: (data: unknown) => Promise<void>;
 }) {
+  const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [documentType, setDocumentType] = useState("kontrakt");
   const [customerId, setCustomerId] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [fileType, setFileType] = useState("");
-  const [uploadedBy, setUploadedBy] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
   const [visibleToCustomer, setVisibleToCustomer] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -276,18 +285,42 @@ function DocumentForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const payload = {
-      title,
-      documentType,
-      customerId: customerId ? Number(customerId) : null,
-      fileName: fileName || null,
-      fileType: fileType || null,
-      uploadedBy: uploadedBy || null,
-      description: description || null,
-      visibleToCustomer,
-    };
+    let fileObjectId: number | null = null;
     try {
-      await onSubmit(payload);
+      if (!selectedFile) throw new Error("Vælg en dokumentfil først.");
+      if (selectedFile.size > 8 * 1024 * 1024) throw new Error("Filen må højst være 8 MB.");
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Filen kunne ikke læses."));
+        reader.readAsDataURL(selectedFile);
+      });
+      const uploaded = await apiRequest("POST", "/api/file-objects", {
+        fileName: selectedFile.name,
+        category: "dokument",
+        dataUrl,
+      });
+      const fileObject = await uploaded.json();
+      fileObjectId = Number(fileObject.id);
+      await onSubmit({
+        title,
+        documentType,
+        customerId: Number(customerId),
+        fileObjectId,
+        description: description || null,
+        visibleToCustomer,
+      });
+    } catch (error) {
+      if (fileObjectId) {
+        await apiRequest("PATCH", `/api/file-objects/${fileObjectId}`, { status: "arkiveret" }).catch(() => undefined);
+      }
+      if (!fileObjectId) {
+        toast({
+          title: "Kunne ikke uploade dokumentet",
+          description: error instanceof Error ? error.message : "Ukendt fejl",
+          variant: "destructive",
+        });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -320,48 +353,25 @@ function DocumentForm({
           </SelectContent>
         </Select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="doc-customer">Kunde-ID</Label>
-          <Input
-            id="doc-customer"
-            data-testid="input-doc-customer"
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            placeholder="f.eks. 12"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="doc-uploaded-by">Uploadet af</Label>
-          <Input
-            id="doc-uploaded-by"
-            data-testid="input-doc-uploaded-by"
-            value={uploadedBy}
-            onChange={(e) => setUploadedBy(e.target.value)}
-          />
-        </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="doc-customer">Kunde *</Label>
+        <Select value={customerId} onValueChange={setCustomerId}>
+          <SelectTrigger id="doc-customer" data-testid="input-doc-customer"><SelectValue placeholder="Vælg kunde" /></SelectTrigger>
+          <SelectContent>
+            {customers.map((customer) => <SelectItem key={customer.id} value={String(customer.id)}>{customer.name}{customer.cvr ? ` · ${customer.cvr}` : ""}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="doc-filename">Filnavn</Label>
-          <Input
-            id="doc-filename"
-            data-testid="input-doc-filename"
-            value={fileName}
-            onChange={(e) => setFileName(e.target.value)}
-            placeholder="f.eks. kontrakt.pdf"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="doc-filetype">Filtype</Label>
-          <Input
-            id="doc-filetype"
-            data-testid="input-doc-filetype"
-            value={fileType}
-            onChange={(e) => setFileType(e.target.value)}
-            placeholder="f.eks. pdf"
-          />
-        </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="doc-file">Dokumentfil * (PDF eller billede, maks. 8 MB)</Label>
+        <Input
+          id="doc-file"
+          type="file"
+          accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
+          data-testid="input-doc-file"
+          onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+          required
+        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="doc-description">Beskrivelse</Label>
@@ -386,8 +396,8 @@ function DocumentForm({
         />
       </div>
       <DialogFooter>
-        <Button type="submit" className="w-full" disabled={submitting || pending} data-testid="button-save-document">
-          {submitting || pending ? "Uploader..." : "Upload dokument"}
+        <Button type="submit" className="w-full" disabled={submitting || pending || !selectedFile || !customerId} data-testid="button-save-document">
+          {submitting || pending ? "Gemmer..." : "Del dokument"}
         </Button>
       </DialogFooter>
     </form>

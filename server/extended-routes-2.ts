@@ -21,13 +21,53 @@ import {
   insertIntegrationConfigSchema, insertComplianceCheckSchema, insertConsolidationEntrySchema,
   insertAdvancedVatSchema, insertBankPaymentSchema, insertPayrollEngineSchema,
   insertAuditPackageSchema, insertBudgetVersionSchema, insertReconciliationCenterSchema,
-  insertApiKeySchema, insertMigrationJobSchema,
 } from "@shared/schema";
 
 function validate(schema: any, data: any) {
   const r = schema.safeParse(data);
   if (!r.success) throw { status: 400, message: "Validering fejlede", details: r.error.issues };
   return r.data;
+}
+
+const advancedVatTypes = new Set(["oss", "intrastat", "delvist_fradrag", "momsregistrering_udland"]);
+function validatedAdvancedVat(body: any) {
+  const period = String(body.period ?? "").trim();
+  const vatType = String(body.vatType ?? "").trim();
+  const country = String(body.country ?? "").trim().toUpperCase();
+  const basis = Number(body.basis);
+  const vatRate = Number(body.vatRate ?? 0);
+  const deductionRate = Number(body.deductionRate ?? 0);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw { status: 400, message: "Perioden skal angives som YYYY-MM." };
+  if (!advancedVatTypes.has(vatType)) throw { status: 400, message: "Vælg en gyldig international momsregel." };
+  if (!/^[A-Z]{2}$/.test(country)) throw { status: 400, message: "Land skal angives med en ISO-landekode på to bogstaver." };
+  if (!Number.isFinite(basis) || basis < 0) throw { status: 400, message: "Grundlaget skal være et positivt tal eller nul." };
+  if (!Number.isFinite(vatRate) || vatRate < 0 || vatRate > 100) throw { status: 400, message: "Momssatsen skal ligge mellem 0 og 100 procent." };
+  if (!Number.isFinite(deductionRate) || deductionRate < 0 || deductionRate > 100) throw { status: 400, message: "Fradragsprocenten skal ligge mellem 0 og 100 procent." };
+  const vatAmount = Math.round((basis * vatRate / 100) * 100) / 100;
+  const deductibleAmount = Math.round((vatAmount * deductionRate / 100) * 100) / 100;
+  return {
+    period, vatType, country, basis, vatRate, vatAmount, deductionRate, deductibleAmount,
+    description: body.description ? String(body.description).trim().slice(0, 1_000) : null,
+    status: "kladde",
+  };
+}
+
+const allowedApiScopes = new Set(["read", "write"]);
+function parsedApiScopes(value: unknown): string[] {
+  let values: unknown[] = [];
+  if (Array.isArray(value)) values = value;
+  else if (typeof value === "string") {
+    try { const parsed = JSON.parse(value); values = Array.isArray(parsed) ? parsed : value.split(/[, ]+/); }
+    catch { values = value.split(/[, ]+/); }
+  }
+  const scopes = Array.from(new Set(values.map(String).map((item) => item.trim()).filter((item) => allowedApiScopes.has(item))));
+  if (!scopes.length) throw { status: 400, message: "Vælg mindst ét gyldigt scope: read eller write." };
+  return scopes;
+}
+
+function safeApiKey(row: any) {
+  const { keyHash: _keyHash, webhookLog: _webhookLog, ...safe } = row;
+  return safe;
 }
 
 async function consolidationContext(req: any) {
@@ -123,7 +163,30 @@ export function registerExtendedRoutes2(app: Express) {
     await storage.delete("consolidation_entries", Number(req.params.id), ownerId);
     res.json({ success: true });
   }));
-  crud(app, "/api/advanced-vat", "advanced_vat", insertAdvancedVatSchema, ["period", "vatType", "country", "basis", "vatRate", "vatAmount", "deductionRate", "deductibleAmount", "description", "status"], undefined, [requireFeature("avanceret_moms")]);
+  app.get("/api/advanced-vat", requireFeature("avanceret_moms"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(await storage.all("advanced_vat", tid(req)));
+  }));
+  app.post("/api/advanced-vat", requireFeature("avanceret_moms"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const candidate = validatedAdvancedVat(req.body);
+    const data = validate(insertAdvancedVatSchema, { ...candidate, companyId: tid(req), createdAt: nowIso() });
+    res.status(201).json(await storage.insert("advanced_vat", data));
+  }));
+  app.patch("/api/advanced-vat/:id", requireFeature("avanceret_moms"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tid(req);
+    const existing = await storage.get("advanced_vat", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "Momsposteringen findes ikke." });
+    if (existing.status !== "kladde") return res.status(409).json({ error: "En kontrolleret eller indberettet momspostering er låst." });
+    const change = validatedAdvancedVat({ ...existing, ...req.body });
+    res.json(await storage.update("advanced_vat", existing.id, change, cid));
+  }));
+  app.delete("/api/advanced-vat/:id", requireFeature("avanceret_moms"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tid(req);
+    const existing = await storage.get("advanced_vat", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "Momsposteringen findes ikke." });
+    if (existing.status !== "kladde") return res.status(409).json({ error: "Kun kladder kan slettes." });
+    await storage.delete("advanced_vat", existing.id, cid);
+    res.json({ success: true });
+  }));
   crud(app, "/api/bank-payments", "bank_payments", insertBankPaymentSchema, ["paymentFileId", "recipientName", "recipientAccount", "recipientReg", "amount", "currency", "paymentDate", "reference", "message", "status", "approvedBy", "approvedAt", "bankStatus", "errorMessage"], undefined, [requireFeature("betalinger")]);
   crud(app, "/api/payroll-engine", "payroll_engine", insertPayrollEngineSchema, ["employeeId", "employeeName", "period", "payslipNumber", "grossSalary", "aTax", "atp", "amContribution", "holidayPay", "pension", "healthInsurance", "unionContribution", "netSalary", "hours", "hourlyRate", "overtime", "mileage", "deductions", "eindkomstStatus", "feriekontoStatus", "status", "approvedBy", "approvedAt"], undefined, [requireFeature("loen")]);
   const auditPackageFields = ["year", "type", "title", "description", "content", "preparedBy", "reviewedBy", "status", "signedOffAt"];
@@ -143,8 +206,41 @@ export function registerExtendedRoutes2(app: Express) {
   }));
   crud(app, "/api/budget-versions", "budget_versions", insertBudgetVersionSchema, ["name", "year", "scenario", "version", "data", "totalRevenue", "totalCosts", "totalResult", "approvedBy", "approvedAt", "status"]);
   crud(app, "/api/reconciliation-center", "reconciliation_center", insertReconciliationCenterSchema, ["period", "type", "accountNumber", "bookAmount", "externalAmount", "difference", "matchedTransactions", "unmatchedTransactions", "autoMatched", "status", "notes"]);
-  crud(app, "/api/api-keys", "api_keys", insertApiKeySchema, ["name", "keyPrefix", "keyHash", "scopes", "rateLimit", "lastUsed", "webhookUrl", "webhookEvents", "webhookLog", "status", "expiresAt"]);
-  crud(app, "/api/migration-jobs", "migration_jobs", insertMigrationJobSchema, ["source", "sourceVersion", "fileName", "mapping", "totalRows", "importedRows", "errorRows", "validationErrors", "rollbackAvailable", "rolledBackAt", "status"]);
+  app.get("/api/api-keys", requireFeature("api_integration"), requireRole("leder", "platform_admin"), h(async (req, res) => {
+    res.json((await storage.all("api_keys", tid(req))).map(safeApiKey));
+  }));
+  app.patch("/api/api-keys/:id", requireFeature("api_integration"), requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tid(req);
+    const existing = await storage.get("api_keys", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "API-nøglen findes ikke." });
+    const change: Record<string, unknown> = {};
+    if (req.body.name !== undefined) change.name = String(req.body.name).trim().slice(0, 120);
+    if (req.body.status !== undefined) {
+      const status = String(req.body.status);
+      if (!new Set(["aktiv", "inaktiv", "tilbagekaldt"]).has(status)) return res.status(400).json({ error: "Ugyldig nøglestatus." });
+      if (existing.status === "tilbagekaldt" && status !== "tilbagekaldt") return res.status(409).json({ error: "En tilbagekaldt nøgle kan ikke aktiveres igen. Opret en ny nøgle." });
+      change.status = status;
+    }
+    if (req.body.webhookUrl !== undefined) {
+      const url = String(req.body.webhookUrl || "").trim();
+      if (url && !/^https:\/\//i.test(url)) return res.status(400).json({ error: "Webhook-URL skal bruge HTTPS." });
+      change.webhookUrl = url || null;
+    }
+    if (req.body.webhookEvents !== undefined) change.webhookEvents = JSON.stringify(Array.isArray(req.body.webhookEvents)
+      ? req.body.webhookEvents.map(String).filter((event: string) => event === "invoice.created")
+      : []);
+    res.json(safeApiKey(await storage.update("api_keys", existing.id, change, cid)));
+  }));
+  app.delete("/api/api-keys/:id", requireFeature("api_integration"), requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tid(req);
+    const existing = await storage.get("api_keys", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "API-nøglen findes ikke." });
+    await storage.update("api_keys", existing.id, { status: "tilbagekaldt" }, cid);
+    res.json({ success: true, status: "tilbagekaldt" });
+  }));
+  app.get("/api/migration-jobs", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(await storage.all("migration_jobs", tid(req)));
+  }));
 
   // ── Profitabilitet auto-generate ──
   app.post("/api/profitability/auto-generate", h(async (req, res) => {
@@ -213,18 +309,32 @@ export function registerExtendedRoutes2(app: Express) {
   }));
 
   // ── API key generate ──
-  app.post("/api/api-keys/generate", h(async (req, res) => {
+  app.post("/api/api-keys/generate", requireFeature("api_integration"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tid(req);
-    const { name, scopes } = req.body;
+    const name = String(req.body?.name ?? "").trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: "Navn er påkrævet." });
+    const scopes = parsedApiScopes(req.body?.scopes);
+    const rateLimit = Math.min(10_000, Math.max(60, Math.round(Number(req.body?.rateLimit) || 1_000)));
+    const expiresAt = req.body?.expiresAt ? String(req.body.expiresAt) : null;
+    if (expiresAt && (!/^\d{4}-\d{2}-\d{2}/.test(expiresAt) || new Date(expiresAt).getTime() <= Date.now())) {
+      return res.status(400).json({ error: "Udløbsdatoen skal ligge i fremtiden." });
+    }
+    const webhookUrl = String(req.body?.webhookUrl || "").trim();
+    if (webhookUrl && !/^https:\/\//i.test(webhookUrl)) return res.status(400).json({ error: "Webhook-URL skal bruge HTTPS." });
+    const webhookEvents = Array.isArray(req.body?.webhookEvents)
+      ? req.body.webhookEvents.map(String).filter((event: string) => event === "invoice.created")
+      : [];
     const crypto = await import("crypto");
-    const rawKey = `sk_${crypto.randomBytes(24).toString("hex")}`;
+    const rawKey = `sr_live_${crypto.randomBytes(32).toString("hex")}`;
     const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
-    const keyPrefix = rawKey.substring(0, 10);
+    const keyPrefix = rawKey.substring(0, 16);
     const record = await storage.insert("api_keys", {
-      companyId: cid, name: name || "Ny API-nøgle", keyPrefix, keyHash,
-      scopes: scopes || "read", rateLimit: 1000, status: "aktiv", createdAt: nowIso(),
+      companyId: cid, name, keyPrefix, keyHash,
+      scopes: JSON.stringify(scopes), rateLimit, expiresAt,
+      webhookUrl: webhookUrl || null, webhookEvents: JSON.stringify(webhookEvents),
+      status: "aktiv", createdAt: nowIso(),
     } as any);
-    res.status(201).json({ ...record, key: rawKey });
+    res.status(201).json({ ...safeApiKey(record), key: rawKey });
   }));
 
 }

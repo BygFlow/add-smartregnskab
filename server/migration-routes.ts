@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { requireRole, tenantId } from "./auth";
+import { requireFeature, requireRole, tenantId } from "./auth";
 import { storage } from "./storage";
 import { previewImport, type MigrationEntity, type MigrationSource } from "./import-adapters";
 
@@ -28,7 +28,7 @@ function naturalKey(entity: MigrationEntity, row: any): string {
 }
 
 export function registerMigrationRoutes(app: Express) {
-  app.post("/api/migration/preview", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+  app.post("/api/migration/preview", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "platform_admin"), asyncRoute(async (req, res) => {
     const cid = tenantId(req);
     const value = input(req);
     try {
@@ -39,7 +39,7 @@ export function registerMigrationRoutes(app: Express) {
     }
   }));
 
-  app.post("/api/migration/commit", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+  app.post("/api/migration/commit", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "platform_admin"), asyncRoute(async (req, res) => {
     const cid = tenantId(req);
     const value = input(req);
     const suppliedToken = String(req.body?.token || "");
@@ -77,7 +77,7 @@ export function registerMigrationRoutes(app: Express) {
     res.status(201).json({ job, importedRows: createdIds.length, skippedRows: skipped.length });
   }));
 
-  app.post("/api/migration-jobs/:id/rollback", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+  app.post("/api/migration-jobs/:id/rollback", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "platform_admin"), asyncRoute(async (req, res) => {
     const cid = tenantId(req);
     const id = Number(req.params.id);
     const job = await storage.get("migration_jobs", id, cid);

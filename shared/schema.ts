@@ -3113,6 +3113,7 @@ export const portalDocuments = sqliteTable("portal_documents", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull(),
   customerId: integer("customer_id"),
+  fileObjectId: integer("file_object_id"),
   title: text("title").notNull(),
   documentType: text("document_type").notNull(),
   fileName: text("file_name"),

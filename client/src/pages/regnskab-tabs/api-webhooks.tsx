@@ -24,98 +24,100 @@ import {
 
 const APIS = [
   {
-    name: "Bogførings-API",
-    path: "/api/journal-entries",
-    desc: "Opret, opdater og hent bogføringsposter og bilagslinjer.",
-    badge: "Klar til integration",
+    name: "Virksomheds-API",
+    path: "GET /api/external/v1/company",
+    desc: "Hent stamdata for den virksomhed, som API-nøglen tilhører.",
+    badge: "API-kontrakt",
   },
   {
-    name: "Kontoplan-API",
-    path: "/api/accounts",
-    desc: "Administrér kontoplanen — opret, rediger og afstil konti.",
-    badge: "Klar til integration",
+    name: "Kunde-API",
+    path: "GET /api/external/v1/customers",
+    desc: "Hent virksomhedens kunder til sikre integrationer og fakturaflow.",
+    badge: "API-kontrakt",
   },
   {
-    name: "Moms-API",
-    path: "/api/vat-periods",
-    desc: "Hent og indberet momsperioder og afstem momsregistreringer.",
-    badge: "Klar til integration",
+    name: "Fakturaliste",
+    path: "GET /api/external/v1/invoices",
+    desc: "Hent fakturaer og status for den virksomhed, som nøglen er bundet til.",
+    badge: "API-kontrakt",
   },
   {
-    name: "Bilags-API",
-    path: "/api/receipts",
-    desc: "Upload, klassificér og hent bilag med OCR- og AI-understøttelse.",
-    badge: "Klar til integration",
-  },
-  {
-    name: "Bank-API",
-    path: "/api/bank-reconciliation",
-    desc: "Afstem banktransaktioner og kør automatiske afstemningsregler.",
-    badge: "Beta",
-  },
-  {
-    name: "Rapport-API",
-    path: "/api/reports",
-    desc: "Generér resultatopgørelse, balance og driftsregnskab som PDF/CSV.",
-    badge: "Klar til integration",
+    name: "Fakturamodtagelse",
+    path: "POST /api/external/v1/invoices",
+    desc: "Modtag fakturakladder eller endelige fakturaer. Endelige fakturaer bogføres automatisk.",
+    badge: "API-kontrakt",
   },
 ];
 
 const WEBHOOKS = [
-  { event: "journal_entry.created", desc: "Når en bogføringspost oprettes." },
-  { event: "journal_entry.approved", desc: "Når en post godkendes." },
-  { event: "vat_period.submitted", desc: "Når en momsperiode indberettes." },
-  { event: "receipt.uploaded", desc: "Når et bilag uploades." },
-  { event: "bank.imported", desc: "Når banktransaktioner importeres." },
-  { event: "report.generated", desc: "Når en rapport genereres." },
+  { event: "invoice.created", desc: "Når en fakturakladde eller endelig faktura modtages gennem integrations-API'et." },
 ];
 
 const RATE_LIMITS = [
-  { window: "Pr. sekund", limit: "30 anmodninger" },
-  { window: "Pr. minut", limit: "600 anmodninger" },
-  { window: "Pr. dag", limit: "50.000 anmodninger" },
-  { window: "Burst", limit: "Op til 50 anmodninger" },
+  { window: "Standard pr. nøgle", limit: "1.000 pr. minut" },
+  { window: "Minimum", limit: "60 pr. minut" },
+  { window: "Maksimum", limit: "10.000 pr. minut" },
+  { window: "Overskridelse", limit: "HTTP 429" },
 ];
 
 const CODE_SAMPLES: Record<string, string> = {
-  curl: `# Hent bogføringsposter
-curl -X GET "https://api.smartregnskab.dk/api/journal-entries?companyId=42" \\
-  -H "Authorization: Bearer <DIN_API_NØGLE>" \\
-  -H "Content-Type: application/json"`,
-  node: `// Opret en bogføringspost (Node.js)
+  curl: `# Hent virksomhedens fakturaer
+curl -X GET "https://app.addsmartregnskab.dk/api/external/v1/invoices" \\
+  -H "Authorization: Bearer <DIN_API_NØGLE>"`,
+  node: `// Send en endelig faktura fra et eksternt system (Node.js)
 const res = await fetch(
-  "https://api.smartregnskab.dk/api/journal-entries?companyId=42",
+  "https://app.addsmartregnskab.dk/api/external/v1/invoices",
   {
     method: "POST",
     headers: {
       Authorization: \`Bearer \${process.env.SMARTREGNSKAB_API_KEY}\`,
       "Content-Type": "application/json",
+      "Idempotency-Key": "kildesystem-faktura-103",
     },
     body: JSON.stringify({
-      date: "2026-08-25",
-      description: "Kontortilbehør",
-      lines: [{ accountId: 6000, debit: 1250 }],
+      documentType: "invoice", // eller "draft"
+      invoiceNumber: "103",
+      customerId: 42,
+      issueDate: "2026-10-08",
+      paymentTerms: 14,
+      lines: [{
+        description: "Udført arbejde",
+        quantity: 2,
+        unitPrice: 750,
+        vatRate: 25,
+        accountNumber: "1010",
+      }],
     }),
   },
 );
-const entry = await res.json();`,
+const invoice = await res.json();`,
   php: `<?php
-// Hent kontoplan (PHP)
-$ch = curl_init("https://api.smartregnskab.dk/api/accounts?companyId=42");
+// Hent kunder (PHP)
+$ch = curl_init("https://app.addsmartregnskab.dk/api/external/v1/customers");
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
   "Authorization: Bearer " . getenv("SMARTREGNSKAB_API_KEY"),
-  "Content-Type: application/json",
 ]);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $response = curl_exec($ch);
 curl_close($ch);`,
-  webhook: `// Modtag et webhook (Express)
-app.post("/webhooks/smartregnskab", (req, res) => {
-  const signature = req.headers["x-smartregnskab-signature"];
-  const payload = req.body; // verifikér signatur i produktion
+  webhook: `// Modtag og verificér et webhook (Express)
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-  if (payload.event === "vat_period.submitted") {
-    console.log("Moms indberettet:", payload.data.periodId);
+app.post("/webhooks/smartregnskab", express.raw({ type: "application/json" }), (req, res) => {
+  const received = String(req.headers["x-smartregnskab-signature"] || "");
+  const signingSecret = createHash("sha256")
+    .update(process.env.SMARTREGNSKAB_API_KEY)
+    .digest("hex");
+  const expected = createHmac("sha256", signingSecret)
+    .update(req.body)
+    .digest("hex");
+  const valid = received.length === expected.length &&
+    timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+  if (!valid) return res.sendStatus(401);
+
+  const payload = JSON.parse(req.body.toString("utf8"));
+  if (payload.event === "invoice.created") {
+    console.log("Faktura modtaget:", payload.data.invoiceNumber);
   }
   res.sendStatus(200);
 });`,
@@ -146,8 +148,8 @@ export default function ApiWebhooks({ companyId }: { companyId: number }) {
   return (
     <div className="space-y-3">
       <PageHeader
-        title="API & Webhooks (beta) — Dokumentation og integration"
-        description="Oversigt over tilgængelige API'er, webhooks, rate limits og autentificering."
+        title="API & Webhooks — Dokumentation og integration"
+        description="Tenant-isoleret integrations-API til eksterne programmer, fakturaflow og signerede webhooks."
         action={
           <Button
             data-testid="generate-key-btn"
@@ -160,8 +162,8 @@ export default function ApiWebhooks({ companyId }: { companyId: number }) {
         }
       />
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-        Beta: API & Webhooks er under udvikling. Endpoints og payloads kan ændres inden endelig udgivelse. Regnskab for virksomhed #{companyId} bruges i alle eksempler.
+      <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+        API-nøglen vælger automatisk virksomhed #{companyId}; et companyId kan derfor ikke bruges til at læse en anden virksomheds data. Fakturakladder forbliver kladder. Endelige fakturaer kræver et kildesystem-fakturanummer, bogføres ved modtagelsen og beskyttes mod dubletter med <code className="font-mono">Idempotency-Key</code>.
       </div>
 
       {/* Tilgængelige API'er */}
@@ -174,7 +176,7 @@ export default function ApiWebhooks({ companyId }: { companyId: number }) {
                   <p className="text-sm font-medium">{api.name}</p>
                   <StatusChip
                     status={api.badge}
-                    variant={api.badge === "Klar til integration" ? "green" : "amber"}
+                    variant={api.badge === "API-kontrakt" ? "blue" : "amber"}
                     icon={<CheckCircle2 className="w-3 h-3" />}
                   />
                 </div>
@@ -201,7 +203,7 @@ export default function ApiWebhooks({ companyId }: { companyId: number }) {
                 <code className="text-xs font-mono text-foreground">{wh.event}</code>
                 <p className="text-xs text-muted-foreground">{wh.desc}</p>
               </div>
-              <StatusChip status="Aktiv" variant="green" icon={<CheckCircle2 className="w-3 h-3" />} />
+              <StatusChip status="Hændelsestype" variant="blue" icon={<CheckCircle2 className="w-3 h-3" />} />
             </div>
           ))}
         </div>
@@ -218,7 +220,8 @@ export default function ApiWebhooks({ companyId }: { companyId: number }) {
           ))}
         </div>
         <div className="px-3 py-2 border-t border-border text-xs text-muted-foreground">
-          Rate limits returneres i headers: <code className="font-mono">X-RateLimit-Remaining</code> og{" "}
+          Den valgte grænse gælder pr. API-nøgle og pr. minut. Rate limits returneres i headers: <code className="font-mono">X-RateLimit-Limit</code>,{" "}
+          <code className="font-mono">X-RateLimit-Remaining</code> og{" "}
           <code className="font-mono">X-RateLimit-Reset</code>.
         </div>
       </SectionCard>

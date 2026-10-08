@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,10 +20,6 @@ import { Info, Globe, Save } from "lucide-react";
 interface CustomerPortalSetting {
   id: number;
   companyId: number;
-  allowBooking: boolean;
-  allowApprovals: boolean;
-  allowComplaints: boolean;
-  allowReports: boolean;
   allowDocuments: boolean;
   allowInvoices: boolean;
   portalUrl?: string | null;
@@ -34,12 +29,8 @@ interface CustomerPortalSetting {
 }
 
 const TOGGLES: { key: keyof CustomerPortalSetting; label: string; description: string }[] = [
-  { key: "allowBooking", label: "Tillad booking", description: "Kunder kan booke ekstra arbejde" },
-  { key: "allowApprovals", label: "Tillad godkendelser", description: "Kunder kan godkende tilbud" },
-  { key: "allowComplaints", label: "Tillad reklamationer", description: "Kunder kan indgive reklamationer" },
-  { key: "allowReports", label: "Tillad rapporter", description: "Kunder kan se servicerapporter" },
-  { key: "allowDocuments", label: "Tillad dokumenter", description: "Kunder kan se delte dokumenter" },
-  { key: "allowInvoices", label: "Tillad fakturaer", description: "Kunder kan se og downloade fakturaer" },
+  { key: "allowDocuments", label: "Vis delte dokumenter", description: "Kunden ser kun dokumenter, der er knyttet til kundens egen konto og markeret som synlige" },
+  { key: "allowInvoices", label: "Vis fakturaer", description: "Kunden kan kun se og hente sine egne fakturaer" },
 ];
 
 /* ---------- komponent ---------- */
@@ -61,10 +52,6 @@ export default function KundePortalIndstillinger({ companyId }: { companyId: num
   const [form, setForm] = useState<CustomerPortalSetting>({
     id: 0,
     companyId,
-    allowBooking: true,
-    allowApprovals: true,
-    allowComplaints: true,
-    allowReports: true,
     allowDocuments: true,
     allowInvoices: false,
     portalUrl: "",
@@ -77,10 +64,6 @@ export default function KundePortalIndstillinger({ companyId }: { companyId: num
       setForm({
         id: existing.id,
         companyId: existing.companyId ?? companyId,
-        allowBooking: existing.allowBooking ?? true,
-        allowApprovals: existing.allowApprovals ?? true,
-        allowComplaints: existing.allowComplaints ?? true,
-        allowReports: existing.allowReports ?? true,
         allowDocuments: existing.allowDocuments ?? true,
         allowInvoices: existing.allowInvoices ?? false,
         portalUrl: existing.portalUrl ?? "",
@@ -119,10 +102,6 @@ export default function KundePortalIndstillinger({ companyId }: { companyId: num
 
   const handleSave = () => {
     const payload = {
-      allowBooking: form.allowBooking,
-      allowApprovals: form.allowApprovals,
-      allowComplaints: form.allowComplaints,
-      allowReports: form.allowReports,
       allowDocuments: form.allowDocuments,
       allowInvoices: form.allowInvoices,
       portalUrl: form.portalUrl || null,
@@ -153,7 +132,7 @@ export default function KundePortalIndstillinger({ companyId }: { companyId: num
           Kundeportal-indstillinger
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Konfigurer hvad kunder kan se og gøre i kundeportalen
+          Konfigurer den private adgang til egne fakturaer og udtrykkeligt delte dokumenter
         </p>
       </div>
 
@@ -163,8 +142,7 @@ export default function KundePortalIndstillinger({ companyId }: { companyId: num
       >
         <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
         <span className="text-muted-foreground">
-          Kundeportalen giver kunder adgang til at booke ekstra arbejde, godkende tilbud, indgive reklamationer og se
-          dokumenter
+          Hver kunde logger ind med sin egen konto. Portalen viser aldrig andre kunders data og opretter ingen offentlige delingslinks.
         </span>
       </div>
 
@@ -191,17 +169,6 @@ export default function KundePortalIndstillinger({ companyId }: { companyId: num
 
       <div className="rounded-md border border-border bg-card p-4 space-y-4">
         <h2 className="text-sm font-semibold">Portalindstillinger</h2>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="portal-url">Portal-URL</Label>
-          <Input
-            id="portal-url"
-            data-testid="input-portal-url"
-            value={form.portalUrl ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, portalUrl: e.target.value }))}
-            placeholder="https://portal.eksempel.dk"
-          />
-        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="portal-theme">Tema</Label>

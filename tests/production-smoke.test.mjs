@@ -451,6 +451,13 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const unsignedQuickpayCallback = await fetch(`${base}/api/webhooks/quickpay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: 123, type: "Payment", accepted: true, state: "processed" }) });
     assert.equal(unsignedQuickpayCallback.status, 400);
 
+    const enableOnboarding = await fetch(`${base}/api/platform/plans/${professionalPlan.id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ features: JSON.stringify([...JSON.parse(professionalPlan.features), "dedikeret_onboarding"]) }),
+    });
+    assert.equal(enableOnboarding.status, 200, "the one-time onboarding service must be enabled before migration");
+
     const importContent = "Leverandørnavn;CVR;Email\nSmoke Leverandør ApS;11223344;invoice@supplier.example";
     const importPreviewResponse = await fetch(`${base}/api/migration/preview`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ source: "economic", entity: "suppliers", content: importContent }) });
     assert.equal(importPreviewResponse.status, 200);

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Play, Workflow, ArrowRight } from "lucide-react";
 
-/* Workflow builder — end-to-end automatisering fra tilbud til betaling */
+/* Kontrollerede workflow-definitioner og sikre testkørsler */
 
 type WorkflowDefinition = {
   id: number;
@@ -193,7 +193,7 @@ export default function WorkflowBuilder({ companyId }: { companyId: number }) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/workflow-runs"] });
-      toast({ title: "Workflow kørt", description: "Se resultatet i seneste kørsler nedenfor." });
+      toast({ title: "Testkørsel gennemført", description: "Definitionen er valideret uden at udføre økonomiske handlinger." });
     },
     onError: (err: unknown) => {
       const message =
@@ -227,7 +227,7 @@ export default function WorkflowBuilder({ companyId }: { companyId: number }) {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Workflow builder</h2>
           <p className="text-sm text-muted-foreground">
-            Automatiser tværgående processer med udløsere og trin.
+            Byg kontrollerede processer med udløsere og godkendte trin. Testkørsler udfører aldrig fakturaer, betalinger eller bogføringer.
           </p>
         </div>
         <Button data-testid="add-workflow-btn" onClick={() => setDialogOpen(true)}>
@@ -298,7 +298,7 @@ export default function WorkflowBuilder({ companyId }: { companyId: number }) {
                           onClick={() => runMut.mutate(w.id)}
                           disabled={runMut.isPending}
                         >
-                          <Play className="mr-1.5 h-3.5 w-3.5" /> Kør
+                          <Play className="mr-1.5 h-3.5 w-3.5" /> Testkør
                         </Button>
                         <Button
                           size="sm"
