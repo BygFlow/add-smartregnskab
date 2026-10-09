@@ -19,6 +19,10 @@ function periodRows(db: Database.Database, table: string, dateColumn: string, co
   return rows(db, table, `company_id = ? AND "${dateColumn}" BETWEEN ? AND ?`, [companyId, start, end]);
 }
 
+function periodCreatedRows(db: Database.Database, table: string, companyId: number, start: string, end: string) {
+  return periodRows(db, table, "created_at", companyId, start, `${end}T23:59:59.999Z`);
+}
+
 export function childRows(db: Database.Database, table: string, parentColumn: string, ids: number[]) {
   if (!ids.length) return [];
   const result: Row[] = [];
@@ -81,10 +85,46 @@ export function selectRealBookkeepingRows(
     throw new Error("Arkivpost henviser til en ekstern fil, som endnu ikke er dækket af årsudtrækket.");
   }
   const creditNotes = periodRows(db, "credit_notes", "created_at", companyId, period.start, `${period.end}T23:59:59.999Z`);
+  if (invoices.some((invoice) => !Number.isSafeInteger(Number(invoice.customer_id)) || Number(invoice.customer_id) <= 0)) {
+    throw new Error("En faktura mangler en gyldig kunde.");
+  }
+  const customerIds = Array.from(new Set([...invoices, ...creditNotes]
+    .map((item) => Number(item.customer_id)).filter((id) => Number.isSafeInteger(id) && id > 0)));
+  const customers = childRows(db, "customers", "id", customerIds);
+  if (customers.length !== customerIds.length || customers.some((customer) => customer.company_id !== companyId)) {
+    throw new Error("En faktura eller kreditnota henviser til en manglende eller fremmed kunde.");
+  }
   const bankTransactions = periodRows(db, "bank_transactions", "date", companyId, period.start, period.end);
   const vatPeriods = periodRows(db, "vat_periods", "created_at", companyId, period.start, `${period.end}T23:59:59.999Z`);
   const periodCloses = periodRows(db, "period_closes", "end_date", companyId, period.start, period.end);
   const einvoiceQueue = periodRows(db, "einvoice_queue", "created_at", companyId, period.start, `${period.end}T23:59:59.999Z`);
+  // Bogføringsmateriale er mere end hovedbog og bilag. Disse registre kan
+  // dokumentere løn, betaling, moms, aktiver, periodisering og årsafslutning
+  // og skal derfor med i det låste årsudtræk.
+  const payrollEntries = periodCreatedRows(db, "payroll_entries", companyId, period.start, period.end);
+  const fixedAssets = rows(db, "fixed_assets",
+    "company_id = ? AND purchase_date <= ? AND (sold_at IS NULL OR sold_at >= ?)",
+    [companyId, period.end, period.start]);
+  const paymentRuns = periodRows(db, "payment_runs", "run_date", companyId, period.start, period.end);
+  const yearEndCloses = periodCreatedRows(db, "year_end_closes", companyId, period.start, period.end);
+  const vatReconciliations = periodCreatedRows(db, "vat_reconciliations", companyId, period.start, period.end);
+  const accruals = rows(db, "accruals", "company_id = ? AND start_date <= ? AND end_date >= ?",
+    [companyId, period.end, period.start]);
+  const inventoryAccounts = rows(db, "inventory_accounts", "company_id = ? AND created_at <= ?",
+    [companyId, `${period.end}T23:59:59.999Z`]);
+  const currencyTransactions = periodRows(db, "currency_transactions", "date", companyId, period.start, period.end);
+  const annualReports = periodCreatedRows(db, "annual_reports", companyId, period.start, period.end);
+  const consolidationEntries = periodCreatedRows(db, "consolidation_entries", companyId, period.start, period.end);
+  const advancedVat = periodCreatedRows(db, "advanced_vat", companyId, period.start, period.end);
+  const bankPayments = periodCreatedRows(db, "bank_payments", companyId, period.start, period.end);
+  const payrollEngine = periodCreatedRows(db, "payroll_engine", companyId, period.start, period.end);
+  const auditPackage = periodCreatedRows(db, "audit_package", companyId, period.start, period.end);
+  const reconciliationCenter = periodCreatedRows(db, "reconciliation_center", companyId, period.start, period.end);
+  const accountingExports = periodRows(db, "accounting_exports", "export_date", companyId, period.start, period.end);
+  const mileageReports = periodRows(db, "mileage_reports", "date", companyId, period.start, period.end);
+  const auditLogs = periodCreatedRows(db, "audit_logs", companyId, period.start, period.end);
+  const taxDeadlines = periodCreatedRows(db, "tax_deadlines", companyId, period.start, period.end);
+  const reminderFlow = periodCreatedRows(db, "reminder_flow", companyId, period.start, period.end);
   // Et bilag modtaget i et tidligere år skal også bevares med det år, hvor
   // posteringen eller bilaget faktisk blev bogført/matchet.
   const documentInbox = Array.from(new Map([
@@ -92,11 +132,19 @@ export function selectRealBookkeepingRows(
     ...linkedDocumentRows(db, companyId, ids(journalEntries), ids(vouchers)),
   ].map((document) => [Number(document.id), document])).values()).sort((a, b) => Number(a.id) - Number(b.id));
   if (!(journalEntries.length || invoices.length || vouchers.length || expenseReports.length || accountingFileObjects.length || archiveRecords.length || creditNotes.length
-      || bankTransactions.length || vatPeriods.length || periodCloses.length || einvoiceQueue.length || documentInbox.length)) {
+      || bankTransactions.length || vatPeriods.length || periodCloses.length || einvoiceQueue.length || documentInbox.length
+      || payrollEntries.length || fixedAssets.length || paymentRuns.length || yearEndCloses.length || vatReconciliations.length
+      || accruals.length || inventoryAccounts.length || currencyTransactions.length || annualReports.length
+      || consolidationEntries.length || advancedVat.length || bankPayments.length || payrollEngine.length
+      || auditPackage.length || reconciliationCenter.length || accountingExports.length || mileageReports.length
+      || auditLogs.length || taxDeadlines.length || reminderFlow.length)) {
     throw new Error("Regnskabsåret indeholder ingen poster eller bilag; testen kan ikke bevise arkivering af rigtige data.");
   }
   return { period, journalEntries, journalLines, invoices, vouchers, expenseReports, accountingFileObjects,
-    fileObjectVersions, archiveRecords, creditNotes, bankTransactions, vatPeriods, periodCloses, einvoiceQueue, documentInbox };
+    fileObjectVersions, archiveRecords, creditNotes, customers, bankTransactions, vatPeriods, periodCloses, einvoiceQueue, documentInbox,
+    payrollEntries, fixedAssets, paymentRuns, yearEndCloses, vatReconciliations, accruals, inventoryAccounts,
+    currencyTransactions, annualReports, consolidationEntries, advancedVat, bankPayments, payrollEngine,
+    auditPackage, reconciliationCenter, accountingExports, mileageReports, auditLogs, taxDeadlines, reminderFlow };
 }
 
 /** Et afgrænset, ægte bogføringsudtræk. Ikke en fuld juridisk dækningspåstand. */
@@ -108,7 +156,10 @@ export async function collectRealBookkeepingBundle(
   fileReader: FileReader = productionFileReader,
 ) {
   const { period, journalEntries, journalLines, invoices, vouchers, expenseReports, accountingFileObjects,
-    fileObjectVersions, archiveRecords, creditNotes, bankTransactions, vatPeriods, periodCloses, einvoiceQueue, documentInbox } =
+    fileObjectVersions, archiveRecords, creditNotes, customers, bankTransactions, vatPeriods, periodCloses, einvoiceQueue, documentInbox,
+    payrollEntries, fixedAssets, paymentRuns, yearEndCloses, vatReconciliations, accruals, inventoryAccounts,
+    currencyTransactions, annualReports, consolidationEntries, advancedVat, bankPayments, payrollEngine,
+    auditPackage, reconciliationCenter, accountingExports, mileageReports, auditLogs, taxDeadlines, reminderFlow } =
     selectRealBookkeepingRows(db, companyId, fiscalYearStart, referenceDate);
   const files: Array<{ documentId: number; name: string; sha256: string; bytesBase64: string }> = [];
   const expenseFiles: Array<{ attachmentId: number; sha256: string; bytesBase64: string }> = [];
@@ -198,9 +249,11 @@ export async function collectRealBookkeepingBundle(
     fileObjectVersionFiles.push({ versionId: Number(version.id), sha256, bytesBase64: bytes.toString("base64") });
   }
   const data = {
-    format: "smartregnskab-bookkeeping-extract-v6",
+    format: "smartregnskab-bookkeeping-extract-v7",
     companyId, fiscalYear: { start: period.start, end: period.end },
     tables: {
+      company: rows(db, "companies", "id = ?", [companyId]),
+      businessProfiles: rows(db, "business_profiles", "company_id = ?", [companyId]),
       journalEntries,
       journalLines,
       invoices,
@@ -212,11 +265,32 @@ export async function collectRealBookkeepingBundle(
       fileObjectVersions,
       archiveRecords,
       creditNotes,
+      customers,
       bankTransactions,
       vatPeriods,
       periodCloses,
       einvoiceQueue,
       documentInbox,
+      payrollEntries,
+      fixedAssets,
+      paymentRuns,
+      yearEndCloses,
+      vatReconciliations,
+      accruals,
+      inventoryAccounts,
+      currencyTransactions,
+      annualReports,
+      consolidationEntries,
+      advancedVat,
+      bankPayments,
+      payrollEngine,
+      auditPackage,
+      reconciliationCenter,
+      accountingExports,
+      mileageReports,
+      auditLogs,
+      taxDeadlines,
+      reminderFlow,
       // Kontoplanen er nødvendig for at fortolke konto-ID i posteringerne.
       accounts: rows(db, "accounts", "company_id = ?", [companyId]),
     },
@@ -242,27 +316,42 @@ export function validateRestoredBookkeepingBundle(plain: Buffer, companyId: numb
     fileObjectFiles?: Array<{ fileObjectId: number; sha256: string; bytesBase64: string }>;
     fileObjectVersionFiles?: Array<{ versionId: number; sha256: string; bytesBase64: string }>;
   };
-  if (bundle.format !== "smartregnskab-bookkeeping-extract-v6" || bundle.companyId !== companyId
+  const legacyV6 = bundle.format === "smartregnskab-bookkeeping-extract-v6";
+  if ((!legacyV6 && bundle.format !== "smartregnskab-bookkeeping-extract-v7") || bundle.companyId !== companyId
       || !bundle.tables || !Array.isArray(bundle.files) || !Array.isArray(bundle.expenseFiles)
       || !Array.isArray(bundle.fileObjectFiles) || !Array.isArray(bundle.fileObjectVersionFiles)) {
     throw new Error("Det gendannede arkiv har forkert format eller virksomhed.");
   }
-  const names = ["journalEntries", "journalLines", "invoices", "invoiceItems", "vouchers", "expenseReports", "expenseAttachments", "accountingFileObjects", "fileObjectVersions", "archiveRecords",
+  const v6Names = ["journalEntries", "journalLines", "invoices", "invoiceItems", "vouchers", "expenseReports", "expenseAttachments", "accountingFileObjects", "fileObjectVersions", "archiveRecords",
     "creditNotes", "bankTransactions", "vatPeriods", "periodCloses", "einvoiceQueue", "documentInbox", "accounts"];
+  const v7Names = ["company", "businessProfiles", ...v6Names, "customers", "payrollEntries", "fixedAssets", "paymentRuns",
+    "yearEndCloses", "vatReconciliations", "accruals", "inventoryAccounts", "currencyTransactions",
+    "annualReports", "consolidationEntries", "advancedVat", "bankPayments", "payrollEngine", "auditPackage",
+    "reconciliationCenter", "accountingExports", "mileageReports", "auditLogs", "taxDeadlines", "reminderFlow"];
+  const names = legacyV6 ? v6Names : v7Names;
   for (const name of names) {
     if (!Array.isArray(bundle.tables[name])) throw new Error(`Det gendannede arkiv mangler ${name}.`);
   }
-  for (const name of ["journalEntries", "invoices", "vouchers", "expenseReports", "expenseAttachments", "accountingFileObjects", "fileObjectVersions", "archiveRecords", "creditNotes", "bankTransactions",
-    "vatPeriods", "periodCloses", "einvoiceQueue", "documentInbox", "accounts", "journalLines"]) {
+  for (const name of names.filter((name) => name !== "company" && name !== "invoiceItems")) {
     if (bundle.tables[name].some((row) => row.company_id !== companyId)) {
       throw new Error(`Det gendannede arkiv indeholder fremmede ${name}.`);
     }
+  }
+  if (!legacyV6 && (bundle.tables.company.length !== 1 || bundle.tables.company[0].id !== companyId)) {
+    throw new Error("Det gendannede arkiv indeholder en fremmed eller manglende virksomhed.");
   }
   const journalIds = new Set(bundle.tables.journalEntries.map((row) => Number(row.id)));
   const invoiceIds = new Set(bundle.tables.invoices.map((row) => Number(row.id)));
   if (bundle.tables.journalLines.some((row) => !journalIds.has(Number(row.journal_entry_id)))
       || bundle.tables.invoiceItems.some((row) => !invoiceIds.has(Number(row.invoice_id)))) {
     throw new Error("Gendannede linjer henviser til poster uden for virksomheden.");
+  }
+  if (!legacyV6) {
+    const customerIds = new Set(bundle.tables.customers.map((row) => Number(row.id)));
+    if ([...bundle.tables.invoices, ...bundle.tables.creditNotes]
+      .some((row) => row.customer_id != null && !customerIds.has(Number(row.customer_id)))) {
+      throw new Error("Gendannede fakturaer eller kreditnotaer mangler deres kunde.");
+    }
   }
   const documents = new Set(bundle.tables.documentInbox.map((row) => Number(row.id)));
   if (documents.size !== bundle.files.length) throw new Error("Gendannede bilagsfiler og bilagsrækker stemmer ikke i antal.");

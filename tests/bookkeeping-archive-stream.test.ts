@@ -11,8 +11,9 @@ function fixture() {
     CREATE TABLE business_profiles (id INTEGER PRIMARY KEY, company_id INTEGER, fiscal_year_start TEXT);
     CREATE TABLE journal_entries (id INTEGER PRIMARY KEY, company_id INTEGER, date TEXT);
     CREATE TABLE journal_lines (id INTEGER PRIMARY KEY, company_id INTEGER, journal_entry_id INTEGER);
-    CREATE TABLE invoices (id INTEGER PRIMARY KEY, company_id INTEGER, issue_date TEXT);
+    CREATE TABLE invoices (id INTEGER PRIMARY KEY, company_id INTEGER, customer_id INTEGER, issue_date TEXT);
     CREATE TABLE invoice_items (id INTEGER PRIMARY KEY, invoice_id INTEGER);
+    CREATE TABLE customers (id INTEGER PRIMARY KEY, company_id INTEGER);
     CREATE TABLE vouchers (id INTEGER PRIMARY KEY, company_id INTEGER, date TEXT);
     CREATE TABLE expense_reports (id INTEGER PRIMARY KEY, company_id INTEGER, date TEXT, receipt_image TEXT);
     CREATE TABLE file_objects (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT, category TEXT, storage_path TEXT, file_size INTEGER, checksum TEXT);
@@ -26,8 +27,29 @@ function fixture() {
     CREATE TABLE einvoice_queue (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
     CREATE TABLE document_inbox (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT, storage TEXT, storage_key TEXT, content_hash TEXT, posted_journal_entry_id INTEGER, matched_voucher_id INTEGER);
     CREATE TABLE accounts (id INTEGER PRIMARY KEY, company_id INTEGER);
+    CREATE TABLE payroll_entries (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE fixed_assets (id INTEGER PRIMARY KEY, company_id INTEGER, purchase_date TEXT, sold_at TEXT);
+    CREATE TABLE payment_runs (id INTEGER PRIMARY KEY, company_id INTEGER, run_date TEXT);
+    CREATE TABLE year_end_closes (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE vat_reconciliations (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE accruals (id INTEGER PRIMARY KEY, company_id INTEGER, start_date TEXT, end_date TEXT, created_at TEXT);
+    CREATE TABLE inventory_accounts (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE currency_transactions (id INTEGER PRIMARY KEY, company_id INTEGER, date TEXT);
+    CREATE TABLE annual_reports (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE consolidation_entries (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE advanced_vat (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE bank_payments (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE payroll_engine (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE audit_package (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE reconciliation_center (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE accounting_exports (id INTEGER PRIMARY KEY, company_id INTEGER, export_date TEXT);
+    CREATE TABLE mileage_reports (id INTEGER PRIMARY KEY, company_id INTEGER, date TEXT);
+    CREATE TABLE audit_logs (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE tax_deadlines (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
+    CREATE TABLE reminder_flow (id INTEGER PRIMARY KEY, company_id INTEGER, created_at TEXT);
     INSERT INTO companies VALUES (1,'A'), (2,'B');
     INSERT INTO business_profiles VALUES (1,1,'2026-01-01'), (2,2,'2026-01-01');
+    INSERT INTO customers VALUES (10,1);
     INSERT INTO journal_entries VALUES (11,1,'2026-04-01');
     INSERT INTO journal_lines VALUES (12,1,11);
   `);
@@ -78,5 +100,12 @@ test("løbende gendannelse afviser fremmede rækker og manglende fildel", async 
     const changed = records.map((record) => record.toString().includes('"table":"journalLines"')
       ? Buffer.from(record.toString().replace('"company_id":1', '"company_id":2')) : record);
     assert.throws(() => changed.forEach((record) => foreign.push(record)), /fremmed række/);
+    const legacy = new BookkeepingStreamValidator(1, "2026-01-01");
+    records.filter((record) => !record.toString().includes('"table":"company"')
+        && !record.toString().includes('"table":"businessProfiles"')
+        && !record.toString().includes('"table":"customers"'))
+      .map((record) => Buffer.from(record.toString().replace("smartregnskab-bookkeeping-stream-v2", "smartregnskab-bookkeeping-stream-v1")))
+      .forEach((record) => legacy.push(record));
+    assert.equal(legacy.finish().counts.journalEntries, 1);
   } finally { db.close(); }
 });

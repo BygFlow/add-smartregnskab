@@ -12,12 +12,19 @@ export function weeklyArchiveEnabled(env: NodeJS.ProcessEnv = process.env) {
 }
 
 type ArchiveCall = typeof archiveRealCompanyYearStream;
-const ARCHIVE_DATED_SOURCES = [
+export const ARCHIVE_DATED_SOURCES = [
   ["journal_entries", "date"], ["invoices", "issue_date"], ["vouchers", "date"], ["expense_reports", "date"], ["archive_records", "date"],
   ["credit_notes", "created_at"], ["bank_transactions", "date"], ["vat_periods", "created_at"],
   ["period_closes", "end_date"],
   ["einvoice_queue", "created_at"], ["document_inbox", "created_at"],
   ["file_objects", "created_at"],
+  ["payroll_entries", "created_at"], ["fixed_assets", "purchase_date"], ["payment_runs", "run_date"],
+  ["year_end_closes", "created_at"], ["vat_reconciliations", "created_at"], ["accruals", "created_at"],
+  ["inventory_accounts", "created_at"], ["currency_transactions", "date"], ["annual_reports", "created_at"],
+  ["consolidation_entries", "created_at"], ["advanced_vat", "created_at"], ["bank_payments", "created_at"],
+  ["payroll_engine", "created_at"], ["audit_package", "created_at"], ["reconciliation_center", "created_at"],
+  ["accounting_exports", "export_date"], ["mileage_reports", "date"], ["audit_logs", "created_at"],
+  ["tax_deadlines", "created_at"], ["reminder_flow", "created_at"],
 ] as const;
 
 /** Include earlier fiscal years too: a late correction must not disappear from

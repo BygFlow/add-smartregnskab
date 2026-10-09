@@ -13,9 +13,13 @@ import {
 const CHUNK_BYTES = 256 * 1024;
 const MAX_SINGLE_FILE = 64 * 1024 * 1024;
 const MAX_LINE_BYTES = 24 * 1024 * 1024;
-const TABLES = ["journalEntries", "journalLines", "invoices", "invoiceItems", "vouchers", "expenseReports",
+const TABLES = ["company", "businessProfiles", "journalEntries", "journalLines", "invoices", "invoiceItems", "customers", "vouchers", "expenseReports",
   "expenseAttachments", "accountingFileObjects", "fileObjectVersions", "archiveRecords", "creditNotes",
-  "bankTransactions", "vatPeriods", "periodCloses", "einvoiceQueue", "documentInbox", "accounts"] as const;
+  "bankTransactions", "vatPeriods", "periodCloses", "einvoiceQueue", "documentInbox", "accounts",
+  "payrollEntries", "fixedAssets", "paymentRuns", "yearEndCloses", "vatReconciliations", "accruals",
+  "inventoryAccounts", "currencyTransactions", "annualReports", "consolidationEntries", "advancedVat",
+  "bankPayments", "payrollEngine", "auditPackage", "reconciliationCenter", "accountingExports",
+  "mileageReports", "auditLogs", "taxDeadlines", "reminderFlow"] as const;
 type Table = typeof TABLES[number];
 type FileCollection = "files" | "expenseFiles" | "fileObjectFiles" | "fileObjectVersionFiles";
 
@@ -42,16 +46,29 @@ export async function* streamRealBookkeepingYear(input: {
     throw new Error("En udlægskvittering mangler eller tilhører en anden virksomhed.");
   }
   const tables: Record<Table, Row[]> = {
+    company: rows(db, "companies", "id = ?", [companyId]),
+    businessProfiles: rows(db, "business_profiles", "company_id = ?", [companyId]),
     journalEntries: selected.journalEntries, journalLines: selected.journalLines,
     invoices: selected.invoices, invoiceItems: childRows(db, "invoice_items", "invoice_id", selected.invoices.map((row) => Number(row.id))),
+    customers: selected.customers,
     vouchers: selected.vouchers, expenseReports: selected.expenseReports, expenseAttachments,
     accountingFileObjects: selected.accountingFileObjects, fileObjectVersions: selected.fileObjectVersions,
     archiveRecords: selected.archiveRecords, creditNotes: selected.creditNotes,
     bankTransactions: selected.bankTransactions, vatPeriods: selected.vatPeriods,
     periodCloses: selected.periodCloses, einvoiceQueue: selected.einvoiceQueue,
     documentInbox: selected.documentInbox, accounts: rows(db, "accounts", "company_id = ?", [companyId]),
+    payrollEntries: selected.payrollEntries, fixedAssets: selected.fixedAssets,
+    paymentRuns: selected.paymentRuns, yearEndCloses: selected.yearEndCloses,
+    vatReconciliations: selected.vatReconciliations, accruals: selected.accruals,
+    inventoryAccounts: selected.inventoryAccounts, currencyTransactions: selected.currencyTransactions,
+    annualReports: selected.annualReports, consolidationEntries: selected.consolidationEntries,
+    advancedVat: selected.advancedVat, bankPayments: selected.bankPayments,
+    payrollEngine: selected.payrollEngine, auditPackage: selected.auditPackage,
+    reconciliationCenter: selected.reconciliationCenter, accountingExports: selected.accountingExports,
+    mileageReports: selected.mileageReports, auditLogs: selected.auditLogs,
+    taxDeadlines: selected.taxDeadlines, reminderFlow: selected.reminderFlow,
   };
-  yield line({ kind: "header", format: "smartregnskab-bookkeeping-stream-v1", companyId,
+  yield line({ kind: "header", format: "smartregnskab-bookkeeping-stream-v2", companyId,
     fiscalYear: { start: selected.period.start, end: selected.period.end } });
   for (const table of TABLES) {
     for (const row of tables[table]) yield line({ kind: "row", table, row });
@@ -111,6 +128,7 @@ export async function* streamRealBookkeepingYear(input: {
 export class BookkeepingStreamValidator {
   private pending = Buffer.alloc(0);
   private header = false;
+  private legacyV1 = false;
   private filesStarted = false;
   private active: { collection: FileCollection; id: number; size: number; sha256: string; hash: ReturnType<typeof createHash>; count: number; nextIndex: number } | null = null;
   private tables = Object.fromEntries(TABLES.map((name) => [name, new Map<number, Row>()])) as Record<Table, Map<number, Row>>;
@@ -138,12 +156,13 @@ export class BookkeepingStreamValidator {
 
   private accept(value: Record<string, unknown>) {
     if (!this.header) {
-      if (value.kind !== "header" || value.format !== "smartregnskab-bookkeeping-stream-v1"
+      if (value.kind !== "header" || !["smartregnskab-bookkeeping-stream-v1", "smartregnskab-bookkeeping-stream-v2"].includes(String(value.format))
           || value.companyId !== this.expectedCompanyId
           || (value.fiscalYear as Record<string, unknown> | undefined)?.start !== this.expectedFiscalYearStart
           || (value.fiscalYear as Record<string, unknown> | undefined)?.end !== archivePeriod(this.expectedFiscalYearStart, this.expectedFiscalYearStart).end) {
         throw new Error("Arkivstrømmen tilhører en anden virksomhed, et andet år eller et andet format.");
       }
+      this.legacyV1 = value.format === "smartregnskab-bookkeeping-stream-v1";
       this.header = true;
       return;
     }
@@ -151,7 +170,10 @@ export class BookkeepingStreamValidator {
       if (this.filesStarted || this.active || !TABLES.includes(value.table as Table)) throw new Error("Ugyldig tabelrækkefølge i arkivet.");
       const table = value.table as Table;
       const row = value.row as Row;
-      if (!row || !validId(row.id) || table !== "invoiceItems" && row.company_id !== this.expectedCompanyId
+      const scopedToExpectedCompany = table === "invoiceItems" || table === "company"
+        ? table === "invoiceItems" || row?.id === this.expectedCompanyId
+        : row?.company_id === this.expectedCompanyId;
+      if (!row || !validId(row.id) || !scopedToExpectedCompany
           || this.tables[table].has(Number(row.id))) throw new Error(`Ugyldig eller fremmed række i ${table}.`);
       this.tables[table].set(Number(row.id), row);
       return;
@@ -204,15 +226,26 @@ export class BookkeepingStreamValidator {
 
   finish() {
     if (!this.header || this.pending.length || this.active) throw new Error("Arkivstrømmen blev afbrudt.");
+    if (!this.legacyV1 && (this.tables.company.size !== 1 || !this.tables.company.has(this.expectedCompanyId)
+        || this.tables.businessProfiles.size < 1)) {
+      throw new Error("Arkivstrømmen mangler virksomhed eller regnskabsprofil.");
+    }
     if (!["journalEntries", "invoices", "vouchers", "expenseReports", "accountingFileObjects", "archiveRecords",
-      "creditNotes", "bankTransactions", "vatPeriods", "periodCloses", "einvoiceQueue", "documentInbox"]
+      "creditNotes", "bankTransactions", "vatPeriods", "periodCloses", "einvoiceQueue", "documentInbox",
+      "payrollEntries", "fixedAssets", "paymentRuns", "yearEndCloses", "vatReconciliations", "accruals",
+      "inventoryAccounts", "currencyTransactions", "annualReports", "consolidationEntries", "advancedVat",
+      "bankPayments", "payrollEngine", "auditPackage", "reconciliationCenter", "accountingExports",
+      "mileageReports", "auditLogs", "taxDeadlines", "reminderFlow"]
       .some((table) => this.tables[table as Table].size > 0)) {
       throw new Error("Arkivstrømmen indeholder ingen bogføringsposter eller bilag.");
     }
     const journalIds = this.tables.journalEntries;
     const invoiceIds = this.tables.invoices;
+    const customerIds = this.tables.customers;
     if (Array.from(this.tables.journalLines.values()).some((row) => !journalIds.has(Number(row.journal_entry_id)))
         || Array.from(this.tables.invoiceItems.values()).some((row) => !invoiceIds.has(Number(row.invoice_id)))
+        || !this.legacyV1 && [...Array.from(this.tables.invoices.values()), ...Array.from(this.tables.creditNotes.values())]
+          .some((row) => row.customer_id != null && !customerIds.has(Number(row.customer_id)))
         || Array.from(this.tables.fileObjectVersions.values()).some((row) => !this.tables.accountingFileObjects.has(Number(row.file_id)))) {
       throw new Error("Arkivet indeholder linjer eller versioner uden en tilhørende hovedpost.");
     }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { archiveYearCandidates, runWeeklyBookkeepingArchive, weeklyArchiveEnabled } from "../server/bookkeeping-archive-weekly";
+import { ARCHIVE_DATED_SOURCES, archiveYearCandidates, runWeeklyBookkeepingArchive, weeklyArchiveEnabled } from "../server/bookkeeping-archive-weekly";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -17,14 +17,7 @@ test("ugentlig arkivering er lukket som standard og kræver et bevidst YES", () 
 test("afsluttede perioder udløser arkivering af deres regnskabsår", () => {
   const db = new Database(":memory:");
   try {
-    for (const [table, column] of [
-      ["journal_entries", "date"], ["invoices", "issue_date"], ["vouchers", "date"],
-      ["archive_records", "date"],
-      ["expense_reports", "date"],
-      ["file_objects", "created_at"],
-      ["credit_notes", "created_at"], ["bank_transactions", "date"], ["vat_periods", "created_at"],
-      ["period_closes", "end_date"], ["einvoice_queue", "created_at"], ["document_inbox", "created_at"],
-    ]) {
+    for (const [table, column] of ARCHIVE_DATED_SOURCES) {
       db.exec(`CREATE TABLE "${table}" (id integer PRIMARY KEY, company_id integer, "${column}" text)`);
     }
     db.exec("INSERT INTO period_closes VALUES (1, 7, '2025-12-31')");
@@ -43,7 +36,7 @@ test("ugejobbet springer uændrede årsudtræk over, men arkiverer en rettelse s
       CREATE TABLE business_profiles (id integer PRIMARY KEY, company_id integer, fiscal_year_start text);
       CREATE TABLE bookkeeping_archive_receipts (id integer PRIMARY KEY, company_id integer, fiscal_year_start text, archived_at text, source_sha256 text, receipt_json text);
       CREATE TABLE journal_entries (id integer PRIMARY KEY, company_id integer, date text);
-      CREATE TABLE invoices (id integer PRIMARY KEY, company_id integer, issue_date text);
+      CREATE TABLE invoices (id integer PRIMARY KEY, company_id integer, customer_id integer, issue_date text);
       CREATE TABLE vouchers (id integer PRIMARY KEY, company_id integer, date text);
       CREATE TABLE archive_records (id integer PRIMARY KEY, company_id integer, date text, archive_path text);
       CREATE TABLE expense_reports (id integer PRIMARY KEY, company_id integer, date text, receipt_image text);
@@ -58,10 +51,32 @@ test("ugejobbet springer uændrede årsudtræk over, men arkiverer en rettelse s
       CREATE TABLE document_inbox (id integer PRIMARY KEY, company_id integer, created_at text, posted_journal_entry_id integer, matched_voucher_id integer);
       CREATE TABLE journal_lines (id integer PRIMARY KEY, company_id integer, journal_entry_id integer);
       CREATE TABLE invoice_items (id integer PRIMARY KEY, invoice_id integer);
+      CREATE TABLE customers (id integer PRIMARY KEY, company_id integer);
       CREATE TABLE accounts (id integer PRIMARY KEY, company_id integer);
+      CREATE TABLE payroll_entries (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE fixed_assets (id integer PRIMARY KEY, company_id integer, purchase_date text, sold_at text);
+      CREATE TABLE payment_runs (id integer PRIMARY KEY, company_id integer, run_date text);
+      CREATE TABLE year_end_closes (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE vat_reconciliations (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE accruals (id integer PRIMARY KEY, company_id integer, start_date text, end_date text, created_at text);
+      CREATE TABLE inventory_accounts (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE currency_transactions (id integer PRIMARY KEY, company_id integer, date text);
+      CREATE TABLE annual_reports (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE consolidation_entries (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE advanced_vat (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE bank_payments (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE payroll_engine (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE audit_package (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE reconciliation_center (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE accounting_exports (id integer PRIMARY KEY, company_id integer, export_date text);
+      CREATE TABLE mileage_reports (id integer PRIMARY KEY, company_id integer, date text);
+      CREATE TABLE audit_logs (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE tax_deadlines (id integer PRIMARY KEY, company_id integer, created_at text);
+      CREATE TABLE reminder_flow (id integer PRIMARY KEY, company_id integer, created_at text);
       INSERT INTO companies VALUES (1,'kunde'), (2,'kunde'), (3,'platform');
       INSERT INTO business_profiles VALUES (1,1,'2026-01-01'), (2,2,'2026-01-01');
-      INSERT INTO invoices VALUES (11,1,'2026-04-01'), (12,1,'2025-11-01'), (22,2,'2026-04-01'), (33,3,'2026-04-01');
+      INSERT INTO customers VALUES (101,1), (102,2), (103,3);
+      INSERT INTO invoices VALUES (11,1,101,'2026-04-01'), (12,1,101,'2025-11-01'), (22,2,102,'2026-04-01'), (33,3,103,'2026-04-01');
     `);
     assert.deepEqual(archiveYearCandidates(sqlite, 1, "2026-01-01").map(x => x.start), ["2025-01-01", "2026-01-01"]);
     const seen: string[] = [];
