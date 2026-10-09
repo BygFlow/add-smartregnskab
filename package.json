@@ -16,6 +16,7 @@
     "restore:drill": "node scripts/restore-drill.mjs",
     "archive:drill": "node dist/archive-drill.cjs",
     "archive:real": "node dist/archive-real-bookkeeping.cjs",
+    "archive:preflight": "node dist/archive-preflight.cjs",
     "archive:verify": "node dist/archive-verify.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-sqlite-prod.mjs",

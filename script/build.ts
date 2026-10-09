@@ -80,6 +80,18 @@ async function buildAll() {
     logLevel: "info",
   });
 
+  // Skrivebeskyttet for-kontrol af virkelige regnskabsdata og originalfiler.
+  // Kommandoen uploader, låser eller registrerer intet.
+  await esbuild({
+    entryPoints: ["scripts/preflight-real-bookkeeping.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/archive-preflight.cjs",
+    external: externals,
+    logLevel: "info",
+  });
+
   // Læsende gendannelseskontrol af én faktisk arkivkvittering; køres kun manuelt.
   await esbuild({
     entryPoints: ["scripts/verify-bookkeeping-archive.ts"],
