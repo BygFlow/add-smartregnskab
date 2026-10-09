@@ -26,6 +26,9 @@ const allowedOrigins = new Set(
     .map((origin) => origin.trim())
     .filter(Boolean),
 );
+// Capacitor kører den signerede, indlejrede klient fra denne faste origin.
+// Den skal ikke afhænge af en manuelt vedligeholdt Render-variabel.
+allowedOrigins.add("https://localhost");
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && allowedOrigins.has(origin)) {

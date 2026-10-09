@@ -30,6 +30,7 @@ test("receipt capture stays private and accounting always requires human approva
 
 test("Capacitor's allow-listed production API supports credentialed CORS", () => {
   const server = read("server/index.ts");
+  assert.match(server, /allowedOrigins\.add\("https:\/\/localhost"\)/);
   assert.match(server, /Access-Control-Allow-Credentials", "true"/);
   assert.match(read(".env.example"), /https:\/\/localhost/);
 });
