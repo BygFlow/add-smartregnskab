@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { accounts, aiGovernanceSettings, auditLogs, companies, documentInbox, journalEntries, journalLines, periodCloses, vouchers } from "@shared/schema";
+import { accounts, auditLogs, companies, documentInbox, journalEntries, journalLines, periodCloses, vouchers } from "@shared/schema";
 import { checkAccountingLimit, requireRole, tenantId } from "./auth";
 import { db } from "./storage";
 import { decodeDataUrl, deleteFile, readFile, saveFile } from "./files";
@@ -160,13 +160,20 @@ export function bookDocument(input: {
   });
 }
 
-/** AI læser filen; kun en valideret, kundestyret delmængde må bogføres uden kø. */
+/** AI læser filen og opretter et forslag. Bogføring kræver altid en brugerhandling. */
 async function processDocument(companyId: number, documentId: number) {
   const document = db.select().from(documentInbox).where(and(
     eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId),
   )).get();
   const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
-  if (!document?.storage || !document.storageKey || document.status === "papirkurv" || !company?.aiEnabled || !process.env.OPENAI_API_KEY) return;
+  if (!document?.storage || !document.storageKey || document.status === "papirkurv") return;
+  if (!company?.aiEnabled || !process.env.OPENAI_API_KEY) {
+    // Undgå en permanent "AI læser"-status, når AI ikke er tilgængelig.
+    // Filen er stadig sikkert modtaget og kan kontrolleres manuelt.
+    db.update(documentInbox).set({ ocrStatus: "fejlet" })
+      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
+    return;
+  }
   if (document.ocrStatus === "behandlet" || document.postedJournalEntryId) return;
   const allowed = await authorizeAiUsage(companyId, 1, 1);
   if (!allowed.allowed) return;
@@ -228,39 +235,9 @@ async function processDocument(companyId: number, documentId: number) {
     suggestedAccount: expense?.accountNumber || null, ocrStatus: "behandlet", ocrData: JSON.stringify(extracted),
   }).where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
 
-  const governance = db.select().from(aiGovernanceSettings).where(eq(aiGovernanceSettings.companyId, companyId)).get();
-  const payable = companyAccounts.find((a) => a.id === company.documentPayablesAccountId && a.active && a.type === "passiv" && /kreditor|leverandørgæld|leverandører/i.test(a.name));
-  const inputVat = companyAccounts.find((a) => a.id === company.documentInputVatAccountId && a.active && a.type === "aktiv" && /købsmoms|indgående moms|moms til gode/i.test(a.name));
-  const matchingCvr = Boolean(company.cvr && extracted.recipientCvr.replace(/\D/g, "") === company.cvr.replace(/\D/g, ""));
-  const supplierCvr = extracted.supplierCvr.replace(/\D/g, "");
-  const normal = (value: string | null) => (value || "").trim().toLocaleLowerCase("da-DK").replace(/\s+/g, "");
-  const duplicateNumber = Boolean(invoiceNumber && db.select().from(documentInbox)
-    .where(eq(documentInbox.companyId, companyId)).all().some((item) => item.id !== documentId
-      && normal(item.invoiceNumber) === normal(invoiceNumber) && normal(item.supplier) === normal(supplier)));
-  const vatMathOk = vat === 0 || Math.abs((total - vat) * 0.25 - vat) <= 0.03;
-  const closedPeriod = db.select().from(periodCloses).where(eq(periodCloses.companyId, companyId)).all()
-    .some((period) => period.status === "afsluttet" && period.startDate <= date && date <= period.endDate);
-  const dateAge = Date.now() - Date.parse(date);
-  // An arbitrary email sender can forge a supplier invoice. Until sender identity is
-  // cryptographically verified, email attachments must be approved by a person.
-  const autoEligible = document.source === "upload" && company.documentAutoPost === 1 && (!governance || governance.enabled)
-    && !JSON.parse(governance?.approvalActions || "[]").includes("document_posting")
-    && extracted.confidence >= Math.max(0.98, governance?.minimumConfidence ?? 0.98)
-    && extracted.documentType === "invoice" && matchingCvr && !duplicateNumber
-    && /^\d{8}$/.test(supplierCvr) && supplierCvr !== company.cvr?.replace(/\D/g, "")
-    && extracted.currency.toUpperCase() === "DKK" && company.vatMode === "dansk"
-    && !extracted.reverseCharge && !extracted.creditNote
-    && Boolean(invoiceNumber && expense && payable && (vat === 0 || inputVat))
-    && vatMathOk && total <= 50_000 && !closedPeriod
-    && dateAge >= -3 * 86_400_000 && dateAge <= 366 * 86_400_000;
-  if (!autoEligible) return;
-  const [documentLimit, entryLimit] = await Promise.all([
-    checkAccountingLimit(companyId, "documents"), checkAccountingLimit(companyId, "entries"),
-  ]);
-  if (!documentLimit.ok || !entryLimit.ok) return;
-  bookDocument({ companyId, documentId, extraction: extracted, expenseAccountId: expense!.id,
-    payableAccountId: payable!.id, inputVatAccountId: inputVat?.id || null,
-    actor: "AI (kundens tilvalg)", model });
+  // Stop her: udtrækket vises som forslag i web- og mobilklienten. Den særskilte
+  // /approve-rute foretager alle kontroller og registrerer den menneskelige
+  // godkendelse i revisionssporet, før noget bogføres.
 }
 
 async function processReceivedDocument(companyId: number, documentId: number) {
@@ -319,28 +296,27 @@ export function registerDocumentIntakeRoutes(app: Express) {
         error instanceof Error ? error.message : "Ukendt fejl");
     }
     res.json({ address, emailReady: inboundReady() && Boolean(address), emailPilot: !inboundReady() && inboundPilot(companyId),
-      autoPost: Boolean(company?.documentAutoPost), payablesAccountId: company?.documentPayablesAccountId,
+      autoPost: false, manualApprovalRequired: true, payablesAccountId: company?.documentPayablesAccountId,
       inputVatAccountId: company?.documentInputVatAccountId,
       accounts: chart.filter((account) => account.active).map(({ id, accountNumber, name, type }) => ({ id, accountNumber, name, type })),
     });
   }));
 
   app.patch("/api/document-receiving/settings", requireRole("leder"), asyncRoute(async (req, res) => {
-    const autoPost = req.body?.autoPost === true;
+    if (req.body?.autoPost === true) {
+      return void res.status(409).json({ error: "AI-autobogføring er deaktiveret. Alle leverandørbilag skal godkendes af en bruger." });
+    }
     const companyId = tenantId(req);
     const payableId = Number(req.body?.payablesAccountId || 0);
     const inputVatId = Number(req.body?.inputVatAccountId || 0);
     const chart = db.select().from(accounts).where(eq(accounts.companyId, companyId)).all();
     const payable = chart.find((a) => a.id === payableId && a.active && a.type === "passiv" && /kreditor|leverandørgæld|leverandører/i.test(a.name));
     const inputVat = chart.find((a) => a.id === inputVatId && a.active && a.type === "aktiv" && /købsmoms|indgående moms|moms til gode/i.test(a.name));
-    const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
-    if (autoPost && (!payable || !inputVat || !company?.aiEnabled || !process.env.OPENAI_API_KEY)) {
-      return void res.status(400).json({ error: "Aktivér AI og vælg en aktiv kreditorkonto samt købsmomskonto før autobogføring." });
-    }
-    db.update(companies).set({ documentAutoPost: autoPost ? 1 : 0,
+    db.update(companies).set({ documentAutoPost: 0,
       documentPayablesAccountId: payable?.id || null, documentInputVatAccountId: inputVat?.id || null,
     }).where(eq(companies.id, companyId)).run();
-    res.json({ autoPost, payablesAccountId: payable?.id || null, inputVatAccountId: inputVat?.id || null });
+    res.json({ autoPost: false, manualApprovalRequired: true,
+      payablesAccountId: payable?.id || null, inputVatAccountId: inputVat?.id || null });
   }));
 
   app.post("/api/document-receiving/upload", requireRole("leder", "holdleder"), asyncRoute(async (req, res) => {

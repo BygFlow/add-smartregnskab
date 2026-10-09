@@ -85,6 +85,7 @@ import {
   Package,
   Archive,
   Activity,
+  Smartphone,
 } from "lucide-react";
 
 // ── Nye SmartRegnskab tab komponenter ──
@@ -1507,7 +1508,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     onError: (error: unknown) => toast({ title: "Kunne ikke gendanne bilaget", description: error instanceof Error ? error.message : "Ukendt fejl", variant: "destructive" }),
   });
 
-  const documentReceivingQuery = useQuery<{ address: string | null; emailReady: boolean; emailPilot: boolean; autoPost: boolean;
+  const documentReceivingQuery = useQuery<{ address: string | null; emailReady: boolean; emailPilot: boolean; autoPost: boolean; manualApprovalRequired: boolean;
     payablesAccountId: number | null; inputVatAccountId: number | null;
     accounts: Array<{ id: number; accountNumber: string; name: string; type: string }> }>({
     queryKey: ["/api/document-receiving/settings"],
@@ -1522,8 +1523,8 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     setInputVatAccountId(documentReceivingQuery.data.inputVatAccountId ?? 0);
   }, [documentReceivingQuery.data]);
   const saveDocumentSettingsMut = useMutation({
-    mutationFn: async (autoPost: boolean) => (await apiRequest("PATCH", "/api/document-receiving/settings", {
-      autoPost, payablesAccountId, inputVatAccountId,
+    mutationFn: async () => (await apiRequest("PATCH", "/api/document-receiving/settings", {
+      autoPost: false, payablesAccountId, inputVatAccountId,
     })).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/document-receiving/settings"] });
@@ -4332,8 +4333,8 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   <p className="text-xs text-muted-foreground">Videresend leverandørfakturaer hertil, når mailmodtagelse er aktiveret. Bilag modtaget via e-mail kræver altid menneskelig godkendelse før bogføring.</p>
                 </div>
                 <div className="rounded-md border p-3 text-sm space-y-3">
-                  <div className="font-medium">AI-bogføring</div>
-                  <p className="text-xs text-muted-foreground">Som standard går bilag til kontrol. Ved tilvalg kan entydige leverandørfakturaer uploadet af virksomheden bogføres automatisk efter kontrol af bl.a. CVR, dubletter, moms og konti. E-mailbilag skal fortsat godkendes manuelt.</p>
+                  <div className="font-medium">AI-forslag med menneskelig godkendelse</div>
+                  <p className="text-xs text-muted-foreground">AI læser bilaget og foreslår leverandør, beløb, moms og konto. En bruger skal altid kontrollere og godkende leverandørbilaget, før der oprettes en bogføring.</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <label className="space-y-1">Kreditorkonto
                       <select className="w-full rounded-md border bg-background p-2" value={payablesAccountId} onChange={(e) => setPayablesAccountId(Number(e.target.value))}>
@@ -4348,24 +4349,26 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       </select>
                     </label>
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => saveDocumentSettingsMut.mutate(false)} disabled={saveDocumentSettingsMut.isPending}>Gem · manuel kontrol</Button>
-                    <Button size="sm" onClick={() => saveDocumentSettingsMut.mutate(true)} disabled={saveDocumentSettingsMut.isPending || !payablesAccountId || !inputVatAccountId}>Aktivér AI-autobogføring</Button>
-                  </div>
-                  <p className="text-xs">Status: {documentReceivingQuery.data?.autoPost ? "AI-autobogføring er tilvalgt" : "Manuel godkendelse"}</p>
+                  <Button size="sm" variant="outline" onClick={() => saveDocumentSettingsMut.mutate()} disabled={saveDocumentSettingsMut.isPending}>Gem bogføringskonti</Button>
+                  <p className="text-xs font-medium text-emerald-700">Status: Manuel godkendelse er altid påkrævet</p>
                 </div>
                 <SectionCard
                   title="Bilagsindbakke"
                   icon={<Inbox className="size-4" />}
                   action={
-                    <Button
-                      size="sm"
-                      data-testid="btn-upload-bilag"
-                      onClick={() => setInboxUploadOpen(true)}
-                    >
-                      <Upload className="size-4" />
-                      Upload bilag
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { window.location.hash = "#/mobil-bilag"; }}>
+                        <Smartphone className="size-4" />Mobilvisning
+                      </Button>
+                      <Button
+                        size="sm"
+                        data-testid="btn-upload-bilag"
+                        onClick={() => setInboxUploadOpen(true)}
+                      >
+                        <Upload className="size-4" />
+                        Upload bilag
+                      </Button>
+                    </div>
                   }
                   noPadding
                 >

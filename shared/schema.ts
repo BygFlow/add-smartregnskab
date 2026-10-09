@@ -34,7 +34,7 @@ export const companies = sqliteTable("companies", {
   // AI-tilæg
   aiEnabled: integer("ai_enabled").notNull().default(0), // 0 = ikke aktiveret, 1 = aktiveret
   documentInboxToken: text("document_inbox_token"), // Tilfældig, vedvarende e-mailalias pr. virksomhed
-  documentAutoPost: integer("document_auto_post").notNull().default(0), // Kun efter kundens udtrykkelige tilvalg
+  documentAutoPost: integer("document_auto_post").notNull().default(0), // Legacyfelt; autobogføring er deaktiveret
   documentPayablesAccountId: integer("document_payables_account_id"),
   documentInputVatAccountId: integer("document_input_vat_account_id"),
   notificationPrefs: text("notification_prefs"), // JSON: email/SMS notification preferences

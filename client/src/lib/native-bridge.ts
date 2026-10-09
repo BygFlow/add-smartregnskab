@@ -68,7 +68,9 @@ export async function takePhoto(quality: 'low' | 'high' = 'high'): Promise<strin
       allowEditing: false,
       resultType: CameraResultType.Base64,
       source: CameraSource.Camera,
-      saveToGallery: true,
+      // Regnskabsbilag må ikke ende i brugerens private fotobibliotek.
+      // Originalen uploades direkte til virksomhedens adskilte bilagsarkiv.
+      saveToGallery: false,
     });
     return `data:image/jpeg;base64,${photo.base64String}`;
   } catch (e) {

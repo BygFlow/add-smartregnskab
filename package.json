@@ -1,6 +1,6 @@
 {
   "name": "add-smartregnskab",
-  "version": "3.15.4",
+  "version": "3.16.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -21,7 +21,9 @@
     "db:migrate": "node scripts/migrate-sqlite-prod.mjs",
     "db:push:dev": "drizzle-kit push",
     "mail:poll:simply": "node scripts/simply-imap-bridge.mjs",
-    "mail:forward:simply": "node scripts/simply-mail-forward.mjs"
+    "mail:forward:simply": "node scripts/simply-mail-forward.mjs",
+    "mobile:sync": "npm run build && cap sync android",
+    "mobile:android:debug": "npm run mobile:sync && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

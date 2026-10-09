@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
+import { isNative } from "@/lib/native-bridge";
 import RegnskabLogin from "@/pages/regnskab-login";
 import { RegnskabsPlatformShell } from "@/pages/regnskabs-shell";
 import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig";
@@ -14,6 +15,7 @@ import { Marketing } from "@/pages/marketing";
 
 const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
 const CustomerPortal = lazy(() => import("@/pages/customer-portal"));
+const MobileReceipts = lazy(() => import("@/pages/mobile-receipts"));
 
 function useRouteLocation(): [string, (to: string, options?: { replace?: boolean }) => void] {
   const [location, navigate] = useHashLocation();
@@ -35,6 +37,7 @@ function Root() {
   if (location === "/privatliv") return <Marketing page="privacy" />;
 
   if (!user) {
+    if (isNative()) return <RegnskabLogin />;
     return (
       <Switch>
         <Route path="/" component={() => <Marketing page="home" />} />
@@ -103,6 +106,16 @@ function Root() {
     return (
       <Suspense fallback={<main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser fagportal…</p></main>}>
         <main className="min-h-screen bg-background p-6"><Fagportal /></main>
+      </Suspense>
+    );
+  }
+
+  const mobileReceiptRoute = location === "/mobil-bilag"
+    || (isNative() && (location === "/" || location === "/login" || location === "/smartregnskab/app"));
+  if (mobileReceiptRoute && !["platform_admin", "assistent", "kunde"].includes(user.role)) {
+    return (
+      <Suspense fallback={<main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser bilagsappen…</p></main>}>
+        <MobileReceipts />
       </Suspense>
     );
   }

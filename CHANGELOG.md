@@ -1,5 +1,14 @@
 # Ændringslog
 
+## 3.16.0 — 2026-10-09
+
+- Tilføjet særskilt mobil bilagsarbejdsgang til Android og mobilweb med virksomhedsvælger, kamera, PDF/billed-upload, status og AI-forslag.
+- Kræver nu altid menneskelig godkendelse af leverandørbilag før bogføring; AI-autobogføring er fjernet fra både API og brugerflade.
+- Beskytter kamerabilag ved ikke at gemme dem i telefonens private galleri og deaktiverer Android-systembackup af appdata.
+- Fjernet unødvendige placeringsrettigheder fra Android-appen.
+- Tilføjet credentialed CORS for den tilladte Capacitor-oprindelse, så native login og API-kald fungerer.
+- Tilføjet mobilregressionstests og verificeret en byggelig Android-debugpakke.
+
 ## 3.15.4 — 2026-09-22
 
 - Tilføjet rigtig AI-leverandørintegration via OpenAI Responses API med `store: false`, pseudonymt sikkerheds-ID, dataminimering, tokenmåling og omkostningsloft.

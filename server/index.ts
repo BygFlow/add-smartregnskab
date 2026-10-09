@@ -14,7 +14,7 @@ import { assertDatabaseReady } from "./storage";
 import { emailConfigured } from "./messaging";
 import { externalBackupConfigured } from "./backup-service";
 
-const APP_VERSION = "3.15.4";
+const APP_VERSION = "3.16.0";
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,6 +30,10 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+    // Den indlejrede Capacitor-klient bruger credentials-mode og et
+    // Authorization-header. Uden denne header afviser WebView'et svaret,
+    // selv om oprindelsen er på tilladelseslisten.
+    res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
