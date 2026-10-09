@@ -6467,7 +6467,7 @@ function PlatformRegnskabssystemPage() {
           <p className="mt-4 text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md. ekskl. moms</span></p>
           <p className="mt-1 text-[11px] text-muted-foreground">{money(Number(plan.monthlyPrice) * 10)} / år · 2 måneder inkluderet</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg bg-muted p-2">Bilag<br/><strong>Ubegrænset</strong></div>
+            <div className="rounded-lg bg-muted p-2">Bilag<br/><strong>Ingen antalgrænse</strong><span className="block text-[10px]">Filstørrelsesgrænser gælder</span></div>
             <div className="rounded-lg bg-muted p-2">Posteringer / år<br/><strong>1.000 inkl.</strong></div>
             <div className="rounded-lg bg-muted p-2">Virksomheder<br/><strong>{plan.maxCompanies === -1 ? "Ubegrænset" : num(plan.maxCompanies)}</strong></div>
             <div className="rounded-lg bg-muted p-2">Integrationer<br/><strong>{plan.maxIntegrations === -1 ? "Ubegrænset" : num(plan.maxIntegrations)}</strong></div>

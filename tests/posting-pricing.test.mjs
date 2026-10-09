@@ -18,5 +18,5 @@ test("annual posting tiers are shared by pricing, billing and customer usage", (
   assert.match(domain, /storage\.all\("journal_lines"/);
   assert.match(domain, /lineCountByEntry/);
   assert.match(marketing, /POSTING_PRICE_TIERS\.map/);
-  assert.match(marketing, /Ubegrænset bilagsopbevaring/);
+  assert.match(marketing, /Ingen særskilt kvote for bilagsopbevaring \(PDF og billeder, filstørrelsesgrænser gælder\)/);
 });

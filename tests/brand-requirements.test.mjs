@@ -35,7 +35,8 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(serverEntry, /https:\/\/www\.googletagmanager\.com/);
   assert.match(marketing, /Hjælpecenter/);
   assert.match(marketing, /Bilag og udgifter/);
-  assert.match(marketing, /AI hjælper\. Du godkender\./);
+  assert.match(marketing, /AI hjælper\. Du styrer\./);
+  assert.match(marketing, /Automatisk bogføring kun ved særskilt tilvalg og faste kontroller/);
   assert.match(marketing, /Kun nødvendige/);
   assert.match(marketing, /regnskabsprogram-smaa-virksomheder/);
   assert.match(marketing, /Guides og checklister/);

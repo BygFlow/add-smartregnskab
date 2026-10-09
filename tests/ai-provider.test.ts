@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { aiProviderConfigured, estimateOpenAiCostDkk, extractOpenAiText } from "../server/ai-provider";
+import { aiProviderConfigured, buildAiAssistantRequest, estimateOpenAiCostDkk, extractOpenAiText } from "../server/ai-provider";
+
+test("synthetic accounting demo builds a non-stored, read-only AI request", () => {
+  const request = buildAiAssistantRequest({
+    companyId: 999,
+    prompt: "Hvad bør jeg kontrollere på dette fiktive leverandørbilag?",
+    verifiedFacts: ["FIKTIVT TESTBILAG: Leverandør Test A/S; total 1.250 DKK; moms 250 DKK."],
+  });
+  assert.equal(request.store, false);
+  assert.match(request.input, /FIKTIVT TESTBILAG/);
+  assert.match(request.instructions, /Denne chat må aldrig hævde, at den har bogført/);
+  assert.match(request.instructions, /særskilt bilagsfunktion.*udtrykkelige tilvalg/);
+  assert.doesNotMatch(request.input, /OPENAI_API_KEY/);
+});
 
 test("extracts text from a raw Responses API payload", () => {
   assert.equal(extractOpenAiText({
