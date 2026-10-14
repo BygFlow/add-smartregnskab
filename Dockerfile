@@ -33,7 +33,7 @@ ENV BACKUP_DIR=/var/data/backups
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "fetch('http://localhost:5000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "const port=process.env.PORT||5000;fetch('http://127.0.0.1:'+port+'/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Render monterer den vedvarende disk efter image-buildet. Ret derfor ejerskabet
 # ved hver containerstart og skift derefter til den uprivilegerede node-bruger.
