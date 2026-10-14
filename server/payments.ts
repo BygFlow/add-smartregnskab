@@ -3,6 +3,7 @@ import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { storage } from "./storage";
 import { queueAndSend } from "./messaging";
 import { addDays, addMonths, issueSubscriptionInvoice, round2 } from "./domain";
+import { subscriptionAccessState } from "./subscription-access";
 import type {
   Company,
   Payment,
@@ -786,12 +787,14 @@ async function settleInvoice(
   const paidAt = now();
   await storage.updatePlatformInvoice(invoice.id, { status: "betalt", paidAt });
   const company = await storage.getCompany(invoice.companyId);
-  if (company && (company.status === "spaerret" || company.status === "i_restance")) {
+  if (company && ["proeve", "spaerret", "i_restance"].includes(company.status)) {
     await storage.updateCompany(company.id, { status: "aktiv" });
   }
   const subscription = await storage.getSubscriptionByCompany(invoice.companyId);
   if (subscription) {
     await storage.updateSubscription(subscription.id, {
+      status: "aktiv",
+      trialEndsAt: null,
       dunningStage: 0,
       lastPaymentAttempt: paidAt,
     });
@@ -1146,8 +1149,8 @@ export async function runDunning(
 
 export async function renewSubscriptions(
   todayIso: string,
-): Promise<{ issued: number; charged: number; failed: number; skippedTrial: number }> {
-  const result = { issued: 0, charged: 0, failed: 0, skippedTrial: 0 };
+): Promise<{ issued: number; charged: number; failed: number; skippedTrial: number; expiredTrial: number }> {
+  const result = { issued: 0, charged: 0, failed: 0, skippedTrial: 0, expiredTrial: 0 };
   const subscriptions = await storage.getSubscriptions();
 
   for (const subscription of subscriptions) {
@@ -1166,8 +1169,15 @@ export async function renewSubscriptions(
       continue;
     }
     if (subscription.currentPeriodEnd > todayIso) continue;
-    if (subscription.status === "proeve" && subscription.trialEndsAt && subscription.trialEndsAt > todayIso) {
+    if (subscription.status === "proeve" && subscription.trialEndsAt && subscription.trialEndsAt >= todayIso) {
       result.skippedTrial++;
+      continue;
+    }
+    if (subscriptionAccessState(subscription, todayIso).restricted
+        && !(await storage.getDefaultPaymentMethod(subscription.companyId))) {
+      // Ingen automatisk overgang til en betaling eller et åbent fakturakrav.
+      // Kunden får begrænset adgang og kan selv vælge pakke/betalingsaftale.
+      result.expiredTrial++;
       continue;
     }
 
@@ -1298,6 +1308,23 @@ async function activateQuickpayMethod(providerRef: string): Promise<number> {
           autoRenew: 1,
           cancelledAt: null,
         });
+      if (subscriptionAccessState(subscription, today()).restricted) {
+        try {
+          const openInvoice = (await storage.getPlatformInvoices(company.id))
+            .find((invoice) => invoice.subscriptionId === subscription.id && invoice.status !== "betalt");
+          const invoice = openInvoice ?? await issueSubscriptionInvoice(company.id, today());
+          await chargeInvoice(invoice.id, { paymentMethodId: method.id });
+        } catch (error: unknown) {
+          // Betalingsaftalen er stadig aktiveret. Schedulerens næste kørsel kan
+          // prøve opkrævningen igen uden at webhookpen fejler eller duplikeres.
+          await writeAudit(
+            company.id,
+            "proeveaktivering_afventer",
+            `subscription:${subscription.id}`,
+            error instanceof Error ? error.message : "Opkrævningen kunne ikke startes efter QuickPay-aktiveringen.",
+          );
+        }
+      }
       }
       await writeAudit(
         company.id,

@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
-import { Send, FileCheck, Download, Plus } from "lucide-react";
+import { Send, FileCheck, Download, Plus, Network, ShieldCheck } from "lucide-react";
 
 /* OIOUBL/NemHandel e-faktura-kø */
 
@@ -25,7 +25,38 @@ type EInvoice = {
   documentType?: string | null;
 };
 
-type ProviderStatus = { configured: boolean; validatorConfigured: boolean; inboundConfigured: boolean; supportedFormats: string[] };
+type ProviderStatus = {
+  provider: string;
+  configured: boolean;
+  companyMapped: boolean;
+  masterConfigured: boolean;
+  masterCvr?: string | null;
+  parentMatchesPlatform: boolean;
+  automaticProvisioning?: boolean;
+  automaticNemhandel?: boolean;
+  validatorConfigured: boolean;
+  inboundConfigured: boolean;
+  supportedFormats: string[];
+  connection?: {
+    cvr: string;
+    status: string;
+    sourceProducts: string[];
+    nemhandelStatus: string;
+    peppolStatus: string;
+    consentAt?: string | null;
+    connected: boolean;
+    lastError?: string | null;
+    updatedAt: string;
+  } | null;
+};
+
+const SPROOM_STATUS_LABEL: Record<string, string> = {
+  afventer_sproom: "Afventer masteradgang",
+  afventer_tilmelding: "Afventer MitID-godkendelse",
+  tilmelding_fejlet: "Tilmelding kræver handling",
+  oprettelse_fejlet: "Oprettelse kræver handling",
+  forbundet: "Forbundet",
+};
 
 const DIRECTION_STYLE: Record<string, string> = {
   udgående: "badge-soft badge-soft-blue",
@@ -78,6 +109,7 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
   const [invoiceId, setInvoiceId] = useState("");
   const [format, setFormat] = useState("OIOUBL_2_1");
   const [documentKind, setDocumentKind] = useState("invoice");
+  const [sproomConsent, setSproomConsent] = useState(false);
 
   const queryKey = ["/api/einvoice-queue", companyId];
 
@@ -94,6 +126,24 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
   const { data: provider } = useQuery<ProviderStatus>({
     queryKey: ["/api/einvoice-queue/status"],
     queryFn: async () => (await apiRequest("GET", "/api/einvoice-queue/status")).json(),
+  });
+
+  const onboardingMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/einvoice-queue/sproom/onboarding", {
+      consent: true,
+      sourceProducts: ["add_smartregnskab"],
+    })).json(),
+    onSuccess: (result: { action?: string }) => {
+      setSproomConsent(false);
+      qc.invalidateQueries({ queryKey: ["/api/einvoice-queue/status"] });
+      const description = result.action === "child_created"
+        ? "Sproom child-profilen er oprettet og genbruges af SmartRegnskab, Pro og Clean."
+        : result.action === "enrollment_requested"
+          ? "Virksomheden findes allerede hos Sproom. Den tegningsberettigede skal godkende tilmeldingen med MitID Erhverv."
+          : "Tilslutningen er gemt og afventer Sprooms masteradgang. Ingen dokumenter sendes endnu.";
+      toast({ title: "Tilslutningen er registreret", description });
+    },
+    onError: (err: unknown) => toast({ title: "Kunne ikke registrere tilslutningen", description: err instanceof Error ? err.message : "Ukendt fejl", variant: "destructive" }),
   });
 
   const createMut = useMutation({
@@ -168,6 +218,39 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
           ? "Afsendelsesleverandør er tilsluttet. Kontrollér stadig leveringskvitteringen i køen."
           : "Afsendelse er låst, indtil en rigtig NemHandel/Peppol-leverandør er tilsluttet. Systemet kan ikke længere markere dokumenter som sendt uden leverandørsvar."}
       </div>
+
+      {provider?.provider === "sproom" && (
+        <section className="rounded-xl border bg-card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-800"><Network className="h-5 w-5" /></span>
+              <div>
+                <h3 className="font-semibold">Sproom masterforbindelse</h3>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">ADD SmartDrift ApS har én parent/masteraftale. Denne juridiske virksomheds CVR får én child-profil, som genbruges på tværs af SmartRegnskab, Pro og Clean.</p>
+              </div>
+            </div>
+            <span className={provider.connection?.connected ? "badge-soft badge-soft-green" : "badge-soft badge-soft-amber"}>{provider.connection ? (SPROOM_STATUS_LABEL[provider.connection.status] || provider.connection.status.replaceAll("_", " ")) : "Ikke tilmeldt"}</span>
+          </div>
+          {provider.connection ? (
+            <>
+              <div className="mt-4 grid gap-2 rounded-lg bg-muted/40 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                <div><span className="text-muted-foreground">Kunde-CVR</span><strong className="mt-1 block">{provider.connection.cvr}</strong></div>
+                <div><span className="text-muted-foreground">Produkter</span><strong className="mt-1 block">{provider.connection.sourceProducts.map((item) => item === "add_smartregnskab" ? "SmartRegnskab" : item === "smartdrift_pro" ? "Pro" : item === "smartdrift_clean" ? "Clean" : item).join(", ") || "SmartRegnskab"}</strong></div>
+                <div><span className="text-muted-foreground">NemHandel</span><strong className="mt-1 block capitalize">{provider.connection.nemhandelStatus.replaceAll("_", " ")}</strong></div>
+                <div><span className="text-muted-foreground">Peppol</span><strong className="mt-1 block capitalize">{provider.connection.peppolStatus.replaceAll("_", " ")}</strong></div>
+              </div>
+              {provider.connection.lastError && <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">{provider.connection.lastError}</p>}
+              {provider.connection.status.endsWith("_fejlet") && <Button className="mt-3" size="sm" variant="outline" disabled={onboardingMut.isPending} onClick={() => onboardingMut.mutate()}><ShieldCheck className="mr-2 h-4 w-4" />Prøv Sproom-tilmelding igen</Button>}
+              {provider.connection.connected && provider.automaticNemhandel && provider.connection.nemhandelStatus !== "aktiv" && <Button className="mt-3" size="sm" variant="outline" disabled={onboardingMut.isPending} onClick={() => onboardingMut.mutate()}><Network className="mr-2 h-4 w-4" />Aktivér NemHandel-modtagelse</Button>}
+            </>
+          ) : (
+            <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" checked={sproomConsent} onChange={(event) => setSproomConsent(event.target.checked)} /><span>Jeg godkender, at virksomhedens CVR- og fakturaoplysninger bruges til at oprette eller knytte én Sproom child-profil til NemHandel/Peppol under ADD SmartDrift ApS' masteraftale.</span></label>
+              <Button size="sm" disabled={!sproomConsent || onboardingMut.isPending} onClick={() => onboardingMut.mutate()}><ShieldCheck className="mr-2 h-4 w-4" />Registrér tilslutning</Button>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="flex flex-wrap items-end gap-2 rounded-md border p-3">
         <label className="grid gap-1 text-sm"><span>Dokument</span><select className="h-9 rounded-md border bg-background px-3" value={documentKind} onChange={(event) => setDocumentKind(event.target.value)}><option value="invoice">Faktura</option><option value="credit_note">Kreditnota</option></select></label>

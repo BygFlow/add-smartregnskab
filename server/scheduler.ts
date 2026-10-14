@@ -169,7 +169,7 @@ export async function jobSubscriptions(): Promise<JobResult> {
     affected,
     detail:
       `Fornyet: ${renew.issued} fakturaer, ${renew.charged} betalt, ${renew.failed} fejlede, `
-      + `${renew.skippedTrial} i prøveperiode. Rykkere: trin 1: ${dunning.stage1}, `
+      + `${renew.skippedTrial} i aktiv prøveperiode, ${renew.expiredTrial} udløbet uden betalingsaftale. Rykkere: trin 1: ${dunning.stage1}, `
       + `trin 2: ${dunning.stage2}, spærret: ${dunning.stage3}.`,
   };
 }

@@ -172,6 +172,20 @@ if (!hasApplicationSchema) {
       );
       CREATE INDEX IF NOT EXISTS bookkeeping_archive_company_year_idx
         ON bookkeeping_archive_receipts(company_id, fiscal_year_start, archived_at);
+      CREATE TABLE IF NOT EXISTS sproom_child_companies (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        company_id integer NOT NULL,
+        cvr text NOT NULL,
+        external_company_id text,
+        status text DEFAULT 'afventer_sproom' NOT NULL,
+        source_products text DEFAULT '[]' NOT NULL,
+        nemhandel_status text DEFAULT 'afventer' NOT NULL,
+        peppol_status text DEFAULT 'afventer' NOT NULL,
+        consent_at text,
+        consent_by text,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      );
     `);
 
     addColumn("dimension_values", "company_id", "integer");
@@ -247,6 +261,9 @@ if (!hasApplicationSchema) {
     "CREATE UNIQUE INDEX IF NOT EXISTS bank_transactions_company_external_unique ON bank_transactions (company_id, external_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS companies_document_inbox_token_unique ON companies (document_inbox_token)",
     "CREATE UNIQUE INDEX IF NOT EXISTS document_inbox_company_message_unique ON document_inbox (company_id, external_message_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS sproom_child_company_company_unique ON sproom_child_companies (company_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS sproom_child_company_cvr_unique ON sproom_child_companies (cvr)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS sproom_child_company_external_unique ON sproom_child_companies (external_company_id)",
   ]) {
     try { sqlite.exec(statement); } catch (error) {
       console.warn("Legacy database index could not be created:", error instanceof Error ? error.message : error);

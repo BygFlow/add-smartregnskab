@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateEInvoice, providerSend, sproomRequestId } from "../server/einvoice";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const temp = mkdtempSync(join(tmpdir(), "smartregnskab-sproom-adapter-"));
+process.env.DATABASE_PATH = join(temp, "adapter.db");
+process.env.MIGRATIONS_DIR = join(process.cwd(), "migrations");
+const { generateEInvoice, providerSend, sproomRequestId } = await import("../server/einvoice");
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {

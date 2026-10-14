@@ -4,6 +4,8 @@ import { creditNotes, einvoiceQueue } from "@shared/schema";
 import { requireRole } from "./auth";
 import { db, storage } from "./storage";
 import { generateECreditNote, generateEInvoice, generateEInvoiceResponse, internalCompanyIdForSproom, providerSend, providerStatus, providerValidate, sproomDownloadDocument, validateEInvoice, verifyInboundSignature, verifySproomSignature, type EInvoiceFormat } from "./einvoice";
+import { linkSproomChildCompany, safeSproomConnection } from "./sproom-registry";
+import { acceptSproomEnrollment, provisionSproomChildCompany } from "./sproom-master";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res)).catch(next);
 const cid = (req: Request) => Number((req as any).auth?.companyId);
@@ -52,6 +54,17 @@ export function registerPublicEInvoiceRoutes(app: Express) {
     const eventType = String(req.body?.webhookType || "");
     const documentId = String(req.body?.documentId || "").trim();
     const externalCompanyId = String(req.body?.companyId || "").trim();
+
+    if (eventType === "childCompanyEnrollmentAccepted") {
+      const identifier = req.body?.companyIdentifier;
+      if (String(identifier?.schemeId || "").toUpperCase() !== "DK:CVR" || !identifier?.value || !externalCompanyId) {
+        return void res.status(400).json({ error: "Sproom-tilmeldingen mangler gyldigt CVR eller companyId." });
+      }
+      const connection = await acceptSproomEnrollment({ cvr: identifier.value, externalCompanyId });
+      await audit(connection.companyId, "sproom", "sproom_tilmelding_godkendt", `company#${connection.companyId}`, `CVR ${connection.cvr}; child-profil godkendt via Sproom.`);
+      return void res.json({ accepted: true, connected: connection.status === "forbundet", nemhandelStatus: connection.nemhandelStatus });
+    }
+
     const companyId = internalCompanyIdForSproom(externalCompanyId);
     if (!companyId) return void res.status(404).json({ error: "Sproom-virksomheden er ikke knyttet til en virksomhed i ADD SmartRegnskab." });
 
@@ -105,6 +118,48 @@ export function registerPublicEInvoiceRoutes(app: Express) {
 
 export function registerEInvoiceRoutes(app: Express) {
   app.get("/api/einvoice-queue/status", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => res.json(providerStatus(cid(req)))));
+  app.post("/api/einvoice-queue/sproom/onboarding", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
+    if (req.body?.consent !== true) return void res.status(400).json({ error: "Virksomhedens administrator skal godkende NemHandel/Peppol-tilslutningen." });
+    const companyId = cid(req);
+    const company = await storage.getCompany(companyId);
+    if (!company) return void res.status(404).json({ error: "Virksomheden findes ikke." });
+    if (!company.cvr) return void res.status(409).json({ error: "Virksomhedens CVR-nummer skal udfyldes under Virksomhedsindstillinger først." });
+    try {
+      const result = await provisionSproomChildCompany({
+        companyId,
+        companyName: company.name,
+        cvr: company.cvr,
+        userEmail: String(req.body?.enrollmentEmail || company.email || actor(req)),
+        sourceProducts: req.body?.sourceProducts || ["add_smartregnskab"],
+        consentAt: now(),
+        consentBy: actor(req),
+      });
+      const connection = result.connection;
+      await audit(companyId, actor(req), "sproom_onboarding_godkendt", `company#${companyId}`, `CVR ${connection.cvr}; én child-profil under ADD SmartDrift ApS' masteraftale.`);
+      res.status(201).json({ action: result.action, connection: safeSproomConnection(connection), provider: providerStatus(companyId) });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : "Sproom-onboardingen kunne ikke registreres." });
+    }
+  }));
+  app.post("/api/einvoice-queue/sproom/link", requireRole("platform_admin"), asyncRoute(async (req, res) => {
+    const targetCompanyId = Number(req.body?.companyId || cid(req));
+    if (!Number.isInteger(targetCompanyId) || targetCompanyId <= 0) return void res.status(400).json({ error: "companyId er ugyldigt." });
+    const company = await storage.getCompany(targetCompanyId);
+    if (!company) return void res.status(404).json({ error: "Virksomheden findes ikke." });
+    try {
+      const connection = linkSproomChildCompany({
+        companyId: targetCompanyId,
+        externalCompanyId: req.body?.externalCompanyId,
+        sourceProducts: req.body?.sourceProducts,
+        nemhandelStatus: req.body?.nemhandelStatus,
+        peppolStatus: req.body?.peppolStatus,
+      });
+      await audit(targetCompanyId, actor(req), "sproom_child_linket", `company#${targetCompanyId}`, `CVR ${connection.cvr}; child-profil koblet via masteraftalen.`);
+      res.json({ connection: safeSproomConnection(connection), provider: providerStatus(targetCompanyId) });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : "Sproom child-profilen kunne ikke kobles." });
+    }
+  }));
   app.get("/api/einvoice-queue", requireRole("leder", "platform_admin"), asyncRoute(async (req, res) => {
     res.json(db.select().from(einvoiceQueue).where(eq(einvoiceQueue.companyId, cid(req))).orderBy(desc(einvoiceQueue.id)).all().map(({ payloadXml, ...row }) => ({ ...row, hasDocument: Boolean(payloadXml) })));
   }));

@@ -50,7 +50,21 @@ test("SAF-T export reports the deployed application version", () => {
 test("customer backup screen exposes status instead of simulated production actions", () => {
   const page = read("client/src/pages/regnskab-tabs/backup-regnskab.tsx");
   assert.match(page, /backup-protection\/status/);
+  assert.match(page, /fuldfort: "Fuldført"/);
   assert.doesNotMatch(page, /restore-dry-run|\/api\/backups|openAuthedFile/);
+});
+
+test("inactive AI usage is explained without exposing internal provider cost", () => {
+  const page = read("client/src/pages/regnskab-tabs/abonnement.tsx");
+  assert.match(page, /AI er ikke aktivt/);
+  assert.doesNotMatch(page, /Estimeret leverandøromkostning|internt loft/);
+});
+
+test("Sproom readiness uses the central child registry and either supported webhook key format", () => {
+  const readiness = read("scripts/release-readiness.mjs");
+  assert.doesNotMatch(readiness, /\["SPROOM_API_TOKEN", "SPROOM_COMPANY_MAP"\]/);
+  assert.match(readiness, /SPROOM_WEBHOOK_PUBLIC_KEY \|\| process\.env\.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64/);
+  assert.match(readiness, /sproom-master-activation/);
 });
 
 test("external backup retention only prunes expired controlled snapshots", () => {

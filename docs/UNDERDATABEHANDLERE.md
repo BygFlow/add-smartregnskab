@@ -14,7 +14,7 @@ leverandøraftale.
 | QuickPay ApS | Betalingsvindue og abonnementsbetaling | Aktiv ved betalt abonnement | Produktionsaftale, webhooksignatur og dataminimering kontrolleres |
 | Clearhaus A/S | Kortindløsning | Afventer endelig produktionsgodkendelse | Må ikke behandle produktionsbetalinger før godkendelse og aftale er arkiveret |
 | Mastercard Open Banking / Aiia | Kontoindsigt og banktransaktioner | Valgfri; kun efter kundens samtykke | Produktionsaftale, DPA, samtykkeflow, dataplacering og slettefrister mangler endelig kontrol |
-| Visma e-conomic A/S (Sproom) | NemHandel/Peppol og child-company-profiler | Valgfri; afventer underskrevet ISV-aftale | DPA, underleverandørliste, aftale og produktionsnøgler arkiveres før aktivering |
+| Visma e-conomic A/S (Sproom) | NemHandel/Peppol og child-company-profiler under ADD SmartDrift ApS' masteraftale | Valgfri; aktiveres pr. kunde efter godkendelse, når produktionskoblingen er klar | DPA, underleverandørliste, aftale og produktionsnøgler arkiveres før aktivering |
 
 ## Kontrolprocedure
 

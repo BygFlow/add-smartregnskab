@@ -36,7 +36,8 @@ test("SmartRegnskab implements its product-family brand requirements", () => {
   assert.match(marketing, /Hjælpecenter/);
   assert.match(marketing, /Bilag og udgifter/);
   assert.match(marketing, /AI hjælper\. Du styrer\./);
-  assert.match(marketing, /Automatisk bogføring kun ved særskilt tilvalg og faste kontroller/);
+  assert.match(marketing, /Altid menneskelig kontrol før bogføring/);
+  assert.doesNotMatch(marketing, /snæver automatisk bogføring|automatisk bogføring af visse/i);
   assert.match(marketing, /Kun nødvendige/);
   assert.match(marketing, /regnskabsprogram-smaa-virksomheder/);
   assert.match(marketing, /Guides og checklister/);

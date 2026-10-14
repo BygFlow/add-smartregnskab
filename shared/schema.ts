@@ -1460,7 +1460,7 @@ export const insertImportJobSchema = createInsertSchema(importJobs).omit({ id: t
 export type InsertImportJob = z.infer<typeof insertImportJobSchema>;
 export type ImportJob = typeof importJobs.$inferSelect;
 
-// ── AI Regnskab (beta) — automatisk bogføring, moms, skat ──
+// ── AI Regnskab (beta) — forslag til bogføring, moms og skat; godkendelse kræves ──
 export const aiAccountingTasks = sqliteTable("ai_accounting_tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull(),
@@ -1562,7 +1562,7 @@ export const accountingRules = sqliteTable("accounting_rules", {
   accountName: text("account_name").notNull(),
   vatCode: text("vat_code"), // momsgruppe
   category: text("category").notNull().default("diverse"), // kontor, lon, leje, transport, etc
-  autoBook: integer("auto_book").notNull().default(0), // 1 = automatisk bogført, 0 = forslag til godkendelse
+  autoBook: integer("auto_book").notNull().default(0), // Legacyfelt; nye flows gemmer forslag og kræver godkendelse
   active: integer("active").notNull().default(1),
   createdAt: text("created_at").notNull(),
 });
@@ -2679,6 +2679,35 @@ export const einvoiceQueue = sqliteTable("einvoice_queue", {
 export const insertEinvoiceQueueSchema = createInsertSchema(einvoiceQueue).omit({ id: true, createdAt: true });
 export type InsertEinvoiceQueue = z.infer<typeof insertEinvoiceQueueSchema>;
 export type EinvoiceQueue = typeof einvoiceQueue.$inferSelect;
+
+// Sproom ISV/master-register. ADD SmartDrift ApS har én parent-aftale, mens
+// hver juridisk kundevirksomhed kun må have én child-profil pr. CVR. Produkter
+// er blot kilder til samme profil og må derfor ikke oprette parallelle profiler.
+export const sproomChildCompanies = sqliteTable("sproom_child_companies", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  cvr: text("cvr").notNull(),
+  externalCompanyId: text("external_company_id"),
+  status: text("status").notNull().default("afventer_sproom"),
+  enrollmentId: text("enrollment_id"),
+  sourceProducts: text("source_products").notNull().default("[]"),
+  nemhandelStatus: text("nemhandel_status").notNull().default("afventer"),
+  nemhandelNetworkId: text("nemhandel_network_id"),
+  peppolStatus: text("peppol_status").notNull().default("afventer"),
+  peppolNetworkId: text("peppol_network_id"),
+  lastError: text("last_error"),
+  consentAt: text("consent_at"),
+  consentBy: text("consent_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({
+  companyUnique: uniqueIndex("sproom_child_company_company_unique").on(table.companyId),
+  cvrUnique: uniqueIndex("sproom_child_company_cvr_unique").on(table.cvr),
+  externalUnique: uniqueIndex("sproom_child_company_external_unique").on(table.externalCompanyId),
+}));
+export const insertSproomChildCompanySchema = createInsertSchema(sproomChildCompanies).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSproomChildCompany = z.infer<typeof insertSproomChildCompanySchema>;
+export type SproomChildCompany = typeof sproomChildCompanies.$inferSelect;
 
 // 23. API-nøglestyring
 export const apiKeys = sqliteTable("api_keys", {

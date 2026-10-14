@@ -424,13 +424,18 @@ export async function issueSubscriptionInvoice(companyId: number, today: string)
   const existing = await storage.getPlatformInvoices();
   const seq = existing.length + 1;
   const months = sub.billingCycle === "aarlig" ? 12 : 1;
+  // En gratis prøveperiode faktureres aldrig bagud. Første faktura dækker den
+  // betalte periode fra aktiveringsdagen; senere fornyelser beholder den
+  // eksisterende periodeadfærd.
+  const invoicePeriodStart = sub.status === "proeve" ? today : sub.currentPeriodStart;
+  const invoicePeriodEnd = sub.status === "proeve" ? addMonths(today, months) : sub.currentPeriodEnd;
 
   const invoice = await storage.createPlatformInvoice({
     companyId,
     subscriptionId: sub.id,
     invoiceNumber: `RA-${new Date(today).getFullYear()}-${String(seq).padStart(4, "0")}`,
-    periodStart: sub.currentPeriodStart,
-    periodEnd: sub.currentPeriodEnd,
+    periodStart: invoicePeriodStart,
+    periodEnd: invoicePeriodEnd,
     planName: preview.planName,
     employeeCount: preview.employeeCount,
     netAmount: preview.netAmount,
@@ -443,12 +448,18 @@ export async function issueSubscriptionInvoice(companyId: number, today: string)
   });
 
   // Rul abonnementsperioden frem
-  const nextStart = sub.currentPeriodEnd;
-  await storage.updateSubscription(sub.id, {
-    currentPeriodStart: nextStart,
-    currentPeriodEnd: addMonths(nextStart, months),
-    status: sub.status === "proeve" ? "aktiv" : sub.status,
-  });
+  if (sub.status === "proeve") {
+    await storage.updateSubscription(sub.id, {
+      currentPeriodStart: invoicePeriodStart,
+      currentPeriodEnd: invoicePeriodEnd,
+    });
+  } else {
+    const nextStart = sub.currentPeriodEnd;
+    await storage.updateSubscription(sub.id, {
+      currentPeriodStart: nextStart,
+      currentPeriodEnd: addMonths(nextStart, months),
+    });
+  }
 
   return invoice;
 }

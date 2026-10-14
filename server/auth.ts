@@ -1,10 +1,11 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual, randomUUID } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
-import type { User } from "@shared/schema";
+import type { Subscription, User } from "@shared/schema";
 import { companyAccessMemberships, professionalMemberships } from "@shared/schema";
 import { db } from "./storage";
 import { and, eq } from "drizzle-orm";
+import { subscriptionAccessState, type SubscriptionAccessState } from "./subscription-access";
 
 // ── Adgangskoder: scrypt med pr.-bruger salt ──
 // Format: scrypt$<salt-hex>$<hash-hex>. Bruger Node's indbyggede crypto,
@@ -71,6 +72,8 @@ export interface AuthContext {
   email: string;
   employeeId: number | null;
   isPlatformAdmin: boolean;
+  /** Afledt adgangstilstand. Udløbne prøveperioder får kun adgang til betaling og kontohjælp. */
+  subscriptionAccess: SubscriptionAccessState;
   /** Hele brugerrækken, slået op i databasen — ikke noget klienten har sendt. */
   user: User;
   /** Sessionstokenet, så det kan slettes ved log ud. */
@@ -94,6 +97,22 @@ function bearer(req: Request): string | null {
     try { return decodeURIComponent(cookie.slice("add_sr_session=".length)); } catch { return null; }
   }
   return null;
+}
+
+/** Medtager betalingsbevis for at beskytte konti ramt af den tidligere aktiveringsfejl. */
+export async function resolveSubscriptionAccess(
+  subscription: Subscription | null | undefined,
+  todayIso = new Date().toISOString().slice(0, 10),
+): Promise<SubscriptionAccessState> {
+  const trialEndsAt = String(subscription?.trialEndsAt ?? "").slice(0, 10);
+  const needsLegacyEvidence = subscription?.status === "aktiv"
+    && /^\d{4}-\d{2}-\d{2}$/.test(trialEndsAt)
+    && trialEndsAt < todayIso;
+  if (!needsLegacyEvidence || !subscription) return subscriptionAccessState(subscription, todayIso);
+  const invoices = await storage.getPlatformInvoices(subscription.companyId);
+  return subscriptionAccessState(subscription, todayIso, {
+    hasSettledPayment: invoices.some((invoice) => invoice.subscriptionId === subscription.id && invoice.status === "betalt"),
+  });
 }
 
 /**
@@ -152,10 +171,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   // Spærrede virksomheder mister adgang — men platformadmins kommer altid ind,
   // ellers kunne vi ikke genåbne en spærret konto.
+  let subscriptionAccess = subscriptionAccessState(null);
   if (!isPlatformAdmin) {
     const company = await storage.getCompany(activeCompanyId);
     if (!company) return res.status(401).json({ error: "Virksomheden findes ikke." });
     const subscription = await storage.getSubscriptionByCompany(activeCompanyId);
+    subscriptionAccess = await resolveSubscriptionAccess(subscription);
     if (company.status === "spaerret" || company.status === "opsagt"
       || subscription?.status === "i_restance" || subscription?.status === "spaerret" || subscription?.status === "opsagt") {
       return res.status(402).json({
@@ -176,10 +197,45 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     email: user.email,
     employeeId: user.employeeId ?? null,
     isPlatformAdmin,
+    subscriptionAccess,
     user,
     token,
   };
   next();
+}
+
+/**
+ * En udløbet prøveperiode må ikke give fortsat adgang til regnskabsdata. Den
+ * indloggede administrator skal dog kunne vælge pakke, oprette betalingsaftale,
+ * læse kontooplysninger og kontakte support. Data slettes eller ændres ikke.
+ */
+export function subscriptionAccessGuard(req: Request, res: Response, next: NextFunction) {
+  const auth = req.auth;
+  if (!auth || auth.isPlatformAdmin || !auth.subscriptionAccess.restricted) return next();
+
+  const path = req.path;
+  const method = req.method.toUpperCase();
+  const accountRead = path === "/company" && ["GET", "HEAD"].includes(method);
+  const recoveryPrefixes = [
+    "/auth/me",
+    "/auth/logout",
+    "/auth/password",
+    "/security",
+    "/subscription",
+    "/payment",
+    "/billing",
+    "/support",
+    "/support-cases",
+  ];
+  const recoveryRoute = recoveryPrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  const usageRead = path === "/ai-usage" && ["GET", "HEAD"].includes(method);
+  if (accountRead || recoveryRoute || usageRead) return next();
+
+  return res.status(402).json({
+    error: auth.subscriptionAccess.message,
+    code: "proeveperiode_udloebet",
+    access: auth.subscriptionAccess,
+  });
 }
 
 /**

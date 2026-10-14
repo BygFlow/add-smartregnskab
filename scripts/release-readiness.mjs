@@ -30,15 +30,24 @@ const sproom = String(process.env.EINVOICE_PROVIDER || "").toLowerCase() === "sp
 const productionEnv = [
   ["external-backup", ["S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]],
   ["bookkeeping-archive-config", ["ARCHIVE_S3_BUCKET", "ARCHIVE_S3_REGION", "ARCHIVE_S3_ENDPOINT", "ARCHIVE_S3_ACCESS_KEY_ID", "ARCHIVE_S3_SECRET_ACCESS_KEY", "ARCHIVE_ENCRYPTION_KEY"]],
-  ["einvoice-access-point", sproom ? ["SPROOM_API_TOKEN", "SPROOM_COMPANY_MAP"] : ["EINVOICE_PROVIDER_URL", "EINVOICE_PROVIDER_API_KEY"]],
+  ["einvoice-access-point", sproom ? ["SPROOM_API_TOKEN", "SPROOM_PARENT_CVR"] : ["EINVOICE_PROVIDER_URL", "EINVOICE_PROVIDER_API_KEY"]],
   ["einvoice-validator", ["EINVOICE_VALIDATOR_URL"]],
-  ["einvoice-inbound", sproom ? ["SPROOM_WEBHOOK_PUBLIC_KEY_BASE64"] : ["EINVOICE_WEBHOOK_SECRET"]],
+  ["einvoice-inbound", sproom ? [] : ["EINVOICE_WEBHOOK_SECRET"]],
   ["subscription-payments", ["QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY"]],
   ["automatic-bankdata", ["AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET"]],
 ];
 for (const [id, names] of productionEnv) {
+  if (names.length === 0) continue;
   const missing = names.filter((name) => !process.env[name]);
   add(id, missing.length === 0, "external", missing.length ? `Mangler ${missing.join(", ")}` : "konfigureret");
+}
+if (sproom) {
+  const webhookKeyConfigured = Boolean(process.env.SPROOM_WEBHOOK_PUBLIC_KEY || process.env.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64);
+  add("einvoice-inbound", webhookKeyConfigured, "external", webhookKeyConfigured ? "konfigureret" : "Mangler SPROOM_WEBHOOK_PUBLIC_KEY eller SPROOM_WEBHOOK_PUBLIC_KEY_BASE64");
+  const provisioningEnabled = /^(1|true|yes)$/i.test(String(process.env.SPROOM_AUTOMATIC_PROVISIONING || ""));
+  add("sproom-master-activation", provisioningEnabled, "external", provisioningEnabled ? "aktiveret" : "Afventer Sprooms bekræftede ISV/masteradgang og afsluttet stagingtest");
+  const nemhandelEnabled = /^(1|true|yes)$/i.test(String(process.env.SPROOM_AUTO_REGISTER_NEMHANDEL || ""));
+  add("sproom-nemhandel-registration", nemhandelEnabled, "external", nemhandelEnabled ? "aktiveret" : "Afventer vellykket registrerings- og modtagelsestest i staging");
 }
 
 // Den syntetiske Object-Lock-test beviser kun selve lageret. Før rigtige

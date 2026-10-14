@@ -12,7 +12,8 @@ test("synthetic accounting demo builds a non-stored, read-only AI request", () =
   assert.equal(request.store, false);
   assert.match(request.input, /FIKTIVT TESTBILAG/);
   assert.match(request.instructions, /Denne chat må aldrig hævde, at den har bogført/);
-  assert.match(request.instructions, /særskilt bilagsfunktion.*udtrykkelige tilvalg/);
+  assert.match(request.instructions, /altid kontrollere og godkende før bogføring/);
+  assert.doesNotMatch(request.instructions, /automatisk bogføre/);
   assert.doesNotMatch(request.input, /OPENAI_API_KEY/);
 });
 

@@ -21,6 +21,12 @@ type AuthState = {
   company: Company | null;
   plan: Plan | null;
   subscription: Subscription | null;
+  access: {
+    restricted: boolean;
+    code: "active" | "trial_expired";
+    message: string | null;
+    trialEndsAt: string | null;
+  } | null;
 };
 
 type AuthContextValue = AuthState & {
@@ -39,7 +45,7 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const EMPTY: AuthState = { user: null, company: null, plan: null, subscription: null };
+const EMPTY: AuthState = { user: null, company: null, plan: null, subscription: null, access: null };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(EMPTY);
@@ -66,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((res) => res.json())
       .then((data) => {
         if (!active) return;
-        setState({ user: data.user, company: data.company ?? null, plan: data.plan ?? null, subscription: data.subscription ?? null });
+        setState({ user: data.user, company: data.company ?? null, plan: data.plan ?? null, subscription: data.subscription ?? null, access: data.access ?? null });
       })
       .catch((err) => {
         if (!(err instanceof ApiError) || err.status !== 401) console.error("Kunne ikke genoprette session", err);
@@ -87,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       company: data.company ?? null,
       plan: data.plan ?? null,
       subscription: data.subscription ?? null,
+      access: data.access ?? null,
     });
   }, []);
 
@@ -99,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         company: data.company ?? null,
         plan: data.plan ?? null,
         subscription: data.subscription ?? null,
+        access: data.access ?? null,
       });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) clear();
@@ -138,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
     const res = await apiRequest("GET", "/api/auth/me");
     const data = await res.json();
-    setState({ user: data.user, company: data.company ?? null, plan: data.plan ?? null, subscription: data.subscription ?? null });
+    setState({ user: data.user, company: data.company ?? null, plan: data.plan ?? null, subscription: data.subscription ?? null, access: data.access ?? null });
   }, [isPlatformAdmin]);
 
   const value = useMemo<AuthContextValue>(() => ({

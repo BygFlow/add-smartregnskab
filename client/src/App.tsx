@@ -23,8 +23,8 @@ function useRouteLocation(): [string, (to: string, options?: { replace?: boolean
 }
 
 function Root() {
-  const { user, company, companyId, initializing } = useAuth();
-  const [location] = useLocation();
+  const { user, company, companyId, initializing, access, logout } = useAuth();
+  const [location, navigate] = useLocation();
 
   if (initializing) {
     return <main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser sikker session…</p></main>;
@@ -78,6 +78,34 @@ function Root() {
         <Route path="/invitation" component={Invitation} />
         <Route component={() => <Marketing page="home" />} />
       </Switch>
+    );
+  }
+
+  const subscriptionRoute = "/smartregnskab/app/abonnement";
+  if (access?.restricted && user.role !== "platform_admin" && location !== subscriptionRoute) {
+    const canManageSubscription = user.role === "leder";
+    return (
+      <main className="min-h-screen grid place-items-center bg-muted/30 p-6">
+        <section className="w-full max-w-lg rounded-2xl border bg-card p-6 shadow-sm">
+          <p className="text-sm font-semibold text-amber-700">Prøveperioden er udløbet</p>
+          <h1 className="mt-2 text-2xl font-semibold">Vælg abonnement for at fortsætte</h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {access.message} Alle data for {company?.name || "virksomheden"} er bevaret, men regnskabsfunktionerne er låst, indtil abonnementet er betalt.
+          </p>
+          {access.trialEndsAt && <p className="mt-2 text-xs text-muted-foreground">Prøveperioden sluttede {access.trialEndsAt}.</p>}
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+            {canManageSubscription && (
+              <button type="button" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => navigate(subscriptionRoute)}>
+                Vælg pakke og betalingsaftale
+              </button>
+            )}
+            <button type="button" className="rounded-md border px-4 py-2 text-sm font-medium" onClick={() => void logout()}>
+              Log ud
+            </button>
+          </div>
+          {!canManageSubscription && <p className="mt-4 text-xs text-muted-foreground">Virksomhedens administrator skal aktivere abonnementet.</p>}
+        </section>
+      </main>
     );
   }
 

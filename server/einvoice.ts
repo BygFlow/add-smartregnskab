@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual, verify } from "node:crypto";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import type { Company, Customer, CreditNote, EinvoiceQueue, Invoice, InvoiceItem } from "@shared/schema";
+import { normalizeDanishCvr, safeSproomConnection, sproomConnectionForCompany, sproomConnectionForExternalId } from "./sproom-registry";
 
 export type EInvoiceFormat = "OIOUBL_2_1" | "PEPPOL_BIS_3";
 export type EInvoiceProvider = "generic" | "sproom";
@@ -114,13 +115,26 @@ export function validateEInvoice(payload: string): string[] {
 export function providerStatus(companyId?: number) {
   const provider = String(process.env.EINVOICE_PROVIDER || "generic").toLowerCase() === "sproom" ? "sproom" : "generic";
   const companyMap = sproomCompanyMap();
+  const connection = companyId ? sproomConnectionForCompany(companyId) : null;
+  let parentCvr = "";
+  let platformCvr = "";
+  try { parentCvr = normalizeDanishCvr(process.env.SPROOM_PARENT_CVR || process.env.PLATFORM_COMPANY_CVR); } catch {}
+  try { platformCvr = normalizeDanishCvr(process.env.PLATFORM_COMPANY_CVR); } catch {}
+  const parentMatchesPlatform = Boolean(parentCvr && (!platformCvr || parentCvr === platformCvr));
+  const mapped = Boolean((connection?.status === "forbundet" && connection.externalCompanyId) || (companyId && companyMap[String(companyId)]));
   const configured = provider === "sproom"
-    ? Boolean(process.env.SPROOM_API_TOKEN && (companyId ? companyMap[String(companyId)] : Object.keys(companyMap).length))
+    ? Boolean(process.env.SPROOM_API_TOKEN && parentMatchesPlatform && (companyId ? mapped : true))
     : Boolean(process.env.EINVOICE_PROVIDER_URL && process.env.EINVOICE_PROVIDER_API_KEY);
   return {
     provider,
     configured,
-    companyMapped: provider !== "sproom" || !companyId || Boolean(companyMap[String(companyId)]),
+    companyMapped: provider !== "sproom" || !companyId || mapped,
+    masterConfigured: provider !== "sproom" || Boolean(process.env.SPROOM_API_TOKEN && parentMatchesPlatform),
+    masterCvr: provider === "sproom" ? parentCvr || null : null,
+    parentMatchesPlatform,
+    automaticProvisioning: provider === "sproom" && /^(1|true|yes)$/i.test(String(process.env.SPROOM_AUTOMATIC_PROVISIONING || "")),
+    automaticNemhandel: provider === "sproom" && /^(1|true|yes)$/i.test(String(process.env.SPROOM_AUTO_REGISTER_NEMHANDEL || "")),
+    connection: safeSproomConnection(connection),
     validatorConfigured: Boolean(process.env.EINVOICE_VALIDATOR_URL),
     inboundConfigured: provider === "sproom"
       ? Boolean(process.env.SPROOM_WEBHOOK_PUBLIC_KEY || process.env.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64)
@@ -160,12 +174,18 @@ function sproomCompanyMap(): Record<string, string> {
 }
 
 function sproomCompanyId(companyId: number): string {
-  const externalId = sproomCompanyMap()[String(companyId)];
-  if (!externalId) throw new Error(`Virksomhed ${companyId} er ikke knyttet til en Sproom-kundevirksomhed.`);
+  const registry = sproomConnectionForCompany(companyId);
+  const externalId = registry?.status === "forbundet" ? registry.externalCompanyId : sproomCompanyMap()[String(companyId)];
+  if (!externalId) {
+    if (registry) throw new Error("Virksomhedens Sproom-onboarding er endnu ikke godkendt og forbundet.");
+    throw new Error(`Virksomhed ${companyId} er ikke knyttet til en Sproom-kundevirksomhed.`);
+  }
   return externalId;
 }
 
 export function internalCompanyIdForSproom(externalCompanyId: string): number | null {
+  const registry = sproomConnectionForExternalId(externalCompanyId);
+  if (registry?.status === "forbundet") return registry.companyId;
   const entry = Object.entries(sproomCompanyMap()).find(([, value]) => value === externalCompanyId);
   return entry ? Number(entry[0]) : null;
 }

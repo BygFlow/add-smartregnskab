@@ -11,6 +11,8 @@ import {
   platformSyncJobs,
   platformSyncMappings,
 } from "@shared/schema";
+import { providerStatus } from "./einvoice";
+import { addSproomProduct, safeSproomConnection, sproomConnectionForCompany } from "./sproom-registry";
 
 type AddConnectRequest = Request & {
   addConnect?: { companyId: number; keyId: number; scopes: string[] };
@@ -236,6 +238,25 @@ export function registerPublicAddConnectRoutes(app: Express) {
     const auth = req.addConnect!;
     const company = db.select().from(companies).where(eq(companies.id, auth.companyId)).get();
     res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name } : null, scopes: auth.scopes });
+  });
+
+  app.get("/api/add-connect/einvoice", requireAddConnect("read"), (req: AddConnectRequest, res) => {
+    const companyId = req.addConnect!.companyId;
+    res.json({
+      ok: true,
+      model: "one_child_company_per_cvr",
+      owner: { name: "ADD SmartDrift ApS", cvr: "46761898" },
+      connection: safeSproomConnection(sproomConnectionForCompany(companyId)),
+      provider: providerStatus(companyId),
+    });
+  });
+
+  app.post("/api/add-connect/einvoice/register-product", requireAddConnect("write"), (req: AddConnectRequest, res) => {
+    const sourceProduct = text(req.body?.sourceProduct, 40);
+    if (!PRODUCTS.includes(sourceProduct as any)) return res.status(400).json({ error: "Ukendt ADD-produkt." });
+    const connection = addSproomProduct(req.addConnect!.companyId, sourceProduct);
+    if (!connection) return res.status(409).json({ error: "Virksomheden skal først godkende NemHandel/Peppol-onboarding i ADD SmartRegnskab." });
+    res.json({ ok: true, reusedExistingChildCompany: true, connection: safeSproomConnection(connection) });
   });
 
   app.get("/api/add-connect/payments", requireAddConnect("read"), async (req: AddConnectRequest, res) => {

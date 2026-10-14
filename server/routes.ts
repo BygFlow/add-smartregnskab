@@ -67,8 +67,9 @@ type SafeParse<T> = {
 };
 import {
   hashPassword, verifyPassword, createSession, safeUser,
-  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, checkAccountingLimit, sessionStorageKey, professionalAccessGuard, platformCustomerDataGuard,
+  requireAuth, tenantId, requireRole, requirePlatformAdmin, requireFeature, checkLimit, checkAccountingLimit, sessionStorageKey, professionalAccessGuard, platformCustomerDataGuard, subscriptionAccessGuard, resolveSubscriptionAccess,
 } from "./auth";
+import { subscriptionAccessState } from "./subscription-access";
 import {
   testConnection, syncPayroll, syncInvoices, credentialFields, API_PROVIDERS,
 } from "./connectors";
@@ -284,6 +285,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.setHeader("Set-Cookie", `add_sr_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}${secure}`);
     res.json({
       token, user: safeUser(user), company, plan, subscription,
+      access: user.role === "platform_admin" ? subscriptionAccessState(null) : await resolveSubscriptionAccess(subscription),
       emailVerified: user.emailVerified === 1,
     });
   }));
@@ -597,6 +599,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerExternalAccountingApi(app);
 
   app.use("/api", requireAuth);
+  app.use("/api", subscriptionAccessGuard);
   app.use("/api", platformCustomerDataGuard);
   app.use("/api", professionalAccessGuard);
   const regnskabApiPrefixes = [
@@ -666,6 +669,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({
       user: { ...safeUser(a.user), companyId: a.companyId, homeCompanyId: a.user.companyId, role: a.role },
       company, plan, subscription,
+      access: a.subscriptionAccess,
       professional: a.professionalMembership ? { role: a.role, permissions: a.permissions } : null,
       organizationAccess: a.companyMembership ? { role: a.role } : null,
     });

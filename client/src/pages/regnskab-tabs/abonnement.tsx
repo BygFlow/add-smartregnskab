@@ -102,7 +102,7 @@ function limit(value: number) {
 }
 
 export default function Abonnement() {
-  const { user, refresh } = useAuth();
+  const { user, refresh, access } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const canManage = user?.role === "leder";
@@ -130,6 +130,13 @@ export default function Abonnement() {
     if (params.get("quickpay") === "ok") {
       toast({ title: "QuickPay-godkendelse modtaget", description: "Betalingsaftalen aktiveres, når den signerede bekræftelse er modtaget." });
       billing.refetch();
+      // QuickPay sender den signerede webhook asynkront. Genindlæs adgangen et
+      // par gange, så en betalt prøveperiode åbnes uden manuel genindlæsning.
+      const timers = [1500, 4000, 8000].map((delay) => window.setTimeout(() => {
+        void billing.refetch();
+        void refresh();
+      }, delay));
+      return () => timers.forEach((timer) => window.clearTimeout(timer));
     } else if (params.get("quickpay") === "cancelled") {
       toast({ title: "Betalingen blev afbrudt", description: "Der er ikke trukket penge.", variant: "destructive" });
     }
@@ -191,6 +198,11 @@ export default function Abonnement() {
   return <div className="space-y-5">
     <PageHeader title="Abonnement og betaling" description="Vælg pakke, administrér betalingsaftalen og hent abonnementsfakturaer." />
 
+    {access?.restricted && <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+      <h2 className="font-semibold">Prøveperioden er udløbet</h2>
+      <p className="mt-1 text-sm">Regnskabsdataene er bevaret, men funktionerne er låst. Vælg pakke, accepter abonnementsbetingelserne og opret en QuickPay-aftale for at åbne programmet igen.</p>
+    </section>}
+
     {canManage && <section className="rounded-xl border border-primary/20 bg-primary/5 p-4" aria-labelledby="subscription-acceptance-heading">
       <h2 id="subscription-acceptance-heading" className="text-sm font-semibold">Accept før køb af abonnement</h2>
       <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm leading-6">
@@ -233,11 +245,11 @@ export default function Abonnement() {
 
     <SectionCard title="AI-forbrug og omkostningskontrol" icon={<Sparkles className="h-4 w-4" />}>
       {aiUsage.isLoading ? <Skeleton className="h-24 w-full" /> : <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold">{aiUsage.data?.usedCredits ?? 0} / {aiUsage.data?.includedCredits ?? 0} AI-handlinger</p><StatusChip status={aiUsage.data?.warningLevel ?? "normal"} /></div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, aiUsage.data?.percent ?? 0)}%` }} /></div>
-          <p className="text-xs text-muted-foreground">Estimeret leverandøromkostning: {money(aiUsage.data?.estimatedCostDkk)} af et internt loft på {money(aiUsage.data?.costCapDkk)}. Ved grænsen pauses kun betalte AI-kald; regnskabet fortsætter.</p>
-        </div>
+        {aiUsage.data?.includedCredits ? <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold">{aiUsage.data.usedCredits} / {aiUsage.data.includedCredits} AI-handlinger</p><StatusChip status={aiUsage.data.warningLevel} /></div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, aiUsage.data.percent)}%` }} /></div>
+          <p className="text-xs text-muted-foreground">Forbruget nulstilles med abonnementsperioden. Ved grænsen pauses kun betalte AI-kald; regnskabet fortsætter.</p>
+        </div> : <div className="space-y-1"><p className="text-lg font-semibold">AI er ikke aktivt</p><p className="text-xs text-muted-foreground">Aktivér AI-tilkøbet for at få AI-handlinger i denne kundeorganisation. Regnskabsfunktionerne virker fortsat uden AI.</p></div>}
         {aiUsage.data?.aiAddonAvailable && canManage && <Button variant={aiUsage.data.aiAddonEnabled ? "outline" : "default"} disabled={toggleAiAddon.isPending} onClick={() => toggleAiAddon.mutate(!aiUsage.data?.aiAddonEnabled)}>{toggleAiAddon.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{aiUsage.data.aiAddonEnabled ? "Fjern AI-tilkøb" : `Tilføj AI · ${money(currentPlan?.aiAddonPrice)}/md.`}</Button>}
       </div>}
     </SectionCard>
