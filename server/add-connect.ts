@@ -19,6 +19,7 @@ type AddConnectRequest = Request & {
 };
 
 const PRODUCTS = ["smartdrift_pro", "smartdrift_clean"] as const;
+type AddConnectProduct = typeof PRODUCTS[number];
 const EVENT_TYPES = ["customer.upsert", "invoice.upsert", "payment.updated"] as const;
 const nowIso = () => new Date().toISOString();
 
@@ -106,6 +107,43 @@ function saveMapping(companyId: number, sourceProduct: string, syncType: string,
     sourceId,
     ...values,
   }).returning().get().id;
+}
+
+function parentSproomProducts(companyId: number): string[] {
+  const linked = db.select().from(platformSyncMappings).where(and(
+    eq(platformSyncMappings.companyId, companyId),
+    eq(platformSyncMappings.syncType, "einvoice_product"),
+  )).all().map((row) => row.sourcePlatform).filter((product) => PRODUCTS.includes(product as AddConnectProduct));
+  return Array.from(new Set(["add_smartregnskab", ...linked]));
+}
+
+export function registerSproomProductForCompany(companyId: number, sourceProduct: AddConnectProduct) {
+  const provider = providerStatus(companyId);
+  if (provider.provider === "sproom" && provider.parentCompany && provider.masterConfigured) {
+    saveMapping(companyId, sourceProduct, "einvoice_product", sourceProduct, "sproom_parent");
+    return {
+      ok: true,
+      reusedParentCompany: true,
+      reusedExistingChildCompany: false,
+      connection: {
+        cvr: provider.masterCvr,
+        status: "forbundet",
+        sourceProducts: parentSproomProducts(companyId),
+        nemhandelStatus: "styret_af_sproom",
+        peppolStatus: "kræver_verifikation",
+        connected: true,
+        parentCompany: true,
+      },
+    };
+  }
+  const connection = addSproomProduct(companyId, sourceProduct);
+  if (!connection) return null;
+  return {
+    ok: true,
+    reusedParentCompany: false,
+    reusedExistingChildCompany: true,
+    connection: safeSproomConnection(connection),
+  };
 }
 
 function upsertCustomer(companyId: number, sourceProduct: string, payload: any) {
@@ -242,21 +280,33 @@ export function registerPublicAddConnectRoutes(app: Express) {
 
   app.get("/api/add-connect/einvoice", requireAddConnect("read"), (req: AddConnectRequest, res) => {
     const companyId = req.addConnect!.companyId;
+    const provider = providerStatus(companyId);
+    const connection = provider.provider === "sproom" && provider.parentCompany && provider.masterConfigured
+      ? {
+          cvr: provider.masterCvr,
+          status: "forbundet",
+          sourceProducts: parentSproomProducts(companyId),
+          nemhandelStatus: "styret_af_sproom",
+          peppolStatus: "kræver_verifikation",
+          connected: true,
+          parentCompany: true,
+        }
+      : safeSproomConnection(sproomConnectionForCompany(companyId));
     res.json({
       ok: true,
       model: "one_child_company_per_cvr",
       owner: { name: "ADD SmartDrift ApS", cvr: "46761898" },
-      connection: safeSproomConnection(sproomConnectionForCompany(companyId)),
-      provider: providerStatus(companyId),
+      connection,
+      provider,
     });
   });
 
   app.post("/api/add-connect/einvoice/register-product", requireAddConnect("write"), (req: AddConnectRequest, res) => {
     const sourceProduct = text(req.body?.sourceProduct, 40);
     if (!PRODUCTS.includes(sourceProduct as any)) return res.status(400).json({ error: "Ukendt ADD-produkt." });
-    const connection = addSproomProduct(req.addConnect!.companyId, sourceProduct);
-    if (!connection) return res.status(409).json({ error: "Virksomheden skal først godkende NemHandel/Peppol-onboarding i ADD SmartRegnskab." });
-    res.json({ ok: true, reusedExistingChildCompany: true, connection: safeSproomConnection(connection) });
+    const registration = registerSproomProductForCompany(req.addConnect!.companyId, sourceProduct as AddConnectProduct);
+    if (!registration) return res.status(409).json({ error: "Virksomheden skal først godkende NemHandel/Peppol-onboarding i ADD SmartRegnskab." });
+    res.json(registration);
   });
 
   app.get("/api/add-connect/payments", requireAddConnect("read"), async (req: AddConnectRequest, res) => {

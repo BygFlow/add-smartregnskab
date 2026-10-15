@@ -1,10 +1,13 @@
 # NemHandel og Peppol — drifts- og integrationsbeskrivelse
 
-Status: Sproom-masteraftalen for ADD SmartDrift ApS er indgået. Adapter,
-centralt child-register og onboarding-flow er implementeret. Mastertokenet er
-lagt i produktion, og Sprooms signerede webhook-test svarer HTTP 200. Rigtig
-afsendelse er fortsat låst, indtil den enkelte virksomheds child-profil og
-NemHandel-registrering er godkendt og ende-til-ende-valideret.
+Status 15. oktober 2026: Sproom-masteraftalen for ADD SmartDrift ApS er
+indgået. Adapter, centralt child-register og onboarding-flow er implementeret.
+Mastertokenet er lagt i produktion, og Sprooms signerede webhook-test svarer
+HTTP 200. ADD SmartDrift ApS' parent-CVR 46761898 er registreret i Sprooms
+netværksregistrering og bruger masterprofilen direkte. Pro og Clean registrerer
+nu også korrekt deres produktkobling på parentprofilen, når de tilhører ADD
+SmartDrift ApS. Rigtig afsendelse/modtagelse mangler fortsat en kontrolleret
+ende-til-ende-test med et ægte fakturadokument og en gyldig modtager.
 
 ## Implementeret
 
@@ -111,6 +114,17 @@ er kontrolleret. Automatisk NemHandel-registrering forbliver låst, indtil en
 første separat kundevirksomhed har gennemført onboarding, registrering og
 modtagelsestest ende til ende. En kundeadministrator skal fortsat aktivt
 godkende onboardingen i programmet; flagene omgår ikke samtykke.
+
+Parentvirksomhedens egen netværksregistrering blev oprettet manuelt i Sproom
+15. oktober 2026 og må ikke bruges som bevis for, at en separat kundes
+child-onboarding er gennemført. Derfor forbliver automatisk
+NemHandel-registrering for nye child-profiler låst, indtil den første rigtige
+kundevirksomhed er testet og har godkendt flowet.
+
+Den målrettede lokale integrationssuite består 19 tests og dækker parent-token,
+parent-produktkobling for Pro/Clean, child-oprettelse, eksisterende profil,
+enrollment-webhook, child-token, NemHandel-lås, webhooksignatur, idempotens og
+unik CVR-profil.
 
 ## Generisk leverandørkontrakt
 

@@ -3,6 +3,29 @@
 Dato: 14. oktober 2026
 Kontrolleret version: 3.16.1
 
+## Opdatering 15. oktober 2026
+
+Denne opdatering erstatter de ældre Sproom- og AiiA-statusser længere nede i
+dokumentet:
+
+- Mastercard/AiiA har givet produktionsadgang til appen, og AiiA står
+  konfigureret i produktion. En rigtig banktilslutning mangler stadig som
+  ende-til-ende-driftsbevis.
+- Sproom-mastertoken, webhooksignatur og automatisk child-provisionering er
+  aktive i produktion.
+- ADD SmartDrift ApS, CVR 46761898, er parent/master og er registreret i
+  Sprooms netværksregistrering. Parentvirksomheden oprettes ikke som child.
+- SmartRegnskab bruger mastertokenet direkte for parentens egne dokumenter.
+  Pro og Clean genbruger samme parentprofil for ADD SmartDrift ApS og samme
+  child-profil pr. CVR for almindelige kundevirksomheder.
+- Den målrettede Sproom-suite består 19 tests, og TypeScript-kontrollen består.
+- Automatisk NemHandel-registrering for nye child-profiler er fortsat låst,
+  indtil den første separate kundevirksomhed har gennemført samtykke,
+  onboarding og modtagelsestest.
+- Der er endnu ikke sendt en rigtig e-faktura. NemHandel/Peppol må derfor først
+  kaldes fuldt ende-til-ende-valideret, når send, modtag, afvisning, kreditnota
+  og kvitteringer er afprøvet med virkelige testparter.
+
 ## Samlet vurdering
 
 Den tekniske kerne er stabil og kan bruges til fortsat pilot- og godkendelsesarbejde. Systemet er dog ikke klar til at blive markedsført som fuldt produktionsklart eller som registreret digitalt standardbogføringssystem endnu. Kildekoden håndhæver nu udløbne prøveperioder; før fuld lancering mangler især produktionsudrulning af rettelsen, det særskilte femårsarkiv, NemHandel/Peppol og de resterende eksterne godkendelser.
