@@ -1,9 +1,10 @@
 # NemHandel og Peppol — drifts- og integrationsbeskrivelse
 
 Status: Sproom-masteraftalen for ADD SmartDrift ApS er indgået. Adapter,
-centralt child-register og onboarding-flow er implementeret. Produktion er
-fortsat låst, indtil det rigtige mastertoken, child-ID'er, webhooknøgle og
-ende-til-ende-validering er sat.
+centralt child-register og onboarding-flow er implementeret. Mastertokenet er
+lagt i produktion, og Sprooms signerede webhook-test svarer HTTP 200. Rigtig
+afsendelse er fortsat låst, indtil den enkelte virksomheds child-profil og
+NemHandel-registrering er godkendt og ende-til-ende-valideret.
 
 ## Implementeret
 
@@ -32,7 +33,9 @@ ende-til-ende-validering er sat.
   det eksterne Sproom child-company-ID.
 - Automatisk oprettelse via `POST /api/child-companies`, når masteradgangen er
   aktiveret. Hvis CVR'et allerede findes hos Sproom (`409`), startes Sprooms
-  officielle MitID Erhverv-tilmelding i stedet for at oprette en dublet.
+  officielle tilmelding via `POST /api/child-companies/enrollments` i stedet
+  for at oprette en dublet. Sproom sender selv autentificeringslinket til den
+  godkendte e-mail; linket gemmes ikke i ADD SmartRegnskab.
 - Automatisk kobling af en godkendt eksisterende profil via den signerede
   `childCompanyEnrollmentAccepted`-webhook.
 - Valgfri automatisk NemHandel-registrering med child-token. Peppol står som

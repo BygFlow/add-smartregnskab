@@ -70,28 +70,53 @@ test("en eksisterende Sproom-profil starter det officielle tilmeldingsflow", asy
     const target = String(url);
     requests.push(target);
     if (target.endsWith("/child-companies")) {
-      return new Response(JSON.stringify({ companyId: "existing-company-303" }), { status: 409, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ message: "Company already exists" }), { status: 409, headers: { "Content-Type": "application/json" } });
     }
-    return new Response(JSON.stringify({ enrollmentId: "enrollment-303" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ enrollmentLink: "https://sproom.test/private-one-time-link" }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
 
   const result = await master.provisionSproomChildCompany(input(303, "30334455"));
   assert.equal(result.action, "enrollment_requested");
   assert.equal(result.connection.status, "afventer_tilmelding");
-  assert.equal(result.connection.externalCompanyId, "existing-company-303");
-  assert.equal(result.connection.enrollmentId, "enrollment-303");
+  assert.equal(result.connection.externalCompanyId, null);
+  assert.equal(result.connection.enrollmentId, null);
   assert.equal(requests.length, 2);
-  assert.match(requests[1], /\/child-companies\/enrollmentRequests$/);
+  assert.match(requests[1], /\/child-companies\/enrollments$/);
+});
+
+test("tilmeldingskaldet følger Sprooms aktuelle kontrakt uden at gemme autentificeringslinket", async () => {
+  process.env.SPROOM_AUTOMATIC_PROVISIONING = "true";
+  process.env.SPROOM_API_TOKEN = "master-token";
+  let enrollmentPayload: Record<string, unknown> = {};
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const target = String(url);
+    if (target.endsWith("/child-companies")) {
+      return new Response(JSON.stringify({ childCompanyId: "existing-company-305", message: "Company already exists" }), { status: 409 });
+    }
+    enrollmentPayload = JSON.parse(String(init?.body || "{}"));
+    return new Response(JSON.stringify({ enrollmentLink: "https://sproom.test/private-one-time-link" }), { status: 200 });
+  }) as typeof fetch;
+
+  const result = await master.provisionSproomChildCompany(input(305, "30556677"));
+  assert.equal(result.action, "enrollment_requested");
+  assert.deepEqual(enrollmentPayload, {
+    childCompanyName: "Kunde 305 ApS",
+    organizationIdentifier: { schemeId: "DK:CVR", value: "30556677" },
+    userEmail: "ejer305@example.test",
+    parentCompanyName: "ADD SmartDrift ApS",
+    shouldSendEmail: true,
+  });
+  assert.equal(result.connection.enrollmentId, null);
 });
 
 test("NemHandel registreres med et kortlivet child-token, når den særskilte lås åbnes", async () => {
   process.env.SPROOM_AUTOMATIC_PROVISIONING = "true";
   process.env.SPROOM_AUTO_REGISTER_NEMHANDEL = "true";
   process.env.SPROOM_API_TOKEN = "master-token";
-  const requests: Array<{ url: string; authorization: string | null }> = [];
+  const requests: Array<{ url: string; authorization: string | null; body: string }> = [];
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const target = String(url);
-    requests.push({ url: target, authorization: new Headers(init?.headers).get("Authorization") });
+    requests.push({ url: target, authorization: new Headers(init?.headers).get("Authorization"), body: String(init?.body || "") });
     if (target.endsWith("/child-companies")) return new Response("", { status: 200, headers: { Location: "/api/child-companies/child-company-304" } });
     if (target.endsWith("/child-companies/child-company-304/token")) return new Response(JSON.stringify({ token: "child-token-304" }), { status: 200 });
     if (target.endsWith("/registrations/nemhandel")) return new Response(JSON.stringify({ networkID: "network-304" }), { status: 200 });
@@ -102,6 +127,10 @@ test("NemHandel registreres med et kortlivet child-token, når den særskilte l�
   assert.equal(result.connection.nemhandelStatus, "aktiv");
   assert.equal(result.connection.nemhandelNetworkId, "network-304");
   assert.equal(requests.at(-1)?.authorization, "Bearer child-token-304");
+  assert.deepEqual(JSON.parse(requests.at(-1)?.body || "{}"), {
+    profiles: ["Nes5Customer"],
+    endpointId: { schemeId: "DK:CVR", value: "30445566" },
+  });
 });
 
 test("godkendt enrollment-webhook forbinder den afventende CVR-profil", async () => {

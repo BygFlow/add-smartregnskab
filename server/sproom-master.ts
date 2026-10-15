@@ -75,12 +75,12 @@ function safeProviderError(body: string, fallback: string): string {
   return String(parsed.message || parsed.error || parsed.title || fallback).replace(/\s+/g, " ").slice(0, 500);
 }
 
-async function startEnrollment(input: ProvisionInput, childCompanyId: string): Promise<SproomProvisionResult> {
+async function startEnrollment(input: ProvisionInput, childCompanyId?: string): Promise<SproomProvisionResult> {
   const userEmail = String(input.userEmail || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
     const connection = updateSproomConnection({
       companyId: input.companyId,
-      externalCompanyId: childCompanyId,
+      ...(childCompanyId ? { externalCompanyId: childCompanyId } : {}),
       status: "tilmelding_fejlet",
       lastError: "En gyldig e-mail til virksomhedens tegningsberettigede mangler.",
     });
@@ -88,29 +88,30 @@ async function startEnrollment(input: ProvisionInput, childCompanyId: string): P
   }
   const payload = {
     childCompanyName: input.companyName.trim(),
-    childCompanyId,
     organizationIdentifier: { schemeId: "DK:CVR", value: normalizeDanishCvr(input.cvr) },
     userEmail,
     parentCompanyName: String(process.env.SPROOM_PARENT_NAME || "ADD SmartDrift ApS").trim(),
-    authenticationMethod: "mitIDErhverv",
+    shouldSendEmail: true,
   };
-  const { response, body } = await masterRequest("/child-companies/enrollmentRequests", {
+  const { response, body } = await masterRequest("/child-companies/enrollments", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const reason = safeProviderError(body, `Sproom svarede ${response.status}`);
-    updateSproomConnection({ companyId: input.companyId, externalCompanyId: childCompanyId, status: "tilmelding_fejlet", lastError: reason });
+    updateSproomConnection({ companyId: input.companyId, ...(childCompanyId ? { externalCompanyId: childCompanyId } : {}), status: "tilmelding_fejlet", lastError: reason });
     if (response.status === 403) throw new Error("Sproom har endnu ikke aktiveret Integration Service/masteradgang på parent-kontoen.");
     throw new Error(`Sproom kunne ikke starte tilmeldingen (${response.status}): ${reason}`);
   }
-  const enrollmentId = identifier(body, response.headers.get("location"), ["enrollmentId", "id"]);
+  // Sproom returns an authentication link. It can contain a one-time credential,
+  // so it is deliberately neither logged nor persisted; Sproom sends it to the
+  // authorised user because shouldSendEmail is true.
   const connection = updateSproomConnection({
     companyId: input.companyId,
-    externalCompanyId: childCompanyId,
+    ...(childCompanyId ? { externalCompanyId: childCompanyId } : {}),
     status: "afventer_tilmelding",
-    enrollmentId,
+    enrollmentId: null,
     lastError: null,
   });
   return { action: "enrollment_requested", connection };
@@ -159,8 +160,9 @@ export async function provisionSproomChildCompany(input: ProvisionInput): Promis
     return { action: "child_created", connection };
   }
   if (response.status === 409) {
-    if (!childCompanyId) throw new Error("Virksomheden findes allerede hos Sproom, men svaret indeholdt ikke det nødvendige company-ID.");
-    return startEnrollment(input, childCompanyId);
+    // A conflicting existing profile is enrolled by CVR. Sproom may omit its
+    // company ID until the existing owner has accepted the enrollment.
+    return startEnrollment(input, childCompanyId || undefined);
   }
   const reason = safeProviderError(body, `Sproom svarede ${response.status}`);
   updateSproomConnection({ companyId: input.companyId, status: "oprettelse_fejlet", lastError: reason });
@@ -187,7 +189,7 @@ export async function registerSproomNemhandel(companyId: number): Promise<Sproom
     const response = await fetch(`${baseUrl()}/registrations/nemhandel`, {
       method: "POST",
       headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ profiles: ["nes5Customer"], endpointId: { schemeId: "DK:CVR", value: connection.cvr } }),
+      body: JSON.stringify({ profiles: ["Nes5Customer"], endpointId: { schemeId: "DK:CVR", value: connection.cvr } }),
     });
     const body = await response.text();
     if (!response.ok) {
