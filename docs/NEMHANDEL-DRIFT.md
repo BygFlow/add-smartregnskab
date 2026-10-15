@@ -95,19 +95,20 @@ Adapterens kontrakt er kontrolleret mod Sprooms aktuelle API-dokumentation den 1
 
 ## Produktionslåse
 
-Begge automatiske handlinger er som standard slået fra:
+Den aktuelle produktionsstatus er:
 
 ```dotenv
-SPROOM_AUTOMATIC_PROVISIONING=false
+SPROOM_AUTOMATIC_PROVISIONING=true
 SPROOM_AUTO_REGISTER_NEMHANDEL=false
 ```
 
-Første flag må først sættes til `true`, når Sproom har aktiveret ISV/
-Integration Service på ADD SmartDrift ApS' parent-konto, mastertokenet er lagt
-ind som hemmelig miljøvariabel, og staging kan oprette både en ny child-profil
-og starte enrollment for et eksisterende CVR. Andet flag åbnes først efter en
-vellykket registrering og modtagelsestest i staging. En kundeadministrator skal
-fortsat aktivt godkende onboardingen i programmet; flagene omgår ikke samtykke.
+Automatisk child-oprettelse/enrollment er aktiveret, efter at Sproom har
+aktiveret ISV/Integration Service på ADD SmartDrift ApS' parent-konto,
+mastertokenet er lagt ind som hemmelig miljøvariabel, og den signerede webhook
+er kontrolleret. Automatisk NemHandel-registrering forbliver låst, indtil en
+første separat kundevirksomhed har gennemført onboarding, registrering og
+modtagelsestest ende til ende. En kundeadministrator skal fortsat aktivt
+godkende onboardingen i programmet; flagene omgår ikke samtykke.
 
 ## Generisk leverandørkontrakt
 
