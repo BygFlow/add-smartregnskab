@@ -8,7 +8,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 const temp = mkdtempSync(join(tmpdir(), "smartregnskab-sproom-adapter-"));
 process.env.DATABASE_PATH = join(temp, "adapter.db");
 process.env.MIGRATIONS_DIR = join(process.cwd(), "migrations");
-const { generateEInvoice, providerSend, sproomRequestId, verifySproomSignature } = await import("../server/einvoice");
+const { generateEInvoice, providerSend, sproomRequestId, verifySproomSignature, verifySproomWebhookSignature } = await import("../server/einvoice");
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -91,6 +91,25 @@ test("Sproom-webhook accepterer en PEM-nøgle med escaped CRLF fra Render", () =
     assert.equal(verifySproomSignature(payload, signature), true);
     assert.equal(verifySproomSignature(payload, `sha256=${signature}`), true);
     assert.equal(verifySproomSignature(payload, `"${signature}"`), true);
+  } finally {
+    if (previous === undefined) delete process.env.SPROOM_WEBHOOK_PUBLIC_KEY;
+    else process.env.SPROOM_WEBHOOK_PUBLIC_KEY = previous;
+  }
+});
+
+test("Sproom-webhook kan bruge udbyderens aktuelle offentlige nøgle", async () => {
+  configureSproom();
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const payload = JSON.stringify({ webhookType: "test", companyId: "company-test" });
+  const signature = sign("RSA-SHA256", Buffer.from(payload, "utf8"), privateKey).toString("base64");
+  const previous = process.env.SPROOM_WEBHOOK_PUBLIC_KEY;
+  try {
+    process.env.SPROOM_WEBHOOK_PUBLIC_KEY = "ikke-en-gyldig-noegle";
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      publicKey: publicKey.export({ type: "spki", format: "pem" }).toString(),
+      signatureAlgorithm: "SHA256withRSA",
+    }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+    assert.equal(await verifySproomWebhookSignature(payload, signature), true);
   } finally {
     if (previous === undefined) delete process.env.SPROOM_WEBHOOK_PUBLIC_KEY;
     else process.env.SPROOM_WEBHOOK_PUBLIC_KEY = previous;

@@ -257,6 +257,54 @@ export function verifySproomSignature(raw: string, signature?: string): boolean 
   }
 }
 
+let cachedSproomWebhookKey: { value: string; expiresAt: number } | null = null;
+
+function normalizeSproomPublicKey(value: string | undefined): string {
+  return String(value || "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
+}
+
+function verifySproomSignatureWithKey(raw: string, signature: string | undefined, publicKey: string): boolean {
+  if (!signature || !publicKey) return false;
+  try {
+    const normalizedSignature = signature
+      .trim()
+      .replace(/^sha256=/i, "")
+      .replace(/^signature=/i, "")
+      .replace(/^"|"$/g, "");
+    return verify("RSA-SHA256", Buffer.from(raw, "utf8"), publicKey, Buffer.from(normalizedSignature, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+async function currentSproomWebhookKey(): Promise<string> {
+  if (cachedSproomWebhookKey && cachedSproomWebhookKey.expiresAt > Date.now()) return cachedSproomWebhookKey.value;
+  const token = process.env.SPROOM_API_TOKEN?.trim();
+  if (!token) return "";
+  try {
+    const response = await fetch(`${sproomBaseUrl()}/webhooks/key`, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return "";
+    const body = await response.json() as { publicKey?: string };
+    const value = normalizeSproomPublicKey(body.publicKey);
+    if (!value) return "";
+    cachedSproomWebhookKey = { value, expiresAt: Date.now() + 60 * 60 * 1000 };
+    return value;
+  } catch {
+    return "";
+  }
+}
+
+export async function verifySproomWebhookSignature(raw: string, signature?: string): Promise<boolean> {
+  const providerKey = await currentSproomWebhookKey();
+  if (verifySproomSignatureWithKey(raw, signature, providerKey)) return true;
+  return verifySproomSignature(raw, signature);
+}
+
 export async function providerSend(payload: string, format: EInvoiceFormat, recipient: string, companyId?: number) {
   if (providerKind() === "sproom") {
     if (!companyId) throw new Error("Virksomheds-ID mangler ved Sproom-afsendelse.");

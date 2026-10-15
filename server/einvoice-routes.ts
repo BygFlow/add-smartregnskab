@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { creditNotes, einvoiceQueue } from "@shared/schema";
 import { requireRole } from "./auth";
 import { db, storage } from "./storage";
-import { generateECreditNote, generateEInvoice, generateEInvoiceResponse, internalCompanyIdForSproom, providerSend, providerStatus, providerValidate, sproomDownloadDocument, validateEInvoice, verifyInboundSignature, verifySproomSignature, type EInvoiceFormat } from "./einvoice";
+import { generateECreditNote, generateEInvoice, generateEInvoiceResponse, internalCompanyIdForSproom, providerSend, providerStatus, providerValidate, sproomDownloadDocument, validateEInvoice, verifyInboundSignature, verifySproomWebhookSignature, type EInvoiceFormat } from "./einvoice";
 import { linkSproomChildCompany, safeSproomConnection } from "./sproom-registry";
 import { acceptSproomEnrollment, provisionSproomChildCompany } from "./sproom-master";
 
@@ -49,7 +49,7 @@ export function registerPublicEInvoiceRoutes(app: Express) {
     const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString("utf8") : JSON.stringify(req.body || {});
     const signatureHeader = req.headers["x-signature"];
     const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
-    if (!verifySproomSignature(raw, signature)) {
+    if (!await verifySproomWebhookSignature(raw, signature)) {
       if (String(req.body?.webhookType || "").toLowerCase() === "test") {
         console.warn(JSON.stringify({
           event: "sproom_webhook_test_signature_rejected",
@@ -57,8 +57,6 @@ export function registerPublicEInvoiceRoutes(app: Express) {
           signatureLength: signature?.length || 0,
           signatureHasPrefix: /^(sha256|signature)=/i.test(signature || ""),
           signatureQuoted: /^".*"$/.test(signature || ""),
-          rawBase64: Buffer.from(raw, "utf8").toString("base64"),
-          signature,
         }));
       }
       return void res.status(401).json({ error: "Sproom-signaturen kunne ikke bekræftes." });
