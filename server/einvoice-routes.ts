@@ -57,6 +57,8 @@ export function registerPublicEInvoiceRoutes(app: Express) {
           signatureLength: signature?.length || 0,
           signatureHasPrefix: /^(sha256|signature)=/i.test(signature || ""),
           signatureQuoted: /^".*"$/.test(signature || ""),
+          rawBase64: Buffer.from(raw, "utf8").toString("base64"),
+          signature,
         }));
       }
       return void res.status(401).json({ error: "Sproom-signaturen kunne ikke bekræftes." });
