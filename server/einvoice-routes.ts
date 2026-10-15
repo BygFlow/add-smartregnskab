@@ -63,6 +63,9 @@ export function registerPublicEInvoiceRoutes(app: Express) {
     }
 
     const eventType = String(req.body?.webhookType || "");
+    if (eventType.toLowerCase() === "test") {
+      return void res.status(200).json({ accepted: true, test: true });
+    }
     const documentId = String(req.body?.documentId || "").trim();
     const externalCompanyId = String(req.body?.companyId || "").trim();
 

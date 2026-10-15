@@ -240,6 +240,10 @@ if (!hasApplicationSchema) {
     addColumn("document_inbox", "external_message_id", "text");
     addColumn("document_inbox", "posted_journal_entry_id", "integer");
     addColumn("subscriptions", "ai_addon_enabled", "integer DEFAULT 0 NOT NULL");
+    addColumn("sproom_child_companies", "enrollment_id", "text");
+    addColumn("sproom_child_companies", "nemhandel_network_id", "text");
+    addColumn("sproom_child_companies", "peppol_network_id", "text");
+    addColumn("sproom_child_companies", "last_error", "text");
   })();
 
   // Index creation is safe and idempotent. If a historical database already
