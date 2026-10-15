@@ -236,7 +236,13 @@ export async function sproomDownloadDocument(documentId: string, companyId: numb
 export function verifySproomSignature(raw: string, signature?: string): boolean {
   if (!signature) return false;
   try {
-    const direct = process.env.SPROOM_WEBHOOK_PUBLIC_KEY?.replace(/\\n/g, "\n").trim();
+    // Render may persist a pasted PEM with escaped CRLF sequences ("\\r\\n").
+    // Normalize those before the more general escaped-LF form so a literal
+    // "\\r" is not left in front of every decoded newline.
+    const direct = process.env.SPROOM_WEBHOOK_PUBLIC_KEY
+      ?.replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .trim();
     const encoded = process.env.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64?.trim();
     const publicKey = direct || (encoded ? Buffer.from(encoded, "base64").toString("utf8") : "");
     if (!publicKey) return false;
