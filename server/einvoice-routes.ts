@@ -49,7 +49,18 @@ export function registerPublicEInvoiceRoutes(app: Express) {
     const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString("utf8") : JSON.stringify(req.body || {});
     const signatureHeader = req.headers["x-signature"];
     const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
-    if (!verifySproomSignature(raw, signature)) return void res.status(401).json({ error: "Sproom-signaturen kunne ikke bekræftes." });
+    if (!verifySproomSignature(raw, signature)) {
+      if (String(req.body?.webhookType || "").toLowerCase() === "test") {
+        console.warn(JSON.stringify({
+          event: "sproom_webhook_test_signature_rejected",
+          rawBytes: Buffer.byteLength(raw, "utf8"),
+          signatureLength: signature?.length || 0,
+          signatureHasPrefix: /^(sha256|signature)=/i.test(signature || ""),
+          signatureQuoted: /^".*"$/.test(signature || ""),
+        }));
+      }
+      return void res.status(401).json({ error: "Sproom-signaturen kunne ikke bekræftes." });
+    }
 
     const eventType = String(req.body?.webhookType || "");
     const documentId = String(req.body?.documentId || "").trim();

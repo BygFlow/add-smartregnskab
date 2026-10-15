@@ -246,7 +246,12 @@ export function verifySproomSignature(raw: string, signature?: string): boolean 
     const encoded = process.env.SPROOM_WEBHOOK_PUBLIC_KEY_BASE64?.trim();
     const publicKey = direct || (encoded ? Buffer.from(encoded, "base64").toString("utf8") : "");
     if (!publicKey) return false;
-    return verify("RSA-SHA256", Buffer.from(raw, "utf8"), publicKey, Buffer.from(signature, "base64"));
+    const normalizedSignature = signature
+      .trim()
+      .replace(/^sha256=/i, "")
+      .replace(/^signature=/i, "")
+      .replace(/^"|"$/g, "");
+    return verify("RSA-SHA256", Buffer.from(raw, "utf8"), publicKey, Buffer.from(normalizedSignature, "base64"));
   } catch {
     return false;
   }

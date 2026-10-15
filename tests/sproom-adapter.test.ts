@@ -89,6 +89,8 @@ test("Sproom-webhook accepterer en PEM-nøgle med escaped CRLF fra Render", () =
   try {
     process.env.SPROOM_WEBHOOK_PUBLIC_KEY = pem.replace(/\n/g, "\\r\\n");
     assert.equal(verifySproomSignature(payload, signature), true);
+    assert.equal(verifySproomSignature(payload, `sha256=${signature}`), true);
+    assert.equal(verifySproomSignature(payload, `"${signature}"`), true);
   } finally {
     if (previous === undefined) delete process.env.SPROOM_WEBHOOK_PUBLIC_KEY;
     else process.env.SPROOM_WEBHOOK_PUBLIC_KEY = previous;
