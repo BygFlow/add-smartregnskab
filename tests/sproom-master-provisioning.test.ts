@@ -15,6 +15,7 @@ process.env.SPROOM_PARENT_NAME = "ADD SmartDrift ApS";
 
 const originalFetch = globalThis.fetch;
 const master = await import("../server/sproom-master");
+const registry = await import("../server/sproom-registry");
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -41,6 +42,17 @@ test("lokal onboarding foretager ingen Sproom-kald før produktionslåsen åbnes
   assert.equal(result.action, "await_master_activation");
   assert.equal(result.connection.status, "afventer_sproom");
   assert.equal(result.connection.externalCompanyId, null);
+});
+
+test("parent-CVR afvises før der oprettes en child-profil", async () => {
+  process.env.SPROOM_AUTOMATIC_PROVISIONING = "true";
+  process.env.SPROOM_API_TOKEN = "master-token";
+  globalThis.fetch = (async () => { throw new Error("fetch må ikke kaldes"); }) as typeof fetch;
+  await assert.rejects(
+    master.provisionSproomChildCompany(input(399, "46761898")),
+    /parenten.*ikke oprettes som sit eget child-company/i,
+  );
+  assert.equal(registry.sproomConnectionForCompany(399), null);
 });
 
 test("en ny virksomhed oprettes som child og forbindes uden at aktivere NemHandel", async () => {

@@ -79,7 +79,7 @@ export function registerPublicEInvoiceRoutes(app: Express) {
       return void res.json({ accepted: true, connected: connection.status === "forbundet", nemhandelStatus: connection.nemhandelStatus });
     }
 
-    const companyId = internalCompanyIdForSproom(externalCompanyId);
+    const companyId = internalCompanyIdForSproom(externalCompanyId, req.body?.companyIdentifier);
     if (!companyId) return void res.status(404).json({ error: "Sproom-virksomheden er ikke knyttet til en virksomhed i ADD SmartRegnskab." });
 
     if (eventType === "documentStatusChanged") {

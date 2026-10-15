@@ -31,6 +31,7 @@ type ProviderStatus = {
   companyMapped: boolean;
   masterConfigured: boolean;
   masterCvr?: string | null;
+  parentCompany?: boolean;
   parentMatchesPlatform: boolean;
   automaticProvisioning?: boolean;
   automaticNemhandel?: boolean;
@@ -226,12 +227,18 @@ export default function EInvoiceQueue({ companyId }: { companyId: number }) {
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-800"><Network className="h-5 w-5" /></span>
               <div>
                 <h3 className="font-semibold">Sproom masterforbindelse</h3>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">ADD SmartDrift ApS har én parent/masteraftale. Denne juridiske virksomheds CVR får én child-profil, som genbruges på tværs af SmartRegnskab, Pro og Clean.</p>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">ADD SmartDrift ApS bruger sin egen parent/masterprofil. Hver kundevirksomhed får én child-profil pr. CVR, som genbruges på tværs af SmartRegnskab, Pro og Clean.</p>
               </div>
             </div>
-            <span className={provider.connection?.connected ? "badge-soft badge-soft-green" : "badge-soft badge-soft-amber"}>{provider.connection ? (SPROOM_STATUS_LABEL[provider.connection.status] || provider.connection.status.replaceAll("_", " ")) : "Ikke tilmeldt"}</span>
+            <span className={provider.parentCompany || provider.connection?.connected ? "badge-soft badge-soft-green" : "badge-soft badge-soft-amber"}>{provider.parentCompany ? "Parentprofil aktiv" : provider.connection ? (SPROOM_STATUS_LABEL[provider.connection.status] || provider.connection.status.replaceAll("_", " ")) : "Ikke tilmeldt"}</span>
           </div>
-          {provider.connection ? (
+          {provider.parentCompany ? (
+            <div className="mt-4 grid gap-2 rounded-lg bg-muted/40 p-3 text-xs sm:grid-cols-3">
+              <div><span className="text-muted-foreground">Virksomheds-CVR</span><strong className="mt-1 block">{provider.masterCvr}</strong></div>
+              <div><span className="text-muted-foreground">Sproom-rolle</span><strong className="mt-1 block">Parent/master</strong></div>
+              <div><span className="text-muted-foreground">Kundetilknytning</span><strong className="mt-1 block">Child-profiler pr. CVR</strong></div>
+            </div>
+          ) : provider.connection ? (
             <>
               <div className="mt-4 grid gap-2 rounded-lg bg-muted/40 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
                 <div><span className="text-muted-foreground">Kunde-CVR</span><strong className="mt-1 block">{provider.connection.cvr}</strong></div>

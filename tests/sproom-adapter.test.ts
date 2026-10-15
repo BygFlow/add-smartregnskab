@@ -8,7 +8,9 @@ import { generateKeyPairSync, sign } from "node:crypto";
 const temp = mkdtempSync(join(tmpdir(), "smartregnskab-sproom-adapter-"));
 process.env.DATABASE_PATH = join(temp, "adapter.db");
 process.env.MIGRATIONS_DIR = join(process.cwd(), "migrations");
-const { generateEInvoice, providerSend, sproomRequestId, verifySproomSignature, verifySproomWebhookSignature } = await import("../server/einvoice");
+const { generateEInvoice, providerSend, providerStatus, sproomRequestId, verifySproomSignature, verifySproomWebhookSignature } = await import("../server/einvoice");
+const { db } = await import("../server/storage");
+const { companies } = await import("../shared/schema");
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -16,6 +18,8 @@ const originalEnv = {
   apiUrl: process.env.SPROOM_API_URL,
   token: process.env.SPROOM_API_TOKEN,
   companyMap: process.env.SPROOM_COMPANY_MAP,
+  parentCvr: process.env.SPROOM_PARENT_CVR,
+  platformCvr: process.env.PLATFORM_COMPANY_CVR,
 };
 
 function configureSproom() {
@@ -23,6 +27,8 @@ function configureSproom() {
   process.env.SPROOM_API_URL = "https://staging.sproom.test/api";
   process.env.SPROOM_API_TOKEN = "parent-token";
   process.env.SPROOM_COMPANY_MAP = JSON.stringify({ 7: "child-uuid" });
+  process.env.SPROOM_PARENT_CVR = "46761898";
+  process.env.PLATFORM_COMPANY_CVR = "46761898";
 }
 
 test.afterEach(() => {
@@ -31,6 +37,8 @@ test.afterEach(() => {
   process.env.SPROOM_API_URL = originalEnv.apiUrl;
   process.env.SPROOM_API_TOKEN = originalEnv.token;
   process.env.SPROOM_COMPANY_MAP = originalEnv.companyMap;
+  process.env.SPROOM_PARENT_CVR = originalEnv.parentCvr;
+  process.env.PLATFORM_COMPANY_CVR = originalEnv.platformCvr;
 });
 
 test("OIOUBL og Peppol bruger de rigtige endpoint-koder", () => {
@@ -65,6 +73,27 @@ test("Sproom-upload bruger et stabilt X-Request-Id og accepterer dokument-ID", a
   const headers = new Headers(upload?.headers);
   assert.equal(headers.get("X-Request-Id"), sproomRequestId("<Invoice />", "OIOUBL_2_1", "DK87654321"));
   assert.equal(headers.get("X-Request-Id")?.length, 64);
+});
+
+test("ADD SmartDrift ApS bruger parent-tokenet direkte og oprettes ikke som child", async () => {
+  configureSproom();
+  db.insert(companies).values({ id: 7001, name: "ADD SmartDrift ApS", cvr: "46761898" }).onConflictDoNothing().run();
+  const requests: Array<{ url: string; authorization: string | null }> = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const target = String(url);
+    requests.push({ url: target, authorization: new Headers(init?.headers).get("Authorization") });
+    if (target.includes("/recipients/")) return new Response("", { status: 200 });
+    return new Response("", { status: 201, headers: { "X-Sproom-DocumentId": "parent-document-1" } });
+  }) as typeof fetch;
+
+  const status = providerStatus(7001);
+  assert.equal(status.parentCompany, true);
+  assert.equal(status.companyMapped, true);
+  assert.equal(status.configured, true);
+  const result = await providerSend("<Invoice />", "OIOUBL_2_1", "DK87654321", 7001);
+  assert.equal(result.messageId, "parent-document-1");
+  assert.equal(requests.some((request) => request.url.includes("/child-companies/")), false);
+  assert.equal(requests.every((request) => request.authorization === "Bearer parent-token"), true);
 });
 
 test("Sproom 409 behandles som et sikkert idempotent genforsøg", async () => {

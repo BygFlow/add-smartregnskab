@@ -67,6 +67,8 @@ fra ADD SmartRegnskabs interne virksomheds-ID til Sprooms child-company UUID:
 Hver juridisk kundevirksomhed skal oprettes eller tilmeldes én gang som child
 company. Pro og Clean registrerer blot deres produktnavn på den eksisterende
 CVR-profil gennem ADD Connect og må aldrig oprette en parallel Sproom-profil.
+ADD SmartDrift ApS selv er parent-selskabet og bruger mastertokenet direkte til
+sine egne dokumenter; parent-CVR 46761898 må aldrig oprettes som sit eget child.
 Adapteren
 henter et tidsbegrænset virksomhedstoken, slår modtageren op i NemHandel/Peppol
 og uploader XML binært til `POST /api/documents`. Sprooms webhook-URL er:

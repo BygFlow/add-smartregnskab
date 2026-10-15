@@ -118,6 +118,13 @@ async function startEnrollment(input: ProvisionInput, childCompanyId?: string): 
 }
 
 export async function provisionSproomChildCompany(input: ProvisionInput): Promise<SproomProvisionResult> {
+  const cvr = normalizeDanishCvr(input.cvr);
+  let parentCvr = "";
+  try { parentCvr = normalizeDanishCvr(process.env.SPROOM_PARENT_CVR || process.env.PLATFORM_COMPANY_CVR); }
+  catch { /* master identity is enforced below when automatic provisioning runs */ }
+  if (parentCvr && cvr === parentCvr) {
+    throw new Error("ADD SmartDrift ApS er Sproom-parenten og bruger masterprofilen direkte. Parent-CVR'et må ikke oprettes som sit eget child-company.");
+  }
   let connection = requestSproomOnboarding(input);
   if (connection.status === "forbundet" && connection.externalCompanyId) {
     if (enabled("SPROOM_AUTO_REGISTER_NEMHANDEL") && connection.nemhandelStatus !== "aktiv") {
@@ -137,7 +144,6 @@ export async function provisionSproomChildCompany(input: ProvisionInput): Promis
     return startEnrollment(input, connection.externalCompanyId);
   }
 
-  const cvr = normalizeDanishCvr(input.cvr);
   const { response, body } = await masterRequest("/child-companies", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
