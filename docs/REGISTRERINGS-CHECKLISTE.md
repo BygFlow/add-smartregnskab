@@ -21,6 +21,7 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 - [x] Vedlæg syntetisk Object Lock-bevis og identisk restore fra den faktiske produktionsbucket.
 - [ ] Gennemfør og vedlæg isoleret restore af repræsentative, rigtige bogføringsdata og originalbilag.
 - [x] Angiv aktuelle underdatabehandlere og kendte datalokaliteter i dokumentationen.
+- [x] Kontrollér skrivebeskyttet adgang til Sprooms master-API i produktion uden at eksponere tokenet.
 - [ ] Gennemfør den første rigtige Sproom/NemHandel-produktionsprøve med separat kunde.
 - [ ] Bestil en uvildig sikkerheds-/penetrationstest og luk eventuelle høje eller kritiske fund.
 - [ ] Fastlæg leverandør og plan for MitID- og CVR-valideringskravene fra marts 2027.

@@ -28,3 +28,8 @@ virksomheds repræsentative bogføringsdata mangler fortsat.
 Clearhaus' endelige accept, den første rigtige Sproom/NemHandel-
 produktionsprøve, den uvildige sikkerhedstest og Erhvervsstyrelsens
 registrering er separate eksterne porte.
+
+Sprooms master-API blev kontrolleret skrivebeskyttet i produktion 17. oktober
+2026 og svarede HTTP 200. Kontoen havde endnu ingen child-companies; derfor
+kræver den resterende produktionstest en separat virkelig kundevirksomhed med
+eget CVR og samtykke.

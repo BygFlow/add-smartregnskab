@@ -129,6 +129,14 @@ formatspecifikke koder og struktur. Den fulde lokale verifikationspakke består
 
 ## Produktionslåse
 
+Den 17. oktober 2026 gennemførte Render-job `job-db9rmklg1s2s739qclkg`
+et skrivebeskyttet `GET /api/child-companies` med produktionsmiljøets
+mastertoken. Sproom svarede HTTP 200 med et tomt array. Det beviser, at
+Integrationsservice og masterautentificeringen virker, men viser samtidig, at
+der endnu ikke findes en rigtig child-company til ende-til-ende-testen. Se
+`SPROOM-PRODUKTIONSKONTROL-2026-10-17.md`. Parent-CVR 46761898 må ikke bruges
+som sit eget child-company, og et opdigtet CVR må ikke oprettes i produktion.
+
 Den aktuelle produktionsstatus er:
 
 ```dotenv
