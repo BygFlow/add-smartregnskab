@@ -22,6 +22,58 @@ const xml = (value: unknown) => String(value ?? "")
 const money = (value: number | null | undefined) => Number(value || 0).toFixed(2);
 const quantity = (value: number | null | undefined) => Number(value || 0).toFixed(4);
 
+function stableUuid(seed: string): string {
+  const hex = createHash("sha256").update(seed).digest("hex").slice(0, 32).split("");
+  hex[12] = "4";
+  hex[16] = ((Number.parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8).join("")}-${hex.slice(8, 12).join("")}-${hex.slice(12, 16).join("")}-${hex.slice(16, 20).join("")}-${hex.slice(20).join("")}`;
+}
+
+function oioAddress(value: unknown, owner: string): string {
+  const address = String(value || "").replace(/\s+/g, " ").trim();
+  if (!address) throw new Error(`${owner} mangler en adresse, som kræves til OIOUBL.`);
+  const structured = address.match(/^(.*?)(?:\s+(\d+[A-Za-z]?))?\s*,?\s+(\d{4})\s+(.+)$/);
+  if (!structured) {
+    return `<cac:PostalAddress><cbc:AddressFormatCode listAgencyID="320" listID="urn:oioubl:codelist:addressformatcode-1.1">Unstructured</cbc:AddressFormatCode><cac:AddressLine><cbc:Line>${xml(address)}</cbc:Line></cac:AddressLine><cac:Country><cbc:IdentificationCode>DK</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`;
+  }
+  const [, street, buildingNumber, postalZone, city] = structured;
+  return `<cac:PostalAddress><cbc:AddressFormatCode listAgencyID="320" listID="urn:oioubl:codelist:addressformatcode-1.1">StructuredDK</cbc:AddressFormatCode><cbc:StreetName>${xml(street.trim())}</cbc:StreetName>${buildingNumber ? `<cbc:BuildingNumber>${xml(buildingNumber)}</cbc:BuildingNumber>` : ""}<cbc:CityName>${xml(city.trim())}</cbc:CityName><cbc:PostalZone>${xml(postalZone)}</cbc:PostalZone><cac:Country><cbc:IdentificationCode>DK</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`;
+}
+
+function peppolAddress(value: unknown, owner: string): string {
+  const address = String(value || "").replace(/\s+/g, " ").trim();
+  if (!address) throw new Error(`${owner} mangler en adresse, som kræves til Peppol BIS.`);
+  const structured = address.match(/^(.*?)(?:\s+(\d+[A-Za-z]?))?\s*,?\s+(\d{4})\s+(.+)$/);
+  if (!structured) return `<cac:PostalAddress><cbc:StreetName>${xml(address)}</cbc:StreetName><cac:Country><cbc:IdentificationCode>DK</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`;
+  const [, street, buildingNumber, postalZone, city] = structured;
+  const streetLine = buildingNumber ? `${street.trim()} ${buildingNumber}` : street.trim();
+  return `<cac:PostalAddress><cbc:StreetName>${xml(streetLine)}</cbc:StreetName><cbc:CityName>${xml(city.trim())}</cbc:CityName><cbc:PostalZone>${xml(postalZone)}</cbc:PostalZone><cac:Country><cbc:IdentificationCode>DK</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`;
+}
+
+function oioTaxScheme(): string {
+  return `<cac:TaxScheme><cbc:ID schemeAgencyID="320" schemeID="urn:oioubl:id:taxschemeid-1.1">63</cbc:ID><cbc:Name>Moms</cbc:Name></cac:TaxScheme>`;
+}
+
+function oioTaxCategory(vatRate: number): string {
+  const id = vatRate ? "StandardRated" : "ZeroRated";
+  return `<cac:TaxCategory><cbc:ID schemeAgencyID="320" schemeID="urn:oioubl:id:taxcategoryid-1.1">${id}</cbc:ID><cbc:Percent>${vatRate}</cbc:Percent>${oioTaxScheme()}</cac:TaxCategory>`;
+}
+
+function oioPayment(company: Company, invoice: Invoice, currency: string): string {
+  const bankDigits = String(company.bankAccount || "").replace(/\D/g, "");
+  const dueDate = invoice.dueDate || invoice.issueDate;
+  if (bankDigits.length >= 8) {
+    const registrationNumber = bankDigits.slice(0, 4);
+    const accountNumber = bankDigits.slice(4);
+    return `<cac:PaymentMeans><cbc:ID>1</cbc:ID><cbc:PaymentMeansCode>42</cbc:PaymentMeansCode><cbc:PaymentDueDate>${xml(dueDate)}</cbc:PaymentDueDate><cbc:PaymentChannelCode listAgencyID="320" listID="urn:oioubl:codelist:paymentchannelcode-1.1">DK:BANK</cbc:PaymentChannelCode><cac:PayeeFinancialAccount><cbc:ID>${xml(accountNumber)}</cbc:ID><cbc:PaymentNote>${xml(invoice.invoiceNumber)}</cbc:PaymentNote><cac:FinancialInstitutionBranch><cbc:ID>${xml(registrationNumber)}</cbc:ID></cac:FinancialInstitutionBranch></cac:PayeeFinancialAccount></cac:PaymentMeans>`;
+  }
+  const iban = String(company.iban || "").replace(/\s/g, "").trim();
+  if (iban) {
+    return `<cac:PaymentMeans><cbc:ID>1</cbc:ID><cbc:PaymentMeansCode>58</cbc:PaymentMeansCode><cbc:PaymentDueDate>${xml(dueDate)}</cbc:PaymentDueDate><cac:PayeeFinancialAccount><cbc:ID schemeID="IBAN">${xml(iban)}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>`;
+  }
+  throw new Error("Virksomheden mangler bankkonto eller IBAN til OIOUBL-betalingen.");
+}
+
 function endpoint(customer: Customer, format: EInvoiceFormat): { id: string; scheme: string } {
   const ean = String(customer.ean || "").replace(/\s/g, "");
   if (/^\d{13}$/.test(ean)) return { id: ean, scheme: format === "PEPPOL_BIS_3" ? "0088" : "GLN" };
@@ -36,11 +88,18 @@ function senderEndpoint(company: Company, format: EInvoiceFormat): { id: string;
   return { id: `DK${cvr}`, scheme: format === "PEPPOL_BIS_3" ? "0184" : "DK:CVR" };
 }
 
-function invoiceLines(items: InvoiceItem[], currency: string, peppol: boolean): string {
+function oioInvoiceLines(items: InvoiceItem[], currency: string): string {
   return items.map((item, index) => {
     const vat = Number(item.vatRate || 0);
-    const line = peppol ? "cac:InvoiceLine" : "cac:InvoiceLine";
-    return `<${line}><cbc:ID>${index + 1}</cbc:ID><cbc:InvoicedQuantity unitCode="HUR">${quantity(item.quantity)}</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="${xml(currency)}">${money(item.amount)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${xml(item.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${vat ? "S" : "Z"}</cbc:ID><cbc:Percent>${vat}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${money(item.unitPrice)}</cbc:PriceAmount></cac:Price></${line}>`;
+    const lineTax = Number(item.amount || 0) * vat / 100;
+    return `<cac:InvoiceLine><cbc:ID>${index + 1}</cbc:ID><cbc:InvoicedQuantity unitCode="HUR">${quantity(item.quantity)}</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="${xml(currency)}">${money(item.amount)}</cbc:LineExtensionAmount><cac:OrderLineReference><cbc:LineID>${index + 1}</cbc:LineID></cac:OrderLineReference><cac:TaxTotal><cbc:TaxAmount currencyID="${xml(currency)}">${money(lineTax)}</cbc:TaxAmount><cac:TaxSubtotal><cbc:TaxableAmount currencyID="${xml(currency)}">${money(item.amount)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${xml(currency)}">${money(lineTax)}</cbc:TaxAmount>${oioTaxCategory(vat)}</cac:TaxSubtotal></cac:TaxTotal><cac:Item><cbc:Description>${xml(item.description)}</cbc:Description><cbc:Name>${xml(item.description)}</cbc:Name></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${money(item.unitPrice)}</cbc:PriceAmount><cbc:BaseQuantity unitCode="HUR">1</cbc:BaseQuantity><cbc:OrderableUnitFactorRate>1</cbc:OrderableUnitFactorRate></cac:Price></cac:InvoiceLine>`;
+  }).join("");
+}
+
+function peppolInvoiceLines(items: InvoiceItem[], currency: string): string {
+  return items.map((item, index) => {
+    const vat = Number(item.vatRate || 0);
+    return `<cac:InvoiceLine><cbc:ID>${index + 1}</cbc:ID><cbc:InvoicedQuantity unitCode="HUR">${quantity(item.quantity)}</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="${xml(currency)}">${money(item.amount)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${xml(item.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${vat ? "S" : "Z"}</cbc:ID><cbc:Percent>${vat}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${money(item.unitPrice)}</cbc:PriceAmount><cbc:BaseQuantity unitCode="HUR">1</cbc:BaseQuantity></cac:Price></cac:InvoiceLine>`;
   }).join("");
 }
 
@@ -51,13 +110,44 @@ export function generateEInvoice(input: DocumentInput): { xml: string; recipient
   const sender = senderEndpoint(company, format);
   const currency = company.currency || "DKK";
   const dueDate = invoice.dueDate || invoice.issueDate;
-  const common = `<cbc:ID>${xml(invoice.invoiceNumber)}</cbc:ID><cbc:IssueDate>${xml(invoice.issueDate)}</cbc:IssueDate><cbc:DueDate>${xml(dueDate)}</cbc:DueDate><cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode><cbc:DocumentCurrencyCode>${xml(currency)}</cbc:DocumentCurrencyCode>`;
-  const parties = `<cac:AccountingSupplierParty><cac:Party><cbc:EndpointID schemeID="${sender.scheme}">${xml(sender.id)}</cbc:EndpointID><cac:PartyName><cbc:Name>${xml(company.name)}</cbc:Name></cac:PartyName><cac:PartyTaxScheme><cbc:CompanyID>${xml(sender.id)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme><cac:PartyLegalEntity><cbc:RegistrationName>${xml(company.name)}</cbc:RegistrationName><cbc:CompanyID>${xml(sender.id)}</cbc:CompanyID></cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty><cac:AccountingCustomerParty><cac:Party><cbc:EndpointID schemeID="${receiver.scheme}">${xml(receiver.id)}</cbc:EndpointID><cac:PartyName><cbc:Name>${xml(customer.name)}</cbc:Name></cac:PartyName><cac:PartyLegalEntity><cbc:RegistrationName>${xml(customer.name)}</cbc:RegistrationName></cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>`;
-  const totals = `<cac:TaxTotal><cbc:TaxAmount currencyID="${xml(currency)}">${money(invoice.vatAmount)}</cbc:TaxAmount></cac:TaxTotal><cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="${xml(currency)}">${money(invoice.netAmount)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="${xml(currency)}">${money(invoice.netAmount)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:PayableAmount></cac:LegalMonetaryTotal>`;
-  const profile = format === "PEPPOL_BIS_3"
-    ? `<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID><cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>`
-    : `<cbc:CustomizationID>OIOUBL-2.1</cbc:CustomizationID><cbc:ProfileID schemeID="urn:oioubl:id:profileid-1.2">urn:www.nesubl.eu:profiles:profile5:ver2.0</cbc:ProfileID>`;
-  const document = `<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">${profile}${common}${parties}${totals}${invoiceLines(input.items, currency, format === "PEPPOL_BIS_3")}</Invoice>`;
+  const lineNet = input.items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const calculatedVat = input.items.reduce((sum, item) => sum + Number(item.amount || 0) * Number(item.vatRate || 0) / 100, 0);
+  if (Math.abs(lineNet - Number(invoice.netAmount || 0)) > 0.02) throw new Error("Fakturalinjerne stemmer ikke med fakturaens nettobeløb.");
+  if (Math.abs(calculatedVat - Number(invoice.vatAmount || 0)) > 0.02) throw new Error("Fakturalinjernes moms stemmer ikke med fakturaens momsbeløb.");
+  if (Math.abs(lineNet + calculatedVat - Number(invoice.totalAmount || 0)) > 0.02) throw new Error("Netto, moms og total stemmer ikke på fakturaen.");
+
+  const taxGroups = new Map<number, number>();
+  for (const item of input.items) {
+    const rate = Number(item.vatRate || 0);
+    taxGroups.set(rate, (taxGroups.get(rate) || 0) + Number(item.amount || 0));
+  }
+
+  let document: string;
+  if (format === "OIOUBL_2_1") {
+    const documentUuid = stableUuid(`invoice:${company.cvr}:${invoice.id || invoice.invoiceNumber}`);
+    const orderUuid = stableUuid(`order:${company.cvr}:${invoice.id || invoice.invoiceNumber}`);
+    const customerCvr = String(customer.cvr || "").replace(/^DK/i, "").replace(/\D/g, "");
+    const customerLegalId = /^\d{8}$/.test(customerCvr) ? `<cbc:CompanyID schemeID="DK:CVR">DK${customerCvr}</cbc:CompanyID>` : "";
+    const supplierContact = company.email ? `<cac:Contact><cbc:ID>${xml(company.email)}</cbc:ID><cbc:Name>${xml(company.name)}</cbc:Name><cbc:ElectronicMail>${xml(company.email)}</cbc:ElectronicMail></cac:Contact>` : "";
+    const customerContact = customer.email ? `<cac:Contact><cbc:ID>${xml(customer.email)}</cbc:ID><cbc:Name>${xml(customer.contactPerson || customer.contact || customer.name)}</cbc:Name><cbc:ElectronicMail>${xml(customer.email)}</cbc:ElectronicMail></cac:Contact>` : "";
+    const parties = `<cac:AccountingSupplierParty><cac:Party><cbc:EndpointID schemeID="${sender.scheme}">${xml(sender.id)}</cbc:EndpointID><cac:PartyIdentification><cbc:ID schemeID="DK:CVR">${xml(sender.id)}</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>${xml(company.name)}</cbc:Name></cac:PartyName>${oioAddress(company.address, "Virksomheden")}<cac:PartyTaxScheme><cbc:CompanyID schemeID="DK:SE">${xml(sender.id)}</cbc:CompanyID>${oioTaxScheme()}</cac:PartyTaxScheme><cac:PartyLegalEntity><cbc:RegistrationName>${xml(company.name)}</cbc:RegistrationName><cbc:CompanyID schemeID="DK:CVR">${xml(sender.id)}</cbc:CompanyID></cac:PartyLegalEntity>${supplierContact}</cac:Party></cac:AccountingSupplierParty><cac:AccountingCustomerParty><cac:Party><cbc:EndpointID schemeID="${receiver.scheme}">${xml(receiver.id)}</cbc:EndpointID><cac:PartyIdentification><cbc:ID schemeID="${receiver.scheme}">${xml(receiver.id)}</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>${xml(customer.name)}</cbc:Name></cac:PartyName>${oioAddress(customer.address, "Kunden")}<cac:PartyLegalEntity><cbc:RegistrationName>${xml(customer.name)}</cbc:RegistrationName>${customerLegalId}</cac:PartyLegalEntity>${customerContact}</cac:Party></cac:AccountingCustomerParty>`;
+    const subtotals = Array.from(taxGroups.entries()).map(([rate, taxable]) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${xml(currency)}">${money(taxable)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${xml(currency)}">${money(taxable * rate / 100)}</cbc:TaxAmount>${oioTaxCategory(rate)}</cac:TaxSubtotal>`).join("");
+    const payment = oioPayment(company, invoice, currency);
+    document = `<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:UBLVersionID>2.0</cbc:UBLVersionID><cbc:CustomizationID>OIOUBL-2.01</cbc:CustomizationID><cbc:ProfileID schemeAgencyID="320" schemeID="urn:oioubl:id:profileid-1.1">Procurement-OrdSimR-BilSim-1.0</cbc:ProfileID><cbc:ID>${xml(invoice.invoiceNumber)}</cbc:ID><cbc:CopyIndicator>false</cbc:CopyIndicator><cbc:UUID>${documentUuid}</cbc:UUID><cbc:IssueDate>${xml(invoice.issueDate)}</cbc:IssueDate><cbc:InvoiceTypeCode listAgencyID="320" listID="urn:oioubl:codelist:invoicetypecode-1.1">380</cbc:InvoiceTypeCode><cbc:DocumentCurrencyCode>${xml(currency)}</cbc:DocumentCurrencyCode><cbc:AccountingCost>${xml(invoice.notes || invoice.invoiceNumber)}</cbc:AccountingCost><cac:OrderReference><cbc:ID>${xml(invoice.invoiceNumber)}</cbc:ID><cbc:UUID>${orderUuid}</cbc:UUID><cbc:IssueDate>${xml(invoice.issueDate)}</cbc:IssueDate></cac:OrderReference>${parties}<cac:Delivery><cbc:ActualDeliveryDate>${xml(invoice.issueDate)}</cbc:ActualDeliveryDate></cac:Delivery>${payment}<cac:PaymentTerms><cbc:ID>1</cbc:ID><cbc:PaymentMeansID>1</cbc:PaymentMeansID><cbc:Amount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:Amount></cac:PaymentTerms><cac:TaxTotal><cbc:TaxAmount currencyID="${xml(currency)}">${money(invoice.vatAmount)}</cbc:TaxAmount>${subtotals}</cac:TaxTotal><cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="${xml(currency)}">${money(invoice.netAmount)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="${xml(currency)}">${money(invoice.netAmount)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:PayableAmount></cac:LegalMonetaryTotal>${oioInvoiceLines(input.items, currency)}</Invoice>`;
+  } else {
+    const customerCvr = String(customer.cvr || "").replace(/^DK/i, "").replace(/\D/g, "");
+    const supplierVat = sender.id;
+    const customerLegalId = /^\d{8}$/.test(customerCvr) ? `<cbc:CompanyID schemeID="0184">DK${customerCvr}</cbc:CompanyID>` : "";
+    const buyerReference = customer.customerNumber || customer.contactPerson || customer.contact || invoice.invoiceNumber;
+    const parties = `<cac:AccountingSupplierParty><cac:Party><cbc:EndpointID schemeID="${sender.scheme}">${xml(sender.id)}</cbc:EndpointID><cac:PartyName><cbc:Name>${xml(company.name)}</cbc:Name></cac:PartyName>${peppolAddress(company.address, "Virksomheden")}<cac:PartyTaxScheme><cbc:CompanyID>${xml(supplierVat)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme><cac:PartyLegalEntity><cbc:RegistrationName>${xml(company.name)}</cbc:RegistrationName><cbc:CompanyID schemeID="0184">${xml(sender.id)}</cbc:CompanyID></cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty><cac:AccountingCustomerParty><cac:Party><cbc:EndpointID schemeID="${receiver.scheme}">${xml(receiver.id)}</cbc:EndpointID><cac:PartyName><cbc:Name>${xml(customer.name)}</cbc:Name></cac:PartyName>${peppolAddress(customer.address, "Kunden")}<cac:PartyLegalEntity><cbc:RegistrationName>${xml(customer.name)}</cbc:RegistrationName>${customerLegalId}</cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>`;
+    const subtotals = Array.from(taxGroups.entries()).map(([rate, taxable]) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${xml(currency)}">${money(taxable)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${xml(currency)}">${money(taxable * rate / 100)}</cbc:TaxAmount><cac:TaxCategory><cbc:ID>${rate ? "S" : "Z"}</cbc:ID><cbc:Percent>${rate}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>`).join("");
+    const iban = String(company.iban || "").replace(/\s/g, "").trim();
+    const bankDigits = String(company.bankAccount || "").replace(/\D/g, "");
+    const accountId = iban || bankDigits.slice(4);
+    if (!accountId) throw new Error("Virksomheden mangler bankkonto eller IBAN til Peppol-betalingen.");
+    const payment = `<cac:PaymentMeans><cbc:PaymentMeansCode>30</cbc:PaymentMeansCode><cbc:PaymentID>${xml(invoice.invoiceNumber)}</cbc:PaymentID><cac:PayeeFinancialAccount><cbc:ID>${xml(accountId)}</cbc:ID>${iban ? "" : `<cac:FinancialInstitutionBranch><cbc:ID>${xml(bankDigits.slice(0, 4))}</cbc:ID></cac:FinancialInstitutionBranch>`}</cac:PayeeFinancialAccount></cac:PaymentMeans>`;
+    document = `<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID><cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID><cbc:ID>${xml(invoice.invoiceNumber)}</cbc:ID><cbc:IssueDate>${xml(invoice.issueDate)}</cbc:IssueDate><cbc:DueDate>${xml(dueDate)}</cbc:DueDate><cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode><cbc:DocumentCurrencyCode>${xml(currency)}</cbc:DocumentCurrencyCode><cbc:BuyerReference>${xml(buyerReference)}</cbc:BuyerReference>${parties}${payment}<cac:PaymentTerms><cbc:Note>Betales senest ${xml(dueDate)}</cbc:Note></cac:PaymentTerms><cac:TaxTotal><cbc:TaxAmount currencyID="${xml(currency)}">${money(invoice.vatAmount)}</cbc:TaxAmount>${subtotals}</cac:TaxTotal><cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="${xml(currency)}">${money(invoice.netAmount)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="${xml(currency)}">${money(invoice.netAmount)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="${xml(currency)}">${money(invoice.totalAmount)}</cbc:PayableAmount></cac:LegalMonetaryTotal>${peppolInvoiceLines(input.items, currency)}</Invoice>`;
+  }
   return { xml: document, recipientEndpointId: receiver.id, endpointScheme: receiver.scheme };
 }
 

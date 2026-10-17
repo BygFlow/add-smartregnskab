@@ -379,7 +379,14 @@ export function registerExtendedRoutes3(app: Express) {
   crud(app, "/api/control-tests", schema.controlTests, true);
 
   // ── Sikkerhed & drift ──
-  crud(app, "/api/security-audit-events", schema.securityAuditEvents, true);
+  // Auditloggen er append-only fra klientens perspektiv. Brugere må læse deres
+  // egen virksomheds hændelser, men må ikke oprette, ændre eller slette dem.
+  app.get("/api/security-audit-events", h(async (req, res) => {
+    const cid = tenantId(req);
+    const rows = db.select().from(schema.securityAuditEvents)
+      .where(eq(schema.securityAuditEvents.companyId, cid)).all();
+    res.json(rows);
+  }));
   crud(app, "/api/integration-runs", schema.integrationRuns, true);
   crud(app, "/api/integration-retry-queue", schema.integrationRetryQueue, true);
   crud(app, "/api/system-health-events", schema.systemHealthEvents, false);

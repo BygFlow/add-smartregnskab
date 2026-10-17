@@ -1,13 +1,20 @@
 # NemHandel og Peppol — drifts- og integrationsbeskrivelse
 
-Status 15. oktober 2026: Sproom-masteraftalen for ADD SmartDrift ApS er
+Status 17. oktober 2026: Sproom-masteraftalen for ADD SmartDrift ApS er
 indgået. Adapter, centralt child-register og onboarding-flow er implementeret.
 Mastertokenet er lagt i produktion, og Sprooms signerede webhook-test svarer
 HTTP 200. ADD SmartDrift ApS' parent-CVR 46761898 er registreret i Sprooms
 netværksregistrering og bruger masterprofilen direkte. Pro og Clean registrerer
 nu også korrekt deres produktkobling på parentprofilen, når de tilhører ADD
-SmartDrift ApS. Rigtig afsendelse/modtagelse mangler fortsat en kontrolleret
-ende-til-ende-test med et ægte fakturadokument og en gyldig modtager.
+SmartDrift ApS. Integrationsservice er også aktiveret i staging. Det eksisterende
+mastertoken er kontrolleret med `GET /api/child-companies`: både staging og
+produktion svarer HTTP 200. Den 17. oktober 2026 blev stagingflowet desuden
+afprøvet med en syntetisk child-company, et kortlivet child-token og et
+syntetisk OIOUBL-dokument til en modtager, som Sprooms opslag bekræftede med
+HTTP 200. Uploaden blev oprettet én gang, et idempotent genforsøg gav HTTP 409
+med samme dokument-ID, og statusforløbet indeholdt `sent`/302. Der blev ikke
+sendt produktionsdata. Rigtig afsendelse/modtagelse i produktion mangler fortsat
+en særskilt, kontrolleret ende-til-ende-test med en rigtig kunde og modtager.
 
 ## Implementeret
 
@@ -97,6 +104,28 @@ Adapterens kontrakt er kontrolleret mod Sprooms aktuelle API-dokumentation den 1
 `POST /api/child-companies`, `GET /api/child-companies/{id}/token`,
 `GET /api/recipients/{orgId}`, `POST /api/documents` og webhook-endpoints under
 `/api/webhooks`.
+
+Integrationsservice blev aktiveret i staging 17. oktober 2026. En læsebaseret
+mastertest af `GET /api/child-companies` gav HTTP 200 i både staging og
+produktion. Derefter blev der kun i staging oprettet den syntetiske
+child-company `ADD SmartDrift fiktiv stagingkunde` med test-CVR 99999993. Et
+kortlivet child-token (30 minutter) kunne læse child-companyens dokumentliste,
+og opslaget `GET /api/recipients/DK:CVR:46761898` gav HTTP 200.
+
+Et syntetisk OIOUBL-dokument med anmodnings-ID
+`7dcaa981-bce6-4c69-96a8-202610170001` blev accepteret én gang. Et efterfølgende
+direkte API-genforsøg gav den forventede HTTP 409 og returnerede det samme
+dokument-ID, mens dokumentlisten indeholdt præcis dokumentet. Statushistorikken
+indeholdt `created`/101, `transmissionStarted`/301 og `sent`/302. Det beviser
+child-token, modtageropslag, binær upload, idempotens og statusopslag i staging;
+det beviser ikke produktionslevering eller modtagelse.
+
+Generatoren afviser nu e-fakturaer før afsendelse, hvis adresser,
+betalingsoplysninger eller fakturasummer mangler eller ikke stemmer. OIOUBL
+indeholder den afprøvede 2.01-profilstruktur, parter, adresser, betaling,
+momsunderopdeling og linjemoms. Peppol BIS 3 bruger fortsat sine egne
+formatspecifikke koder og struktur. Den fulde lokale verifikationspakke består
+129 tests (54 JavaScript og 75 TypeScript).
 
 ## Produktionslåse
 

@@ -43,18 +43,40 @@ test.afterEach(() => {
 
 test("OIOUBL og Peppol bruger de rigtige endpoint-koder", () => {
   const base = {
-    company: { name: "Afsender ApS", cvr: "12345678", currency: "DKK" } as any,
-    customer: { name: "Kunde A/S", cvr: "87654321" } as any,
-    invoice: { invoiceNumber: "FA-1", issueDate: "2026-09-21", dueDate: "2026-09-29", netAmount: 100, vatAmount: 25, totalAmount: 125 } as any,
+    company: { name: "Afsender ApS", cvr: "12345678", currency: "DKK", address: "Testvej 1, 1000 København K", bankAccount: "1234-1234567890", email: "bogholderi@example.invalid" } as any,
+    customer: { name: "Kunde A/S", cvr: "87654321", address: "Kundevej 2, 2000 Frederiksberg", email: "faktura@example.invalid" } as any,
+    invoice: { id: 1, invoiceNumber: "FA-1", issueDate: "2026-09-21", dueDate: "2026-09-29", netAmount: 100, vatAmount: 25, totalAmount: 125 } as any,
     items: [{ description: "Ydelse", quantity: 1, unitPrice: 100, amount: 100, vatRate: 25 }] as any,
   };
   const oioubl = generateEInvoice({ ...base, format: "OIOUBL_2_1" });
   assert.match(oioubl.xml, /schemeID="DK:CVR">DK12345678/);
   assert.match(oioubl.xml, /schemeID="DK:CVR">DK87654321/);
+  assert.match(oioubl.xml, /<cbc:UBLVersionID>2\.0<\/cbc:UBLVersionID>/);
+  assert.match(oioubl.xml, /<cbc:CustomizationID>OIOUBL-2\.01<\/cbc:CustomizationID>/);
+  assert.match(oioubl.xml, /Procurement-OrdSimR-BilSim-1\.0/);
+  assert.match(oioubl.xml, /<cbc:AddressFormatCode[^>]*>StructuredDK<\/cbc:AddressFormatCode>/);
+  assert.match(oioubl.xml, /<cbc:TaxExclusiveAmount currencyID="DKK">100\.00<\/cbc:TaxExclusiveAmount>/);
+  assert.match(oioubl.xml, /<cac:TaxSubtotal>/);
+  assert.match(oioubl.xml, /<cbc:PaymentChannelCode[^>]*>DK:BANK<\/cbc:PaymentChannelCode>/);
 
   const peppol = generateEInvoice({ ...base, format: "PEPPOL_BIS_3" });
   assert.match(peppol.xml, /schemeID="0184">DK12345678/);
   assert.match(peppol.xml, /schemeID="0184">DK87654321/);
+  assert.match(peppol.xml, /<cbc:BuyerReference>FA-1<\/cbc:BuyerReference>/);
+  assert.match(peppol.xml, /<cac:TaxSubtotal>/);
+  assert.match(peppol.xml, /<cbc:PaymentMeansCode>30<\/cbc:PaymentMeansCode>/);
+});
+
+test("e-faktura stopper før afsendelse, når parter eller beløb er ufuldstændige", () => {
+  const base = {
+    company: { name: "Afsender ApS", cvr: "12345678", currency: "DKK", bankAccount: "1234-1234567890" } as any,
+    customer: { name: "Kunde A/S", cvr: "87654321", address: "Kundevej 2, 2000 Frederiksberg" } as any,
+    invoice: { id: 2, invoiceNumber: "FA-2", issueDate: "2026-09-21", netAmount: 100, vatAmount: 25, totalAmount: 125 } as any,
+    items: [{ description: "Ydelse", quantity: 1, unitPrice: 100, amount: 90, vatRate: 25 }] as any,
+  };
+  assert.throws(() => generateEInvoice({ ...base, format: "OIOUBL_2_1" }), /nettobeløb/);
+  base.items[0].amount = 100;
+  assert.throws(() => generateEInvoice({ ...base, format: "OIOUBL_2_1" }), /Virksomheden mangler en adresse/);
 });
 
 test("Sproom-upload bruger et stabilt X-Request-Id og accepterer dokument-ID", async () => {
@@ -69,6 +91,7 @@ test("Sproom-upload bruger et stabilt X-Request-Id og accepterer dokument-ID", a
 
   const result = await providerSend("<Invoice />", "OIOUBL_2_1", "DK87654321", 7);
   assert.equal(result.messageId, "document-123");
+  assert.equal(requests[1]?.url, "https://staging.sproom.test/api/recipients/DK%3ACVR%3A87654321");
   const upload = requests.at(-1)?.init;
   const headers = new Headers(upload?.headers);
   assert.equal(headers.get("X-Request-Id"), sproomRequestId("<Invoice />", "OIOUBL_2_1", "DK87654321"));

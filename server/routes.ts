@@ -2029,8 +2029,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!sub || !plan) return res.status(400).json({ error: "Virksomheden har ikke et abonnement." });
     if (plan.aiAddonCredits <= 0) return res.status(409).json({ error: "AI er allerede inkluderet i denne pakke." });
     const enabled = req.body?.enabled === true;
+    if (enabled && (req.body?.termsAccepted !== true || req.body?.termsVersion !== "2026-09-22")) {
+      return res.status(400).json({ error: "Du skal acceptere abonnementsbetingelserne, før AI-tilkøbet aktiveres." });
+    }
     const updated = await storage.updateSubscription(sub.id, { aiAddonEnabled: enabled ? 1 : 0 });
-    await audit(req, enabled ? "aktiver_ai_tilkoeb" : "deaktiver_ai_tilkoeb", "subscription", sub.id, `${plan.aiAddonCredits} AI-handlinger`);
+    await audit(req, enabled ? "aktiver_ai_tilkoeb" : "deaktiver_ai_tilkoeb", "subscription", sub.id, enabled
+      ? `${plan.aiAddonCredits} AI-handlinger; abonnementsbetingelser accepteret, version ${req.body.termsVersion}`
+      : `${plan.aiAddonCredits} AI-handlinger; fjernes fra næste abonnementsperiode`);
     res.json({ subscription: updated, nextCharge: await previewBilling(cid), aiUsage: await aiUsageOverview(cid) });
   }));
 
@@ -2056,7 +2061,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (plan.maxCompanies !== -1 && companyCount > plan.maxCompanies) {
       return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og I har allerede ${companyCount}. Vælg en større pakke.` });
     }
-    const updated = await storage.updateSubscription(sub.id, { planId: plan.id });
+    const updated = await storage.updateSubscription(sub.id, { planId: plan.id, billingCycle: "maanedlig" });
     await audit(req, "skift_pakke", "subscription", sub.id, `${plan.name}; abonnementsbetingelser accepteret, version ${req.body.termsVersion}`);
     res.json({ subscription: updated, plan, nextCharge: await previewBilling(cid) });
   }));
@@ -2382,7 +2387,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const {
       name, cvr, address, phone, email,
       adminName, adminEmail, adminPassword,
-      planId, billingCycle, trialDays,
+      planId, trialDays,
     } = req.body ?? {};
 
     if (!name || !adminEmail || !adminPassword) {
@@ -2411,11 +2416,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       companyId: company.id, name: adminName || "Leder", email: normEmail,
       password: hashPassword(String(adminPassword)), role: "leder", active: 1, emailVerified: 1,
     }));
-    const cycle = billingCycle === "aarlig" ? "aarlig" : "maanedlig";
     const subscription = await storage.createSubscription(validate(insertSubscriptionSchema, {
       companyId: company.id, planId: plan.id,
       status: trial > 0 ? "proeve" : "aktiv",
-      billingCycle: cycle,
+      billingCycle: "maanedlig",
       trialEndsAt: trial > 0 ? addDays(start, trial) : null,
       currentPeriodStart: start,
       currentPeriodEnd: trial > 0 ? addDays(start, trial) : addDays(start, 30),
@@ -2494,11 +2498,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (plan.maxCompanies !== -1 && organizationIds.length > plan.maxCompanies) {
       return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og kundeorganisationen har allerede ${organizationIds.length}.` });
     }
-    const updated = await storage.updateSubscription(sub.id, {
-      planId: plan.id,
-      billingCycle: req.body?.billingCycle === "aarlig" ? "aarlig"
-        : req.body?.billingCycle === "maanedlig" ? "maanedlig" : sub.billingCycle,
-    });
+    const updated = await storage.updateSubscription(sub.id, { planId: plan.id, billingCycle: "maanedlig" });
     await audit(req, "skift_pakke", "subscription", sub.id, plan.name);
     res.json({ subscription: updated, plan, nextCharge: await previewBilling(id) });
   }));

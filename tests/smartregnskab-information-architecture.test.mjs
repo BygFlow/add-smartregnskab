@@ -15,7 +15,6 @@ test("SmartRegnskab exposes core settings without hiding them among advanced mod
   assert.match(shell, /Fakturaindstillinger/);
   assert.match(shell, /Backup & data/);
   assert.match(shell, /Avancerede moduler/);
-  assert.match(shell, /E-fakturering/);
   assert.match(shell, /Regnskab og afslutning/);
   assert.match(shell, /Integration og data/);
   assert.match(router, /value="virksomhedsindstillinger"/);
@@ -42,6 +41,10 @@ test("optional products are collected in Appmarked instead of normal accounting 
   const page = read("client/src/pages/regnskabssystem.tsx");
 
   assert.match(marketplace, /Tilkøb og tillægsmoduler/);
+  assert.match(marketplace, /Aktivér AI-tilkøb/);
+  assert.match(marketplace, /Se pakker og pris her/);
+  assert.match(marketplace, /appmarked-package-selector/);
+  assert.match(marketplace, /abonnementsbetingelserne/);
   assert.match(catalog, /Kundeportal/);
   assert.match(catalog, /Lagerregnskab/);
   assert.match(catalog, /Revisorportal/);
@@ -55,10 +58,55 @@ test("optional products are collected in Appmarked instead of normal accounting 
   assert.doesNotMatch(shell, /item\("api_webhooks"/);
   assert.doesNotMatch(shell, /item\("bank_payments"/);
   assert.doesNotMatch(shell, /item\("budget_scenarier"/);
+  assert.doesNotMatch(shell, /item\("ai_styring"/);
+  assert.doesNotMatch(shell, /item\("einvoice_queue"/);
+  assert.doesNotMatch(shell, /item\("bank_integrationer"/);
+  assert.doesNotMatch(shell, /item\("integration_configs"/);
+  assert.doesNotMatch(shell, /item\("api_keys_mgmt"/);
   assert.match(page, /getSmartRegnskabAddonForRoute\(activeTab\)/);
   assert.match(page, /notice-addon-locked/);
   assert.match(page, /\["lagerregnskab", "Lagerregnskab"\]/);
   assert.match(page, /\["kundeportal", "Kundeportal"\]/);
+});
+
+test("add-on purchase and monthly packages have one truthful commercial flow", () => {
+  const marketplace = read("client/src/pages/regnskab-tabs/appmarked.tsx");
+  const subscription = read("client/src/pages/regnskab-tabs/abonnement.tsx");
+  const marketing = read("client/src/pages/marketing.tsx");
+  const platform = read("client/src/pages/regnskabssystem.tsx");
+  const routes = read("server/routes.ts");
+
+  assert.match(marketplace, /POST", "\/api\/subscription\/ai-addon"/);
+  assert.match(marketplace, /POST", "\/api\/subscription\/plan"/);
+  assert.match(marketplace, /termsAccepted: enabled \? aiTermsAccepted/);
+  assert.doesNotMatch(subscription, /POST", "\/api\/subscription\/ai-addon"/);
+  assert.doesNotMatch(subscription, /POST", "\/api\/subscription\/plan"/);
+  assert.match(subscription, /Administrer i Appmarked/);
+  assert.doesNotMatch(subscription, /\/ år · ekskl\. moms/);
+  assert.match(marketing, /Månedligt og gennemskueligt/);
+  assert.doesNotMatch(marketing, /Betal for 10 måneder/);
+  assert.doesNotMatch(platform, /<SelectItem value="aarlig">Årlig<\/SelectItem>/);
+  assert.match(routes, /Du skal acceptere abonnementsbetingelserne, før AI-tilkøbet aktiveres/);
+  assert.match(routes, /planId: plan\.id, billingCycle: "maanedlig"/);
+});
+
+test("unfinished role editors are not exposed as real security controls", () => {
+  const router = read("client/src/pages/regnskabssystem.tsx");
+  const legacyRoutes = read("server/extended-routes.ts");
+  const securityRoutes = read("server/extended-routes-3.ts");
+
+  assert.doesNotMatch(router, /regnskab-tabs\/roller-kontrol/);
+  assert.doesNotMatch(router, /regnskab-tabs\/rbac-rettigheder/);
+  assert.doesNotMatch(router, /value="roller_kontrol"/);
+  assert.doesNotMatch(router, /value="rbac_rettigheder"/);
+  assert.match(router, /Administrér i Appmarked/);
+  assert.doesNotMatch(router, /Se abonnement og vilkår/);
+  assert.match(router, /const COMPANY_TABS = new Set/);
+  assert.doesNotMatch(router, /"roller_kontrol"/);
+  assert.doesNotMatch(router, /"rbac_rettigheder"/);
+  assert.match(legacyRoutes, /Den vejledende rolleeditor er udgået/);
+  assert.doesNotMatch(securityRoutes, /crud\(app, "\/api\/security-audit-events"/);
+  assert.match(securityRoutes, /app\.get\("\/api\/security-audit-events"/);
 });
 
 test("regnskabsopsætning uses precise guidance instead of a generic beta blocker", () => {

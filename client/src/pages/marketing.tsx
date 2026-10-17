@@ -107,7 +107,7 @@ const faqs = [
   ["Kan min bogholder eller revisor få adgang?", "Ja. Fagpersoner inviteres til en særskilt portal med rollebaseret adgang, tofaktorgodkendelse og handlingslog."],
   ["Hvordan opbevares bilag?", "Bilag knyttes til virksomheden, adgang kontrolleres pr. rolle, og løsningen understøtter ekstern backup og dokumenteret gendannelse."],
   ["Kan jeg skifte pakke?", "Ja. En leder kan se forbrug og skifte pakke under Abonnement & betaling. Systemet advarer, hvis en lavere pakke ikke kan rumme det aktuelle forbrug."],
-  ["Er der binding?", "Pakke- og betalingsvilkår vises før bestilling. Årsbetaling svarer til ti måneders pris og giver dermed to måneder inkluderet."],
+  ["Er der binding?", "Pakke- og betalingsvilkår vises før bestilling. Abonnementet faktureres månedligt og kan opsiges til udgangen af den betalte abonnementsperiode."],
 ] as const;
 
 const helpArticles = [
@@ -275,7 +275,7 @@ function Pricing() {
         <p className="mx-auto mt-4 max-w-3xl leading-7 text-slate-600">Grundprisen gælder én kundeorganisation. Hvert juridisk selskab har sit eget regnskab. SE-numre oprettes som enheder under selskabet og koster ikke ekstra.</p>
         <div className="mx-auto mt-7 grid max-w-4xl gap-3 text-left text-sm sm:grid-cols-3">
           <div className="rounded-xl bg-emerald-50 p-4"><strong>Priser</strong><span className="mt-1 block text-slate-600">Pr. måned ekskl. moms</span></div>
-          <div className="rounded-xl bg-emerald-50 p-4"><strong>Årsbetaling</strong><span className="mt-1 block text-slate-600">Betal for 10 måneder</span></div>
+          <div className="rounded-xl bg-emerald-50 p-4"><strong>Fakturering</strong><span className="mt-1 block text-slate-600">Månedligt og gennemskueligt</span></div>
           <div className="rounded-xl bg-emerald-50 p-4"><strong>Prøveperiode</strong><span className="mt-1 block text-slate-600">14 dage uden betalingskort</span></div>
         </div>
       </div>

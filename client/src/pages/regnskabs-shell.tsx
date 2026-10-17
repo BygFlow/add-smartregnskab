@@ -5,10 +5,10 @@ import { useAuth } from "@/lib/auth";
 import Regnskabssystem from "@/pages/regnskabssystem";
 import { Button } from "@/components/ui/button";
 import {
-  Activity, AlertCircle, Archive, BrainCircuit, Briefcase,
+  Activity, AlertCircle, Archive, Briefcase,
   Building2, Calculator, CalendarClock, ChevronDown, ClipboardCheck,
   CreditCard, Download, FileBarChart, FileText, GitBranch,
-  Inbox, KeyRound, Landmark, Layers, Link2, Lock, LogOut, Menu, Package,
+  Inbox, Landmark, Layers, Link2, Lock, LogOut, Menu, Package,
   Receipt, RefreshCw, Settings, ShieldCheck, Tags, Truck,
   Upload, Users, Wallet, X, Zap,
 } from "lucide-react";
@@ -68,7 +68,6 @@ const COMPANY_GROUPS: NavGroup[] = [
     item("revision", "Revisionsspor", ShieldCheck),
   ] },
   { label: "Automatisering", items: [
-    item("ai_styring", "AI-styring", BrainCircuit),
     item("automatisering", "Automatisering", Zap),
   ] },
   { label: "Apps og forbindelser", items: [
@@ -89,9 +88,6 @@ const COMPANY_GROUPS: NavGroup[] = [
 ];
 
 const ADVANCED_GROUPS: NavGroup[] = [
-  { label: "E-fakturering", items: [
-    item("einvoice_queue", "OIOUBL & NemHandel", Inbox),
-  ] },
   { label: "Regnskab og afslutning", items: [
     item("omkostning", "Omkostningssteder", Briefcase),
     item("anlaeg", "Anlægsregister", Building2),
@@ -107,10 +103,7 @@ const ADVANCED_GROUPS: NavGroup[] = [
     item("kontroltests", "Kontroltests", ClipboardCheck),
   ] },
   { label: "Integration og data", items: [
-    item("bank_integrationer", "Bank, SKAT & NemHandel", Landmark),
-    item("integration_configs", "Integrationsopsætning", Link2),
     item("importguide", "Importguide", Upload),
-    item("api_keys_mgmt", "API-nøgler", KeyRound),
     item("integration_runs", "Integrationslog", Activity),
     item("retry_queue", "Retry-kø", RefreshCw),
     item("filhaandtering", "Filhåndtering", FileText),

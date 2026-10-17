@@ -40,7 +40,6 @@ import {
   insertInventoryAccountSchema,
   insertCurrencyTransactionSchema,
   insertAuditorPortalSchema,
-  insertRoleControlSchema,
   insertImportJob2Schema,
 } from "@shared/schema";
 
@@ -454,18 +453,18 @@ export function registerExtendedRoutes(app: Express) {
   }));
 
   // ── Roller & kontrol ──
-  const rcFields = ["roleName", "module", "canCreate", "canEdit", "canDelete", "canApprove", "approvalLimit", "requiresTwoFactor"];
-  app.get("/api/role-controls", h(async (req, res) => { res.json(await storage.all("role_controls", tenantId(req))); }));
-  app.post("/api/role-controls", h(async (req, res) => {
-    const data = validate(insertRoleControlSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
-    res.status(201).json(await storage.insert("role_controls", data));
+  // Den tidligere editor gemte kun vejledende rækker og håndhævede dem ikke i
+  // API'et. Bevar eksisterende data som skrivebeskyttet historik, men afvis nye
+  // ændringer, indtil en rigtig serverhåndhævet rettighedsmodel er implementeret.
+  app.get("/api/role-controls", requireRole("leder", "revisor_admin", "platform_admin"), h(async (req, res) => {
+    res.json(await storage.all("role_controls", tenantId(req)));
   }));
-  app.patch("/api/role-controls/:id", h(async (req, res) => {
-    res.json(await storage.update("role_controls", Number(req.params.id), UPDATABLE(rcFields)(req), tenantId(req)));
-  }));
-  app.delete("/api/role-controls/:id", h(async (req, res) => {
-    await storage.delete("role_controls", Number(req.params.id), tenantId(req)); res.status(204).send();
-  }));
+  const retiredRoleControls = (_req: any, res: any) => res.status(410).json({
+    error: "Den vejledende rolleeditor er udgået. Brug de faste, serverhåndhævede roller.",
+  });
+  app.post("/api/role-controls", requireRole("leder", "platform_admin"), retiredRoleControls);
+  app.patch("/api/role-controls/:id", requireRole("leder", "platform_admin"), retiredRoleControls);
+  app.delete("/api/role-controls/:id", requireRole("leder", "platform_admin"), retiredRoleControls);
 
   // ── Importguide ──
   const ijFields = ["source", "fileName", "status", "totalRows", "importedRows", "errorRows", "preview", "mapping"];

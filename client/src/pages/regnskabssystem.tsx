@@ -98,7 +98,6 @@ const Periodisering = lazy(() => import("@/pages/regnskab-tabs/periodisering"));
 const Lagerregnskab = lazy(() => import("@/pages/regnskab-tabs/lagerregnskab"));
 const ValutaMoms = lazy(() => import("@/pages/regnskab-tabs/valuta-moms"));
 const Revisorportal = lazy(() => import("@/pages/regnskab-tabs/revisorportal"));
-const RollerKontrol = lazy(() => import("@/pages/regnskab-tabs/roller-kontrol"));
 const Importguide = lazy(() => import("@/pages/regnskab-tabs/importguide"));
 const ApiWebhooks = lazy(() => import("@/pages/regnskab-tabs/api-webhooks"));
 const Appmarked = lazy(() => import("@/pages/regnskab-tabs/appmarked"));
@@ -131,7 +130,6 @@ const Kontroltests = lazy(() => import("@/pages/regnskab-tabs/kontroltests"));
 const Sikkerhedsaudit = lazy(() => import("@/pages/regnskab-tabs/sikkerhedsaudit"));
 const Systemovervaagning = lazy(() => import("@/pages/regnskab-tabs/systemovervågning"));
 const Leveringslog = lazy(() => import("@/pages/regnskab-tabs/leveringslog"));
-const RbacRettigheder = lazy(() => import("@/pages/regnskab-tabs/rbac-rettigheder"));
 const KundePortalIndstillinger = lazy(() => import("@/pages/regnskab-tabs/kunde-portal-indstillinger"));
 const PortalDokumenter = lazy(() => import("@/pages/regnskab-tabs/portal-dokumenter"));
 const BackupRegnskab = lazy(() => import("@/pages/regnskab-tabs/backup-regnskab"));
@@ -818,19 +816,50 @@ function getTabFromHash(): string {
   return match ? match[1] : "dashboard";
 }
 
+const COMPANY_TABS = new Set([
+  "dashboard", "driftsklarhed", "kontoplan", "bilag", "bank", "moms", "rapporter", "ai",
+  "automatisering", "debitor", "periode", "regler", "integrationer", "bilagsindbakke", "lon",
+  "anlaeg", "budget", "omkostning", "betaling", "aarafslutning", "revision", "momsafstemning",
+  "cashflow", "ai_chef", "skattekonto", "fagportal", "bank_integrationer", "arkivering",
+  "lonindberetning", "arsrapport", "debitorstyring", "periodisering", "lagerregnskab",
+  "valuta_moms", "revisorportal", "importguide", "api_webhooks", "appmarked", "integration_configs",
+  "compliance_checks", "bank_payments", "einvoice_queue", "api_keys_mgmt", "migration_wizard",
+  "konsolidering", "avanceret_moms", "lonmotor_regnskab", "revisionspakke", "budget_scenarier",
+  "afstemningscenter", "branche_profil", "indstillinger", "virksomhedsindstillinger",
+  "faktura_indstillinger", "kontoplan_skabeloner", "dimensioner", "regnskabskategorier", "saft",
+  "workflow_builder", "integration_runs", "retry_queue", "filhaandtering", "filversioner",
+  "compliance_dokumenter", "kontroltests", "sikkerhedsaudit", "systemovervaagning", "leveringslog",
+  "kunde_portal_indstillinger", "portal_dokumenter", "backup_regnskab", "fakturering",
+  "kundekartotek", "leverandoerkartotek", "produktkartotek", "faste_fakturaer", "kontrolcenter",
+  "ai_styring", "abonnement", "selskabsstruktur",
+]);
+
+function getCompanyTabFromHash(): string {
+  const requested = getTabFromHash();
+  return COMPANY_TABS.has(requested) ? requested : "dashboard";
+}
+
 function CompanyRegnskabssystemPage(props: any = {}) {
   const { user, isPlatformAdmin, companyId: authCompanyId, hasFeature, hasAI } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState(getTabFromHash());
+  const [activeTab, setActiveTab] = useState(getCompanyTabFromHash());
 
   // Sync activeTab when URL hash changes (sidebar navigation)
   useEffect(() => {
-    const onHashChange = () => setActiveTab(getTabFromHash());
+    const onHashChange = () => {
+      const requested = getTabFromHash();
+      if (!COMPANY_TABS.has(requested)) {
+        window.history.replaceState(null, "", "#/smartregnskab/app");
+        setActiveTab("dashboard");
+        return;
+      }
+      setActiveTab(requested);
+    };
     window.addEventListener('hashchange', onHashChange);
     // Also check immediately
-    const newTab = getTabFromHash();
+    const newTab = getCompanyTabFromHash();
     if (newTab !== activeTab) setActiveTab(newTab);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, [activeTab]);
@@ -2300,8 +2329,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{activeAddon.description}</p>
                 <p className="mt-3 text-sm text-muted-foreground">Modulet er låst for denne virksomhed. Det bliver først aktiveret, når det er føjet til abonnementet, og pris og vilkår er godkendt.</p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  <Button onClick={() => { window.location.hash = "/smartregnskab/app/abonnement"; }}>Se abonnement og vilkår</Button>
-                  <Button variant="outline" onClick={() => { window.location.hash = "/smartregnskab/app/appmarked"; }}>Tilbage til Appmarked</Button>
+                  <Button onClick={() => { window.location.hash = "/smartregnskab/app/appmarked"; }}>Administrér i Appmarked</Button>
                 </div>
               </div>
             </SectionCard>
@@ -5927,9 +5955,6 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               <TabsContent value="revisorportal" className="space-y-4">
                 <Revisorportal companyId={effectiveCompanyId} />
               </TabsContent>
-              <TabsContent value="roller_kontrol" className="space-y-4">
-                <RollerKontrol companyId={effectiveCompanyId} />
-              </TabsContent>
               <TabsContent value="importguide" className="space-y-4">
                 <Importguide companyId={effectiveCompanyId} />
               </TabsContent>
@@ -6032,9 +6057,6 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               </TabsContent>
               <TabsContent value="leveringslog" className="space-y-4">
                 <Leveringslog companyId={effectiveCompanyId} />
-              </TabsContent>
-              <TabsContent value="rbac_rettigheder" className="space-y-4">
-                <RbacRettigheder companyId={effectiveCompanyId} />
               </TabsContent>
               <TabsContent value="kunde_portal_indstillinger" className="space-y-4">
                 <KundePortalIndstillinger companyId={effectiveCompanyId} />
@@ -6460,7 +6482,7 @@ function PlatformRegnskabssystemPage() {
 
     {tab === "pakker" && <SectionCard title="Pakkeløsninger" icon={<Package className="size-4" />}>
       <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><p className="text-sm font-semibold">Pakker med rigtigt indhold</p><p className="mt-1 text-xs text-muted-foreground">Funktionerne her bliver vist som pakkens indhold og gemmes sammen med abonnementet. Årsbetaling beregnes som 10 måneders pris.</p></div>
+        <div><p className="text-sm font-semibold">Pakker med rigtigt indhold</p><p className="mt-1 text-xs text-muted-foreground">Funktionerne her bliver vist som pakkens indhold og gemmes sammen med det månedlige abonnement.</p></div>
         <Button onClick={openNewPlan}><Plus className="mr-2 h-4 w-4"/>Opret ny pakke</Button>
       </div>
       {plansQuery.isLoading ? <Skeleton className="h-32 w-full" /> : plansQuery.isError ? <p className="text-sm text-destructive">Kunne ikke hente pakkeløsningerne.</p> : (plansQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center"><Package className="mx-auto mb-3 h-9 w-9 text-muted-foreground"/><p className="text-sm font-medium">Ingen pakkeløsninger endnu</p><Button className="mt-3" size="sm" onClick={openNewPlan}>Opret den første pakke</Button></div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{(plansQuery.data ?? []).map((plan) => {
@@ -6558,7 +6580,7 @@ function PlatformRegnskabssystemPage() {
           <div className="space-y-2"><Label htmlFor="platform-admin-email">Lederens e-mail *</Label><Input id="platform-admin-email" type="email" value={companyForm.adminEmail} onChange={(event) => setCompanyForm((form) => ({ ...form, adminEmail: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="platform-admin-password">Midlertidig adgangskode *</Label><Input id="platform-admin-password" type="password" autoComplete="new-password" value={companyForm.adminPassword} onChange={(event) => setCompanyForm((form) => ({ ...form, adminPassword: event.target.value }))}/><p className="text-[11px] text-muted-foreground">Mindst 8 tegn. Send den til lederen via en separat, sikker kanal.</p></div>
           <div className="space-y-2"><Label>Pakke *</Label><Select value={companyForm.planId} onValueChange={(value) => setCompanyForm((form) => ({ ...form, planId: value }))}><SelectTrigger><SelectValue placeholder="Vælg pakke"/></SelectTrigger><SelectContent>{(plansQuery.data ?? []).filter((plan) => plan.active).map((plan) => <SelectItem key={plan.id} value={String(plan.id)}>{plan.name} · {money(plan.monthlyPrice)}/md.</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Fakturering</Label><Select value={companyForm.billingCycle} onValueChange={(value) => setCompanyForm((form) => ({ ...form, billingCycle: value }))}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="maanedlig">Månedlig</SelectItem><SelectItem value="aarlig">Årlig</SelectItem></SelectContent></Select></div>
+          <div className="space-y-2"><Label>Fakturering</Label><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm"><strong>Månedlig</strong><span className="mt-1 block text-xs text-muted-foreground">Alle nye abonnementer faktureres månedsvis.</span></div></div>
           <div className="space-y-2"><Label htmlFor="platform-trial-days">Prøveperiode (dage)</Label><Input id="platform-trial-days" type="number" min="0" max="90" value={companyForm.trialDays} onChange={(event) => setCompanyForm((form) => ({ ...form, trialDays: event.target.value }))}/></div>
         </div>
         <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground"><Lock className="mr-1 inline h-3.5 w-3.5"/>Oprettelsen giver platformen adgang til abonnement og teknisk status, ikke til virksomhedens regnskabsdata.</div>
@@ -6588,7 +6610,7 @@ function PlatformRegnskabssystemPage() {
           <div className="space-y-2"><Label>Ekstra AI-loft pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.aiCostCapPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCostCapPerAdditionalCompany: event.target.value }))}/></div>
           <div className="rounded-lg border bg-muted/30 p-3 text-xs sm:col-span-2"><strong>Brugere, kunder og leverandører begrænses ikke.</strong><p className="mt-1 text-muted-foreground">Pakkerne skelnes i stedet på regnskabsvolumen, virksomheder, integrationer og funktioner.</p></div>
           <div className="space-y-2"><Label htmlFor="plan-order">Placering</Label><Input id="plan-order" type="number" min="1" value={planForm.sortOrder} onChange={(event) => setPlanForm((form) => ({ ...form, sortOrder: event.target.value }))}/></div>
-          <div className="rounded-lg border bg-muted/30 p-3 text-xs"><span className="text-muted-foreground">Årspris</span><strong className="mt-1 block text-base">{money((Number(planForm.monthlyPrice) || 0) * 10)} ekskl. moms</strong><span className="text-muted-foreground">10 måneders pris</span></div>
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs"><span className="text-muted-foreground">Fakturering</span><strong className="mt-1 block text-base">Månedlig</strong><span className="text-muted-foreground">Prisen opkræves én måned ad gangen.</span></div>
           <div className="space-y-3 sm:col-span-2"><div><Label>Inkluderede funktioner *</Label><p className="text-xs text-muted-foreground">Vælg præcis hvad kunden får adgang til i pakken.</p></div><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{PLAN_FEATURES.map(([key, label]) => <label key={key} className="flex cursor-pointer items-start gap-2 rounded-lg p-2 hover:bg-muted"><Checkbox checked={planForm.features.includes(key)} onCheckedChange={(checked) => togglePlanFeature(key, checked === true)} /><span className="text-sm leading-4">{label}</span></label>)}</div></div>
           <div className="flex items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><p className="text-sm font-medium">Pakken kan vælges</p><p className="text-xs text-muted-foreground">Deaktivering ændrer ikke eksisterende abonnementer.</p></div><Switch checked={planForm.active} onCheckedChange={(checked) => setPlanForm((form) => ({ ...form, active: checked }))}/></div>
         </div>
