@@ -1,4 +1,4 @@
-# Femårsarkiv – teknisk status 9. oktober 2026
+# Femårsarkiv – teknisk status 17. oktober 2026
 
 Dette er en driftsstatus, ikke en erklæring om lovlig eller registreret drift.
 
@@ -24,6 +24,7 @@ Kravet kan ikke bevises med almindelige rullende driftsbackups alene.
 - Det manuelle produktionsscript og det standard-lukkede ugejob er koblet til det segmenterede format. Kvitteringsledgeren gemmer kildehash og manifestkvittering; læsekontrollen understøtter både nye manifestkvitteringer og gamle enkeltobjekt-kvitteringer. **Formatet er stadig ikke aktiveret eller prøvet mod den faktiske produktions-bucket og reelle produktionsdata.**
 - Et ugentligt job og en separat kvitteringstabel er kodet. Jobbet udvælger nu alle regnskabsår med daterede arkivkilder, også tidligere år med efterfølgende rettelser. Det sammenligner SHA-256 af årsudtrækkets faktiske indhold med seneste kvittering og springer kun uændrede udtræk over; en rettelse kan derfor arkiveres ved næste kørsel, selv inden for syv dage. Det er lukket som standard og må først aktiveres med `BOOKKEEPING_ARCHIVE_WEEKLY_ENABLED=YES`, efter fuld datadækning og en produktionsgendannelsestest er godkendt. Hver fejl registreres i systemets sundhedsstatus.
 - `npm run archive:preflight` udfører samme fulde datalæsning, originalfilskontrol og checksum på en skrivebeskyttet databasekopi uden at uploade, låse eller registrere et arkiv. Kommandoen kræver `ARCHIVE_COMPANY_ID`, `ARCHIVE_FISCAL_YEAR_START`, `ARCHIVE_REFERENCE_DATE` og `DATABASE_PATH` og skal bruges før en permanent produktionsarkivering.
+- Den 17. oktober 2026 gennemførte Render-job `job-db9rk3jbc2fs73cvvlq0` en permanent, syntetisk prøve mod den faktiske produktionsbucket. Bucketkontrollen bestod, objektversionen blev gemt med `COMPLIANCE`-retention til 31. december 2031, og de krypterede bytes blev læst tilbage og verificeret mod SHA-256. Prøven indeholdt ingen kundedata. Kvitteringen findes i `OBJECT-LOCK-RESTORE-BEVIS-2026-10-17.md`.
 - Test med syntetiske data passerer. Den skrivebeskyttede produktions-for-kontrol blev den 9. oktober 2026 gennemført for virksomhed 4 og validerede virksomhedsprofil, ét originalbilag, revisionslog og skattefrister inklusive filchecksum. For-kontrollen oprettede ikke et arkiv. Virksomhed 3 blev korrekt afvist, fordi en gemt regnskabsårsstart mangler; perioden må ikke gættes. En permanent Object-Lock-arkivering og efterfølgende produktionsgendannelseskontrol med reelle data er fortsat ikke dokumenteret.
 
 ## Åbne porte før produktionspåstand
@@ -32,11 +33,11 @@ Kravet kan ikke bevises med almindelige rullende driftsbackups alene.
    Eksporten læser originalfiler fra `document_inbox`, vedhæftninger knyttet til `expense_reports.receipt_image` og `file_objects` kategoriseret som `bilag` med deres filversioner. Øvrige vedhæftninger skal kortlægges, hvis de anvendes som bogføringsbilag. Ældre filobjekter uden faktisk originalfil, filversioner med uverificerede stier og `archive_records.archive_path` stopper eksporten. Segmentformatet afviser fortsat en enkelt originalfil over 64 MB som en bevidst sikkerhedsgrænse; de nuværende uploadflows har lavere filgrænser.
 2. Verificér, at det ugentlige job faktisk giver en **fuld** kopi, inklusive ophørte kundeforhold og efterfølgende rettelser, uden at sammenblande virksomheder. Test genkørsel og alarmer i produktion, før aktivering.
 3. Gem verificerbare kvitteringer og udfør en isoleret gendannelsestest med reelle produktionsdata, hvor de originale transaktioner og bilag kan udleveres læsbart.
-4. Kontroller Hetzner-bucketens Object Lock, krypteringsnøglens beredskab, retention, adgangsrettigheder og databehandlerforhold i den faktiske produktion.
+4. Object Lock, krypteringsnøgle, versionslæsning og retention er teknisk bevist med et syntetisk objekt i produktion. Adgangsreview og databehandlerforhold skal fortsat indgå i den eksterne kontrol.
 5. Pro og Clean skal vurderes særskilt: deres eksisterende driftsbackups er ikke dokumentation for femårigt bogføringsarkiv. For kunder med eksternt regnskab skal rolle- og ansvarsfordelingen bekræftes; for kunder uden ekstern løsning skal egne udstedte fakturaer og bilag dækkes.
 
 Indtil alle porte er bestået, skal driftsklarhed vise **ikke klar** for femårsarkivet. Ingen manuel eller automatisk arkivering bør aktiveres for alle kunder ud fra en syntetisk test alene.
 
-## Kontrol 9. oktober 2026
+## Kontrol 17. oktober 2026
 
-TypeScript-kontrol, produktionsbygning og den samlede lokale verifikation med 101 tests bestod efter udvidelsen. Den lokale release-kontrol viser teknisk kodeklarhed, men **ikke** klarhed til registreret drift: en ny version skal udrulles, og der mangler stadig en dokumenteret, isoleret gendannelse af reelle produktionsdata. De beståede tests må ikke omtales som bevis for femårig opbevaring eller komplet backup.
+TypeScript-kontrol, produktionsbygning og den samlede releaseverifikation med 131 tests bestod. Release 3.16.2 er udrullet, og den syntetiske Object Lock-prøve mod den faktiske produktionsbucket bestod. Der mangler stadig en dokumenteret, isoleret gendannelse af repræsentative reelle produktionsdata; den syntetiske prøve må derfor ikke omtales som bevis for komplet datadækning.

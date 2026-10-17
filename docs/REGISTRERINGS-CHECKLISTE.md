@@ -18,7 +18,8 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 - [x] Klargør sikkerheds-, backup-, revisionsspor- og exitbeskrivelse.
 - [x] Klargør beskrivelse af elektronisk fakturering og SAF-T.
 - [x] Validér en syntetisk SAF-T 2.1-eksport mod Erhvervsstyrelsens officielle XSD og gem hashes.
-- [ ] Vedlæg Object Lock-bevis og restore fra ekstern kopi.
+- [x] Vedlæg syntetisk Object Lock-bevis og identisk restore fra den faktiske produktionsbucket.
+- [ ] Gennemfør og vedlæg isoleret restore af repræsentative, rigtige bogføringsdata og originalbilag.
 - [x] Angiv aktuelle underdatabehandlere og kendte datalokaliteter i dokumentationen.
 - [ ] Gennemfør den første rigtige Sproom/NemHandel-produktionsprøve med separat kunde.
 - [ ] Bestil en uvildig sikkerheds-/penetrationstest og luk eventuelle høje eller kritiske fund.

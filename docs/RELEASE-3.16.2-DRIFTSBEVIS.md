@@ -20,6 +20,11 @@ Udbyder: ADD SmartDrift ApS, CVR 46761898
 
 ## Eksterne porte
 
+Den syntetiske Object Lock- og gendannelsesprøve i den faktiske
+produktionsbucket bestod 17. oktober 2026 og er dokumenteret i
+`OBJECT-LOCK-RESTORE-BEVIS-2026-10-17.md`. En isoleret gendannelse af en rigtig
+virksomheds repræsentative bogføringsdata mangler fortsat.
+
 Clearhaus' endelige accept, den første rigtige Sproom/NemHandel-
-produktionsprøve, Object Lock-beviset, den uvildige sikkerhedstest og
-Erhvervsstyrelsens registrering er separate eksterne porte.
+produktionsprøve, den uvildige sikkerhedstest og Erhvervsstyrelsens
+registrering er separate eksterne porte.
