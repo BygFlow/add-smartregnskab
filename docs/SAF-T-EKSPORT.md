@@ -1,7 +1,7 @@
 # SAF-T 2.1 — implementering og bevis
 
 Status: 17. oktober 2026
-Produktversion: 3.16.1
+Produktversion: 3.16.2
 SAF-T-version: 2.1
 Standardkontoplan: `20260101`
 
@@ -55,4 +55,6 @@ Følgende skal gemmes som særskilte, ikke-hemmelige releaseartefakter:
 5. Skærmbillede eller loguddrag med produktversion, SAF-T-version og
    testtidspunkt.
 
-En bestået intern roundtrip-test erstatter ikke den officielle XSD-validering.
+Den syntetiske eksport fra release 3.16.2 er valideret uden fejl mod
+Erhvervsstyrelsens officielle SAF-T 2.1-XSD. Resultat og filhashes findes i
+`SAF-T-XSD-VALIDERING-2026-10-17.md`.

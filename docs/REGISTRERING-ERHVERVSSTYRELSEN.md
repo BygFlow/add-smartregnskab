@@ -24,7 +24,7 @@ før anmeldelsen.
 | Registrerings- og kontrolspor | Posteringer har dato, fortløbende virksomhedsunik post-ID, opretter og oprettelsesdato. Bogførte posteringer kan ikke ændres eller slettes; fejl rettes ved tilbageførsel. | API-test af låsning, tilbageførsel og virksomhedsadskillelse. |
 | Debet/kredit | En postering kan kun bogføres, når mindst to linjer balancerer inden for 0,005 kr. | Automatiseret test med balanceret og ubalanceret postering. |
 | Bilag | Bilag tilhører én virksomhed. Bogførte bilag er låst. | Adgangs- og uforanderlighedstest. |
-| SAF-T | Import, forhåndskontrol og eksport af dansk SAF-T 2.1. Standardkontoplanversion `20260101`. | Roundtrip-test og validering mod Erhvervsstyrelsens XSD skal gemmes som releaseartefakt. |
+| SAF-T | Import, forhåndskontrol og eksport af dansk SAF-T 2.1. Standardkontoplanversion `20260101`. | Roundtrip-test og officiel XSD-validering er bestået og gemt for release 3.16.2. |
 | Kontoplan | Hver lokal konto kan mappes til `standardAccountNumber`. | Rapport over ikke-mappede konti i SAF-T-klarhedskontrollen. |
 | Backup | Konsistent SQLite-backup, `quick_check`, SHA-256, krypteret S3-upload og downloadbaseret gendannelseskontrol. | Dagligt job samt dokumenteret restore-øvelse. |
 | Adgangskontrol | Tenant-filtrering, rollebaseret adgang, stærke adgangskoder, loginlås og TOTP. | Produktionstest og ekstern penetrationstest. |
@@ -40,7 +40,7 @@ før anmeldelsen.
    databehandleraftale, abonnementsvilkår og underdatabehandlerliste godkendt.
 3. Gem bevis for Object Lock-retention og gennemfør en dokumenteret restore-
    øvelse fra den eksterne kopi i et isoleret miljø.
-4. Validér SAF-T-eksempelfiler mod myndighedens seneste XSD og gem resultatet.
+4. Vedlæg den gemte SAF-T 2.1-XSD-validering og den syntetiske eksport fra release 3.16.2.
 5. Bestil uvildig sikkerhedstest og luk alle fund med høj eller kritisk risiko.
 6. Udarbejd produktbeskrivelse, systemarkitektur, ændringsstyring,
    hændelsesberedskab, driftsaftale og supportprocedure.

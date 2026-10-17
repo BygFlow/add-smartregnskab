@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -590,8 +590,13 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(saftExport.status, 200);
     const saftXml = await saftExport.text();
     assert.match(saftXml, /<AuditFileVersion>2\.1<\/AuditFileVersion>/);
-    assert.match(saftXml, /<SoftwareVersion>3\.16\.1<\/SoftwareVersion>/);
+    assert.match(saftXml, /<SoftwareVersion>3\.16\.2<\/SoftwareVersion>/);
     assert.match(saftXml, /<TransactionID>SMOKE-1<\/TransactionID>/);
+    assert.match(saftXml, /<TaxTable>/);
+    assert.match(saftXml, /<TaxTableEntry><TaxType>VAT<\/TaxType><Description>VAT<\/Description>/);
+    if (process.env.SAFT_EVIDENCE_PATH) {
+      await writeFile(process.env.SAFT_EVIDENCE_PATH, saftXml, "utf8");
+    }
     const saftPreview = await fetch(`${base}/api/saft/import/preview`, { method: "POST", headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/xml" }, body: saftXml });
     assert.equal(saftPreview.status, 200);
     const preview = await saftPreview.json();
@@ -602,7 +607,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.16.1");
+    assert.equal(operations.version, "3.16.2");
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     const backupProtectionResponse = await fetch(`${base}/api/backup-protection/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(backupProtectionResponse.status, 200);

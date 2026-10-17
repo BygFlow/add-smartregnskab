@@ -9,7 +9,7 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 - Adresse: Lynæs Søpark 49, 3390 Hundested
 - Produkt: ADD SmartRegnskab
 - Produktionsadresse: https://app.addsmartregnskab.dk
-- Release: 3.16.1
+- Release: 3.16.2
 
 ## Før indsendelse
 
@@ -17,7 +17,8 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 - [x] Gennemgå funktionsbeskrivelse, dataflow og systemarkitektur.
 - [x] Klargør sikkerheds-, backup-, revisionsspor- og exitbeskrivelse.
 - [x] Klargør beskrivelse af elektronisk fakturering og SAF-T.
-- [ ] Vedlæg officiel SAF-T XSD-validering, Object Lock-bevis og restore fra ekstern kopi.
+- [x] Validér en syntetisk SAF-T 2.1-eksport mod Erhvervsstyrelsens officielle XSD og gem hashes.
+- [ ] Vedlæg Object Lock-bevis og restore fra ekstern kopi.
 - [x] Angiv aktuelle underdatabehandlere og kendte datalokaliteter i dokumentationen.
 - [ ] Gennemfør den første rigtige Sproom/NemHandel-produktionsprøve med separat kunde.
 - [ ] Bestil en uvildig sikkerheds-/penetrationstest og luk eventuelle høje eller kritiske fund.

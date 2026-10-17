@@ -5,7 +5,7 @@ Version: 1.1 — 17. oktober 2026
 Denne indeksfil samler dokumentation til registrering og ekstern kontrol. Den erstatter ikke myndighedens egen vurdering.
 
 1. Produkt- og leverandøridentifikation: `REGISTRERING-ERHVERVSSTYRELSEN.md`
-2. Bogførings- og SAF-T-kontroller: `BOGFOERINGSLOVEN-CHECKLISTE.md` og `SAF-T-EKSPORT.md`
+2. Bogførings- og SAF-T-kontroller: `BOGFOERINGSLOVEN-CHECKLISTE.md`, `SAF-T-EKSPORT.md`, `SAF-T-XSD-VALIDERING-2026-10-17.md` og `RELEASE-3.16.2-DRIFTSBEVIS.md`
 3. NemHandel: `NEMHANDEL-DRIFT.md`
 4. Drift, backup og gendannelse: `DRIFT-OG-BACKUP.md`, `FEMAARSARKIV-STATUS.md`, `SLA-OG-SUPPORT.md` og restore-log fra `npm run restore:drill`
 5. Persondata: `GDPR-OG-DATABEHANDLING.md`, `UNDERDATABEHANDLERE.md` og `SLETNING-OG-EXIT.md`

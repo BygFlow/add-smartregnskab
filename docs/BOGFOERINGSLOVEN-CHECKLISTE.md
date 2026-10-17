@@ -1,7 +1,7 @@
 # Bogføringslovens krav — kontrol- og bevisoversigt
 
 Status: 17. oktober 2026
-Produkt: ADD SmartRegnskab 3.16.1
+Produkt: ADD SmartRegnskab 3.16.2
 Udbyder: ADD SmartDrift ApS, CVR 46761898
 
 Dokumentet er en teknisk sporbarhedsmatrice til anmeldelsen af et digitalt
@@ -20,7 +20,7 @@ standardbogføringssystem. Det er ikke en juridisk godkendelse.
 | Sikkerhedskopi | Konsistent databasekopi, SHA-256, SQLite-kontrol, AES-256-GCM og ekstern S3-kompatibel kopi. | Daglig jobstatus og restore-drill. | Arkivér seneste succeslog og leverandørkonfiguration uden hemmeligheder. |
 | Adgangskontrol | Rollebaseret adgang, stærke adgangskoder, loginlås, sessionskontrol og TOTP-understøttelse. | Sikkerheds- og adgangsmatricetests. | Uafhængig sikkerhedstest og dokumenteret adgangsreview. |
 | Kontrolspor | Væsentlige bruger-, bogførings-, integrations- og administrationshandlinger logges. Klienter kan ikke ændre sikkerhedsloggen. | Revisionsspor- og API-mutationstests. | Eksportér et anonymiseret eksempel til myndighedspakken. |
-| Dataudtræk | SAF-T 2.1, almindelige rapporter og relevante CSV/JSON-udtræk findes. | SAF-T roundtrip og produktions-smoke. | Validér eksempel mod seneste officielle XSD. |
+| Dataudtræk | SAF-T 2.1, almindelige rapporter og relevante CSV/JSON-udtræk findes. | SAF-T roundtrip, produktions-smoke og bestået officiel XSD-validering for release 3.16.2. | Vedlæg den maskerede valideringsrapport og syntetiske eksport. |
 | E-fakturering | OIOUBL og Peppol BIS, kreditnota, svar, modtageropslag, idempotens og signeret webhook er implementeret gennem Sproom. | Adapter-, webhook-, child-company- og stagingtests. | Rigtig produktionsprøve med send, modtag, kreditnota, afvisning og kvittering. |
 | Drift og hændelser | Helbredstjek, driftsalarmer, køer, retry, backupstatus og hændelsesprocedure er dokumenteret. | Produktions-readiness og driftskontrol. | Gennemfør og referér en bordøvelse for hændelseshåndtering. |
 
