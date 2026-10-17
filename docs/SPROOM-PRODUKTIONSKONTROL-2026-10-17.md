@@ -1,7 +1,9 @@
 # Sproom master-API — produktionskontrol 17. oktober 2026
 
-Produkt: ADD SmartRegnskab 3.16.2  
-Parent/master: ADD SmartDrift ApS, CVR 46761898  
+Produkt: ADD SmartRegnskab 3.16.2
+
+Parent/master: ADD SmartDrift ApS, CVR 46761898
+
 Miljø: Produktion
 
 ## Kontrol
