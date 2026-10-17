@@ -1,6 +1,7 @@
 # Registreringspakke — ADD SmartRegnskab
 
-Status: teknisk forberedelse. Dokumentet er ikke en myndighedsgodkendelse.
+Status: teknisk bevispakke under færdiggørelse pr. 17. oktober 2026.
+Dokumentet er ikke en myndighedsgodkendelse.
 
 ## Produkt og udbyder
 
@@ -9,11 +10,12 @@ Status: teknisk forberedelse. Dokumentet er ikke en myndighedsgodkendelse.
 - Udbyder: ADD SmartDrift ApS
 - CVR: 46761898
 - Adresse: Lynæs Søpark 49, 3390 Hundested
-- Kontakt: regnskab@addsmartregnskab.dk
+- Kontakt: Aurel Dan, regnskab@addsmartregnskab.dk, +45 42 75 13 41
+- Systemtype: Cloudbaseret standardbogføringssystem
 - Versionsstyring: Git, automatiseret CI og versionsstyrede databasemigrationer
 
-Telefon, ansvarlige personer og endelige supportvilkår skal indsættes i
-anmeldelsen og de juridiske tekster.
+Kontakt- og virksomhedsoplysninger skal kontrolleres mod CVR-registeret umiddelbart
+før anmeldelsen.
 
 ## Teknisk kravkort
 
@@ -27,23 +29,32 @@ anmeldelsen og de juridiske tekster.
 | Backup | Konsistent SQLite-backup, `quick_check`, SHA-256, krypteret S3-upload og downloadbaseret gendannelseskontrol. | Dagligt job samt dokumenteret restore-øvelse. |
 | Adgangskontrol | Tenant-filtrering, rollebaseret adgang, stærke adgangskoder, loginlås og TOTP. | Produktionstest og ekstern penetrationstest. |
 | Hændelseslog | Væsentlige handlinger logges med bruger, tidspunkt og virksomhed. | Revisionspakke og stikprøvetest. |
-| E-fakturering | OIOUBL 2.1/Peppol BIS 3-generering, kø, fail-closed afsendelse, signeret indgående webhook og revisionsspor er implementeret. | Access-point-aftale, officiel validering, kreditnota/svarmeddelelser og ende-til-ende-test mangler. |
+| E-fakturering | OIOUBL 2.1/Peppol BIS 3-generering, kø, fail-closed afsendelse, signeret indgående webhook og revisionsspor er implementeret. Sproom-masteraftale, token, child-company-flow og stagingtest er gennemført. | Rigtig produktionsprøve med separat kunde, send/modtag, kreditnota, afvisning og kvittering mangler. |
 | Bankafstemning | Filimport og afstemningsstatus findes. Direkte bankfeed kræver leverandøraftale. | Test af synlige differencer og afstemningsspor. |
 
 ## Før anmeldelse
 
-1. Indgå NemHandel/Peppol-aftale og gennemfør ende-til-ende-test af afsendelse,
-   modtagelse, kreditnota og application response.
+1. Gennemfør den resterende NemHandel/Peppol-produktionsprøve med afsendelse,
+   modtagelse, kreditnota, afvisning og application response.
 2. Indsæt korrekte virksomhedsoplysninger og få privatlivspolitik,
    databehandleraftale, abonnementsvilkår og underdatabehandlerliste godkendt.
-3. Konfigurér ekstern backup med versionering/Object Lock og gennemfør en
-   dokumenteret restore-øvelse i et isoleret miljø.
+3. Gem bevis for Object Lock-retention og gennemfør en dokumenteret restore-
+   øvelse fra den eksterne kopi i et isoleret miljø.
 4. Validér SAF-T-eksempelfiler mod myndighedens seneste XSD og gem resultatet.
 5. Bestil uvildig sikkerhedstest og luk alle fund med høj eller kritisk risiko.
 6. Udarbejd produktbeskrivelse, systemarkitektur, ændringsstyring,
    hændelsesberedskab, driftsaftale og supportprocedure.
 7. Indsend anmeldelsen via Virk og afvent Erhvervsstyrelsens registrering, før
    produktet markedsføres som et registreret bogføringssystem.
+
+## Kommende krav 2027–2028
+
+- SAF-T 2.1 fra 1. januar 2027 er implementeret og automatisk testet.
+- MitID-validering, stamdata-lås, løbende CVR-validering, automatisk
+  NemHandel-tilmelding og prioriteret e-faktura fra 1. marts 2027 kræver en
+  særskilt leverandør- og produktionsimplementering.
+- MitID-validering ved ændring af supplerende stamdata fra 1. januar 2028 skal
+  indgå i samme identitets- og revisionsspor.
 
 ## Release-regel
 

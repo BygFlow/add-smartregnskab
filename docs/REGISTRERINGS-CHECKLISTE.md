@@ -13,12 +13,15 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 
 ## Før indsendelse
 
-- [ ] Kontrollér at oplysninger og kontaktperson matcher CVR-registeret.
-- [ ] Gennemgå funktionsbeskrivelse, dataflow og systemarkitektur.
-- [ ] Vedlæg sikkerheds-, backup-, revisionsspor- og exitbeskrivelse.
-- [ ] Vedlæg beskrivelse af elektronisk fakturering og SAF-T.
-- [ ] Dokumentér gennemført restore-drill og accepttest.
-- [ ] Angiv alle aktuelle underdatabehandlere og datalokaliteter.
+- [ ] Kontrollér umiddelbart før indsendelse, at oplysninger og kontaktperson matcher CVR-registeret.
+- [x] Gennemgå funktionsbeskrivelse, dataflow og systemarkitektur.
+- [x] Klargør sikkerheds-, backup-, revisionsspor- og exitbeskrivelse.
+- [x] Klargør beskrivelse af elektronisk fakturering og SAF-T.
+- [ ] Vedlæg officiel SAF-T XSD-validering, Object Lock-bevis og restore fra ekstern kopi.
+- [x] Angiv aktuelle underdatabehandlere og kendte datalokaliteter i dokumentationen.
+- [ ] Gennemfør den første rigtige Sproom/NemHandel-produktionsprøve med separat kunde.
+- [ ] Bestil en uvildig sikkerheds-/penetrationstest og luk eventuelle høje eller kritiske fund.
+- [ ] Fastlæg leverandør og plan for MitID- og CVR-valideringskravene fra marts 2027.
 - [ ] Få dansk bogførings-/IT-revisor og juridisk rådgiver til at kontrollere materialet.
 - [ ] Indsend via den aktuelle myndighedsproces og gem kvittering/sagsnummer.
 
