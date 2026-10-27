@@ -24,7 +24,9 @@
     "mail:poll:simply": "node scripts/simply-imap-bridge.mjs",
     "mail:forward:simply": "node scripts/simply-mail-forward.mjs",
     "mobile:sync": "npm run build && cap sync android",
-    "mobile:android:debug": "npm run mobile:sync && cd android && gradlew.bat assembleDebug"
+    "mobile:sync:ios": "npm run build && cap sync ios",
+    "mobile:android:debug": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
+    "mobile:android:release": "npm run mobile:sync && cd android && gradlew.bat bundleRelease"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
@@ -149,8 +151,10 @@
   },
   "overrides": {
     "brace-expansion": "^5.0.12",
+    "postcss-selector-parser": "^7.1.6",
     "proxy-addr": "^2.0.8",
     "source-map-js": "^1.2.2",
+    "uuid": "^11.1.1",
     "drizzle-kit": {
       "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
     }
