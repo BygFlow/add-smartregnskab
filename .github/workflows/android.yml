@@ -48,6 +48,8 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npx cap sync android
+      - name: Gør Gradle-wrapper eksekverbar
+        run: chmod +x android/gradlew
       - name: Byg og test debug-APK
         if: ${{ !inputs.build_signed_release }}
         working-directory: android
