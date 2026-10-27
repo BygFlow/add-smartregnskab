@@ -38,4 +38,4 @@ ADD SmartRegnskab er gennemgået separat som offentlig hjemmeside, regnskabsprog
 
 ## Afgrænsning
 
-Testene dokumenterer lokal kodeparathed. En rigtig AiiA-banktilslutning, fuld Sproom send/modtag/kreditnota/afvisning, endelig Clearhaus-accept, permanent Object Lock-prøve med reelle virksomhedsdata og eventuel myndighedsregistrering er særskilte produktionsbeviser.
+Testene dokumenterer lokal kodeparathed. Clearhaus-produktionsaftalen er efterfølgende bekræftet af virksomhedens ejer 27. oktober 2026; en kontrolleret QuickPay-opkrævning og refundering mangler fortsat som driftsbevis. En rigtig AiiA-banktilslutning, fuld Sproom send/modtag/kreditnota/afvisning, permanent Object Lock-prøve med reelle virksomhedsdata og eventuel myndighedsregistrering er særskilte produktionsbeviser.

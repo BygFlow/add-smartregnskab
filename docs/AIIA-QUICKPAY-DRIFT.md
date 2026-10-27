@@ -14,8 +14,9 @@ så samme post ikke kan oprettes to gange. Scheduler-jobbet `aiia_bank_sync` kø
 
 Miljøvariabler: `AIIA_CLIENT_ID`, `AIIA_CLIENT_SECRET`, `AIIA_BASE_URL`,
 `AIIA_REDIRECT_URI` og `AIIA_SCOPES`. Redirect-URL'en skal være registreret præcist hos
-Mastercard. Produktionsadgang, databehandleraftale, samtykketekst og slettefrister skal
-godkendes før kundedrift.
+Mastercard. Produktionsadgangen til appen er godkendt. Databehandleraftale,
+samtykketekst og slettefrister skal fortsat indgå i leverandørkontrollen og være
+afstemt før den første kundes bankdata behandles.
 
 Officiel reference:
 

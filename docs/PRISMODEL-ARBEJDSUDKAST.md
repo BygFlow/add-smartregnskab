@@ -37,8 +37,8 @@ ved hvert forbrugsniveau er beregnet.
 | --- | --- | --- | --- |
 | NemHandel og Peppol | Sproom samt mindst ét alternativ | Fast ISV-beløb, pris pr. sendt/modtaget dokument, minimumsforbrug, child companies, staging, support og opsigelse | Foreløbig Sproom-prisliste modtaget; kontrakt og alternativ mangler |
 | AI | Valgte AI-modeller | Pris pr. input/output-token, gennemsnitsforbrug pr. handling, fejl/retries og maksimal leverandøromkostning pr. pakke | Offentlige tokenpriser dokumenteret; rigtig modelintegration og målinger mangler |
-| Bankdata | Mastercard Open Banking/Aiia | Fast pris, pris pr. bankforbindelse/konto/kald, samtykkefornyelse og minimumsforbrug | Afventer produktionsaftale |
-| Betaling | QuickPay og indløser | Abonnement, transaktionspris, kortgebyrer, refunderinger og chargebacks | Offentlig QuickPay-pris dokumenteret; faktisk indløseraftale mangler |
+| Bankdata | Mastercard Open Banking/Aiia | Fast pris, pris pr. bankforbindelse/konto/kald, samtykkefornyelse og minimumsforbrug | Produktionsadgang godkendt; endelig kommerciel pris og første virkelige bankforbindelse mangler |
+| Betaling | QuickPay og Clearhaus | Abonnement, transaktionspris, kortgebyrer, refunderinger og chargebacks | Clearhaus-produktionsaftale godkendt; kontrolleret QuickPay-opkrævning, webhook og refundering mangler |
 | Database og applikationsdrift | Render eller endelig driftsplatform | Produktion, database, lager, trafik, skalering, logning og testmiljø | Pilotkonfiguration dokumenteret; produktionskapacitet mangler |
 | Ekstern backup | Hetzner Object Storage eller alternativ | Lager, trafik, API-kald, retention, restore-test og geografisk placering | Offentlig pris dokumenteret; faktisk forbrug og restore-kapacitet mangler |
 | E-mail | Resend til transaktionsmail og Simply.com til postkasser | Konti, API/SMTP-forbrug, leveringsgrænser og transaktionsmail | Offentlige priser dokumenteret; faktisk volumen mangler |
