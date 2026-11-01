@@ -8,8 +8,8 @@ Udbyder: ADD SmartDrift ApS, CVR 46761898
 
 - ADD Connect skelner nu mellem fakturakladder og udstedte fakturaer.
 - En kladde gemmes fortsat som kladde og danner ingen postering.
-- En udstedt faktura fra ADD SmartDrift Pro, ADD SmartDrift Clean eller et
-  andet tilsluttet system bogføres automatisk med samme fakturanummer.
+- En udstedt faktura fra et autoriseret, tilsluttet eksternt system bogføres
+  automatisk med samme fakturanummer.
 - Bogføringen debiterer debitor, krediterer omsætning og krediterer udgående
   moms i én databasetransaktion.
 - Gentagen levering med samme kilde-id er idempotent og danner ikke dubletter.

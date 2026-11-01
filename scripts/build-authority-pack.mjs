@@ -20,7 +20,7 @@ const files = [
   "docs/BOGFOERINGSLOVEN-CHECKLISTE.md",
   "docs/RELEASE-3.16.2-DRIFTSBEVIS.md",
   "docs/CLEARHAUS-PRODUKTIONSSTATUS-2026-10-27.md",
-  "docs/RELEASE-3.16.3-DRIFTSBEVIS.md",
+  "docs/RELEASE-3.16.4-DRIFTSBEVIS.md",
 ];
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });

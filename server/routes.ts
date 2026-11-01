@@ -3541,6 +3541,82 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json(request);
   }));
 
+  /**
+   * Selvbetjent start på kontosletning. Anmodningen lukker automatisk
+   * fornyelse med det samme, men ødelægger ikke lovpligtigt
+   * regnskabsmateriale. Den efterfølgende identitets- og lovkontrol gør det
+   * muligt at slette brugeradgangen og alle øvrige data, mens materiale med
+   * lovpligtig opbevaring begrænses indtil fristens udløb.
+   */
+  app.get("/api/account/deletion-request", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const existing = (await storage.getDataRequests(cid)).find((item) =>
+      item.kind === "sletning"
+      && item.subjectType === "bruger"
+      && item.subjectId === req.auth!.user.id
+      && item.status !== "afvist"
+    );
+    res.json({ request: existing ?? null });
+  }));
+
+  app.post("/api/account/deletion-request", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    if (String(req.body?.confirmation ?? "").trim().toUpperCase() !== "SLET KONTO") {
+      return res.status(400).json({ error: "Skriv SLET KONTO for at bekræfte anmodningen." });
+    }
+
+    const existing = (await storage.getDataRequests(cid)).find((item) =>
+      item.kind === "sletning"
+      && item.subjectType === "bruger"
+      && item.subjectId === req.auth!.user.id
+      && item.status !== "afvist"
+    );
+    if (existing) return res.json({ request: existing, duplicate: true });
+
+    const subscription = await storage.getSubscriptionByCompany(cid);
+    if (subscription?.autoRenew === 1) {
+      await storage.updateSubscription(subscription.id, { autoRenew: 0, cancelledAt: nowIso() });
+      await audit(req, "automatisk_fornyelse_fra", "subscription", subscription.id, "Kontosletning initieret i appen");
+    }
+
+    const note = [
+      "Konto- og virksomhedsafvikling initieret af administratoren i appen.",
+      "Luk personlig adgang efter identitetskontrol.",
+      "Slet eller anonymiser data uden fortsat lovligt opbevaringskrav.",
+      "Begræns lovpligtigt regnskabsmateriale til nødvendig opbevaring og slet eller anonymiser efter fristens udløb.",
+    ].join(" ");
+    const request = await storage.createDataRequest({
+      companyId: cid,
+      kind: "sletning",
+      subjectType: "bruger",
+      subjectId: req.auth!.user.id,
+      subjectName: req.auth!.user.name,
+      status: "modtaget",
+      requestedBy: req.auth!.user.name,
+      note,
+      resultRef: "kontoafvikling",
+      createdAt: nowIso(),
+      completedAt: null,
+    } as any);
+    await storage.insert("support_cases", {
+      companyId: cid,
+      subject: "Kontosletning initieret i appen",
+      message: `${note} Anmodnings-id: ${request.id}.`,
+      status: "aaben",
+      priority: "hoj",
+      reply: null,
+      replyStatus: "kladde",
+      createdBy: req.auth!.user.email,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    });
+    await audit(req, "kontosletning_initieret", "dataRequest", request.id, "Automatisk fornyelse stoppet; identitets- og lovkontrol afventer");
+    res.status(201).json({
+      request,
+      message: "Anmodningen er registreret. Automatisk fornyelse er stoppet. Vi kontrollerer identitet og lovpligtig opbevaring, før adgangen og data afvikles.",
+    });
+  }));
+
   app.post("/api/gdpr/anmodning/:id/behandl", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     const request = await storage.getDataRequest(Number(req.params.id), cid);
@@ -4909,7 +4985,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════
   // SYSTEMOPDATERINGER — auto-notifikation ved opdatering
   // ═══════════════════════════════════════════════════════════════
-  const currentVersion = "3.16.3";
+  const currentVersion = "3.16.4";
   const existingReleases = await storage.all("system_releases");
   const hasCurrentVersion = existingReleases.some((r: any) => r.version === currentVersion);
   if (!hasCurrentVersion) {

@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { LegalPreviewDialog } from "@/pages/marketing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, FileText, Loader2, Package, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, CreditCard, FileText, Loader2, Package, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { SiMastercard, SiVisa } from "react-icons/si";
 import { apiRequest, openAuthedFile } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader, SectionCard, StatusChip } from "@/components/premium";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { POSTING_PRICE_TIERS, estimatedMonthlyDocuments } from "@shared/posting-pricing";
 
 type Plan = {
@@ -84,6 +87,8 @@ export default function Abonnement() {
   const canManage = user?.role === "leder";
   const [subscriptionTermsAccepted, setSubscriptionTermsAccepted] = useState(false);
   const [showSubscriptionTerms, setShowSubscriptionTerms] = useState(false);
+  const [showDeletionDialog, setShowDeletionDialog] = useState(false);
+  const [deletionConfirmation, setDeletionConfirmation] = useState("");
   const overview = useQuery<SubscriptionOverview>({
     queryKey: ["/api/subscription"],
     queryFn: async () => (await apiRequest("GET", "/api/subscription")).json(),
@@ -95,6 +100,11 @@ export default function Abonnement() {
   const aiUsage = useQuery<AiUsage>({
     queryKey: ["/api/ai-usage"],
     queryFn: async () => (await apiRequest("GET", "/api/ai-usage")).json(),
+  });
+  const deletionStatus = useQuery<{ request: { id: number; status: string; createdAt: string } | null }>({
+    queryKey: ["/api/account/deletion-request"],
+    queryFn: async () => (await apiRequest("GET", "/api/account/deletion-request")).json(),
+    enabled: canManage,
   });
 
   useEffect(() => {
@@ -140,6 +150,20 @@ export default function Abonnement() {
       });
     },
     onError: (error: unknown) => toast({ title: "Abonnementet kunne ikke opdateres", description: error instanceof Error ? error.message : "Prøv igen.", variant: "destructive" }),
+  });
+
+  const requestDeletion = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/account/deletion-request", { confirmation: deletionConfirmation })).json(),
+    onSuccess: async (result) => {
+      setShowDeletionDialog(false);
+      setDeletionConfirmation("");
+      await Promise.all([
+        deletionStatus.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["/api/subscription"] }),
+      ]);
+      toast({ title: "Kontosletning er sat i gang", description: result.message ?? "Anmodningen er registreret, og automatisk fornyelse er stoppet." });
+    },
+    onError: (error: unknown) => toast({ title: "Anmodningen kunne ikke registreres", description: error instanceof Error ? error.message : "Prøv igen.", variant: "destructive" }),
   });
 
   return <div className="space-y-5">
@@ -210,6 +234,35 @@ export default function Abonnement() {
     <SectionCard title="Abonnementsfakturaer" icon={<FileText className="h-4 w-4" />} noPadding>
       {overview.isLoading ? <div className="p-4"><Skeleton className="h-24 w-full" /></div> : !overview.data?.invoices?.length ? <p className="p-5 text-sm text-muted-foreground">Der er endnu ingen abonnementsfakturaer.</p> : <div className="divide-y">{overview.data.invoices.map((invoice) => <div key={invoice.id} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{invoice.invoiceNumber ?? `Faktura ${invoice.id}`}</p><p className="text-xs text-muted-foreground">{invoice.issueDate ?? "—"} · Forfalder {invoice.dueDate ?? "—"}</p></div><strong className="text-sm">{money(invoice.totalAmount)}</strong><StatusChip status={invoice.status ?? "ukendt"} /><Button size="sm" variant="outline" onClick={() => openAuthedFile(`/api/subscription/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? "abonnementsfaktura"}.pdf`)}>Hent PDF</Button></div>)}</div>}
     </SectionCard>
+
+    {canManage && <SectionCard title="Konto og data" icon={<Trash2 className="h-4 w-4" />}>
+      {deletionStatus.data?.request ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="account-deletion-request-status">
+        <p className="font-semibold">Kontosletning er anmodet</p>
+        <p className="mt-1">Anmodning #{deletionStatus.data.request.id} blev registreret {deletionStatus.data.request.createdAt}. Automatisk fornyelse er stoppet. Vi kontrollerer identitet og lovpligtig opbevaring, før adgangen og data afvikles.</p>
+      </div> : <div className="space-y-3 text-sm">
+        <p className="text-muted-foreground">Her kan virksomhedens administrator starte permanent sletning af sin adgang og afvikling af virksomhedens konto. Dette er noget andet end kun at opsige abonnementet.</p>
+        <p className="rounded-lg bg-muted/50 p-3 text-xs leading-5 text-muted-foreground">Personlig adgang og data uden fortsat lovligt behov slettes eller anonymiseres efter identitetskontrol. Regnskabsmateriale, som skal bevares efter dansk ret, låses for almindelig brug og slettes eller anonymiseres efter opbevaringsfristens udløb.</p>
+        <Button variant="destructive" onClick={() => setShowDeletionDialog(true)} data-testid="button-open-account-deletion"><Trash2 className="mr-2 h-4 w-4" />Anmod om permanent kontosletning</Button>
+      </div>}
+    </SectionCard>}
+
+    <Dialog open={showDeletionDialog} onOpenChange={(open) => { setShowDeletionDialog(open); if (!open) setDeletionConfirmation(""); }}>
+      <DialogContent data-testid="dialog-account-deletion">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Permanent kontosletning</DialogTitle>
+          <DialogDescription>Dette stopper automatisk fornyelse og starter afvikling af din brugeradgang og virksomhedens konto. Handlingen er ikke det samme som en almindelig abonnementsopsigelse.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>Din identitet og administratorret bliver kontrolleret.</li>
+            <li>Personlig adgang lukkes, og data uden lovligt opbevaringskrav slettes eller anonymiseres.</li>
+            <li>Lovpligtigt regnskabsmateriale opbevares begrænset indtil fristens udløb og slettes eller anonymiseres derefter.</li>
+          </ul>
+          <div className="space-y-2"><Label htmlFor="account-deletion-confirmation">Skriv SLET KONTO for at bekræfte</Label><Input id="account-deletion-confirmation" value={deletionConfirmation} onChange={(event) => setDeletionConfirmation(event.target.value)} autoComplete="off" data-testid="input-account-deletion-confirmation" /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setShowDeletionDialog(false)}>Annuller</Button><Button variant="destructive" disabled={deletionConfirmation.trim().toUpperCase() !== "SLET KONTO" || requestDeletion.isPending} onClick={() => requestDeletion.mutate()} data-testid="button-confirm-account-deletion">{requestDeletion.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Start kontosletning</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <LegalPreviewDialog kind={showSubscriptionTerms ? "subscriptionTerms" : null} onClose={() => setShowSubscriptionTerms(false)} />
   </div>;
 }
