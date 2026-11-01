@@ -100,7 +100,7 @@ jobs:
           xcrun altool --upload-app --type ios --file "$IPA_PATH" --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
       - uses: actions/upload-artifact@v4
         with:
-          name: ADD-SmartRegnskab-iOS-3.16.3-31603
+          name: ADD-SmartRegnskab-iOS-3.16.4-31604
           path: ${{ env.IPA_PATH }}
       - name: Ryd signeringsfiler
         if: always()
