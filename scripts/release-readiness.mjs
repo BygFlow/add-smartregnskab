@@ -19,6 +19,7 @@ const requiredFiles = [
   "docs/SAF-T-XSD-VALIDERING-2026-10-17.md",
   "docs/BOGFOERINGSLOVEN-CHECKLISTE.md",
   "docs/RELEASE-3.16.4-DRIFTSBEVIS.md",
+  "docs/REAL-ARKIV-OG-GENDANNELSE-BEVIS-2026-11-03.md",
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
@@ -52,10 +53,24 @@ if (sproom) {
   add("sproom-nemhandel-registration", nemhandelEnabled, "external", nemhandelEnabled ? "aktiveret" : "Afventer vellykket registrerings- og modtagelsestest i staging");
 }
 
-// Den syntetiske Object-Lock-test beviser kun selve lageret. Før rigtige
-// bilag og posteringer arkiveres og gendannes, må registreringsklarhed ikke
-// rapporteres som opnået, selv hvis alle miljøvariabler er sat.
-add("bookkeeping-archive-real-data", false, "external", "Det segmenterede årsudtræk, det standard-lukkede ugejob og gendannelsesvalideringen består lokalt, inklusive et syntetisk arkiv over 100 MB. Det er ikke kørt mod den faktiske produktionsbucket og rigtige produktionsdata; fem års Object Lock og automatisk produktionsgendannelse er derfor endnu ikke bevist.");
+// Produktionsbeviset dokumenterer Object Lock, read-back og gendannelse af en
+// rigtig originalfil. Den valgte periode havde ingen bogførte posteringer eller
+// fakturaer, så et særskilt repræsentativt periodebevis er fortsat påkrævet.
+const realArchiveEvidence = existsSync("docs/REAL-ARKIV-OG-GENDANNELSE-BEVIS-2026-11-03.md");
+add(
+  "bookkeeping-archive-production-file",
+  realArchiveEvidence,
+  "external",
+  realArchiveEvidence
+    ? "Rigtig originalfil er arkiveret med Object Lock, læst tilbage og gendannelsesvalideret i produktionslageret; se det daterede bevis."
+    : "Mangler dateret bevis for arkivering og gendannelse af en rigtig originalfil i produktionslageret.",
+);
+add(
+  "bookkeeping-archive-representative-period",
+  false,
+  "external",
+  "Afventer en rigtig periode med mindst én bogført postering eller faktura og tilknyttet originalbilag; den hidtil testede periode havde 0 posteringer og 0 fakturaer.",
+);
 
 const codeFailed = checks.some((check) => check.category === "code" && !check.ok);
 console.log(JSON.stringify({ generatedAt: new Date().toISOString(), readyForTechnicalRelease: !codeFailed, readyForRegisteredOperation: checks.every((check) => check.ok), checks }, null, 2));
