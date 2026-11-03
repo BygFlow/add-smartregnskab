@@ -28,7 +28,7 @@ test("iOS and Android release numbers are incremented for the deletion flow", as
     read("../package.json"),
   ]);
 
-  assert.match(project, /CURRENT_PROJECT_VERSION = 31605;/);
+  assert.match(project, /CURRENT_PROJECT_VERSION = 31606;/);
   assert.match(project, /MARKETING_VERSION = 3\.16\.4;/);
   assert.match(gradle, /versionCode 30/);
   assert.match(gradle, /versionName "3\.16\.4"/);

@@ -33,5 +33,9 @@ test("client presents a recoverable billing-only state", () => {
   assert.match(app, /Vælg pakke og betalingsaftale/);
   assert.match(app, /Alle data for/);
   assert.match(subscriptionPage, /Prøveperioden er udløbet/);
+  assert.match(subscriptionPage, /const isExpiredTrial = Boolean\(isTrial && access\?\.restricted\)/);
+  assert.match(subscriptionPage, /Prøve udløbet/);
+  assert.match(subscriptionPage, /Der er ikke oprettet automatisk fornyelse eller betaling/);
+  assert.match(subscriptionPage, /subscription && !isTrial/);
   assert.match(subscriptionPage, /\[1500, 4000, 8000\]/);
 });
