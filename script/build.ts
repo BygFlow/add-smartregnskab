@@ -80,6 +80,18 @@ async function buildAll() {
     logLevel: "info",
   });
 
+  // Isoleret produktionsprøve fra den seneste verificerede eksterne backup.
+  // One-Off Jobs har ikke adgang til webtjenestens vedvarende disk.
+  await esbuild({
+    entryPoints: ["scripts/archive-real-from-backup.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/archive-real-from-backup.cjs",
+    external: externals,
+    logLevel: "info",
+  });
+
   // Skrivebeskyttet for-kontrol af virkelige regnskabsdata og originalfiler.
   // Kommandoen uploader, låser eller registrerer intet.
   await esbuild({

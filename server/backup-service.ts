@@ -232,3 +232,65 @@ export async function verifyExternalBackup(key: string) {
     } finally { restored.close(); }
   } finally { try { rmSync(tempPath, { force: true }); } catch {} }
 }
+
+/** Find den nyeste fuldførte backup. Bruges af isolerede gendannelsesprøver,
+ * som ikke har adgang til webtjenestens vedvarende disk. */
+export async function latestExternalBackupManifestKey(): Promise<string> {
+  if (!externalBackupConfigured()) throw new Error("Ekstern S3-backup er ikke konfigureret.");
+  const bucket = required("S3_BUCKET");
+  const prefix = (process.env.S3_BACKUP_PREFIX || "smartregnskab/backups").replace(/^\/+|\/+$/g, "");
+  const s3 = client();
+  let continuationToken: string | undefined;
+  let newest: { key: string; modified: number } | undefined;
+  do {
+    const page = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: `${prefix}/snapshots/`,
+      ContinuationToken: continuationToken,
+    }));
+    for (const object of page.Contents || []) {
+      if (!object.Key?.endsWith("/manifest.json")) continue;
+      const modified = object.LastModified?.getTime() || 0;
+      if (!newest || modified > newest.modified) newest = { key: object.Key, modified };
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+  if (!newest) throw new Error("Der blev ikke fundet en fuldført ekstern backup.");
+  return newest.key;
+}
+
+/** Gendan kun databasen fra en kontrolleret backup til en ny lokal fil. Filen
+ * valideres med manifestets SHA-256 og SQLite quick_check før den returneres. */
+export async function restoreExternalBackupDatabase(key: string, targetPath: string) {
+  if (!externalBackupConfigured()) throw new Error("Ekstern S3-backup er ikke konfigureret.");
+  const prefix = (process.env.S3_BACKUP_PREFIX || "smartregnskab/backups").replace(/^\/+|\/+$/g, "");
+  if (!key.startsWith(`${prefix}/snapshots/`) || !key.endsWith("/manifest.json")) {
+    throw new Error("Ugyldig backupnøgle.");
+  }
+  const bucket = required("S3_BUCKET");
+  const s3 = client();
+  const manifestObject = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!manifestObject.Body) throw new Error("Backupmanifestet er tomt.");
+  const manifestBytes = decryptFromBackup(
+    Buffer.from(await manifestObject.Body.transformToByteArray()),
+    manifestObject.Metadata,
+  );
+  const manifest = JSON.parse(manifestBytes.toString("utf8")) as { database?: ManifestFile };
+  if (!manifest.database?.key || !manifest.database.checksum) throw new Error("Backupmanifestet mangler databasen.");
+  const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: manifest.database.key }));
+  if (!object.Body) throw new Error("Databasen i backuppen er tom.");
+  const bytes = decryptFromBackup(Buffer.from(await object.Body.transformToByteArray()), object.Metadata);
+  const checksum = createHash("sha256").update(bytes).digest("hex");
+  if (checksum !== manifest.database.checksum || (object.Metadata?.sha256 && object.Metadata.sha256 !== checksum)) {
+    throw new Error("Backupens SHA-256 kontrolsum stemmer ikke.");
+  }
+  writeFileSync(targetPath, bytes, { mode: 0o600, flag: "wx" });
+  const restored = new Database(targetPath, { readonly: true, fileMustExist: true });
+  try {
+    const quickCheck = restored.pragma("quick_check", { simple: true });
+    if (quickCheck !== "ok") throw new Error(`Gendannelseskontrollen fejlede: ${String(quickCheck)}`);
+  } finally {
+    restored.close();
+  }
+  return { key, checksum, size: bytes.length };
+}
