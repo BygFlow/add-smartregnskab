@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   simulator:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
   testflight:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
     needs: simulator
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       BUNDLE_ID: dk.smartregnskab.app
