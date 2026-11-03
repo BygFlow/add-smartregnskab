@@ -59,6 +59,7 @@ import {
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
   insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, auditLogs, documentInbox,
+  companies, subscriptions,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
 import { DPA_VERSION } from "@shared/legal-documents";
@@ -2032,7 +2033,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (enabled && (req.body?.termsAccepted !== true || req.body?.termsVersion !== "2026-09-22")) {
       return res.status(400).json({ error: "Du skal acceptere abonnementsbetingelserne, før AI-tilkøbet aktiveres." });
     }
-    const updated = await storage.updateSubscription(sub.id, { aiAddonEnabled: enabled ? 1 : 0 });
+    // Abonnementet styrer pris og forbrugspulje, mens virksomhedsflaget styrer
+    // den konkrete AI-adgang. De to værdier skal ændres atomisk, så et betalt
+    // tilkøb aldrig ender med at være synligt som aktivt uden at AI kan bruges.
+    const updated = db.transaction((tx) => {
+      const nextSubscription = tx.update(subscriptions)
+        .set({ aiAddonEnabled: enabled ? 1 : 0 })
+        .where(eq(subscriptions.id, sub.id)).returning().get();
+      const nextCompany = tx.update(companies)
+        .set({ aiEnabled: enabled ? 1 : 0 })
+        .where(eq(companies.id, cid)).returning().get();
+      if (!nextSubscription || !nextCompany) throw new Error("AI-tilkøbet kunne ikke gemmes.");
+      return nextSubscription;
+    });
     await audit(req, enabled ? "aktiver_ai_tilkoeb" : "deaktiver_ai_tilkoeb", "subscription", sub.id, enabled
       ? `${plan.aiAddonCredits} AI-handlinger; abonnementsbetingelser accepteret, version ${req.body.termsVersion}`
       : `${plan.aiAddonCredits} AI-handlinger; fjernes fra næste abonnementsperiode`);

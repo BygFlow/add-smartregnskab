@@ -87,6 +87,9 @@ test("add-on purchase and monthly packages have one truthful commercial flow", (
   assert.doesNotMatch(marketing, /Betal for 10 måneder/);
   assert.doesNotMatch(platform, /<SelectItem value="aarlig">Årlig<\/SelectItem>/);
   assert.match(routes, /Du skal acceptere abonnementsbetingelserne, før AI-tilkøbet aktiveres/);
+  assert.match(routes, /tx\.update\(subscriptions\)[\s\S]*aiAddonEnabled: enabled \? 1 : 0/);
+  assert.match(routes, /tx\.update\(companies\)[\s\S]*aiEnabled: enabled \? 1 : 0/);
+  assert.match(marketplace, /invalidateQueries\(\{ queryKey: \["\/api\/ai-usage"\] \}\)[\s\S]*refresh\(\)/);
   assert.match(routes, /planId: plan\.id, billingCycle: "maanedlig"/);
 });
 

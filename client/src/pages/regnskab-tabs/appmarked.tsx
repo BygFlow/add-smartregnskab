@@ -142,6 +142,7 @@ export default function Appmarked({ companyId }: { companyId: number }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/subscription"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/ai-usage"] }),
+        refresh(),
       ]);
       setAiTermsAccepted(false);
       toast({
