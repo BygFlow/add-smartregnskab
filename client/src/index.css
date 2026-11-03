@@ -163,12 +163,20 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background-color: hsl(var(--background));
+  }
+
   * {
     @apply border-border;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
+    min-height: 100dvh;
     font-feature-settings: "cv11", "ss01";
     letter-spacing: -0.011em;
   }

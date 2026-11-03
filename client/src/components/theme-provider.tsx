@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { isNative } from "@/lib/native-bridge";
 
 type Theme = "light" | "dark";
 interface ThemeContextValue {
@@ -22,6 +23,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.add("dark");
     } else {
       root.classList.remove("dark");
+    }
+
+    if (isNative()) {
+      import("@capacitor/status-bar")
+        .then(({ StatusBar, Style }) => StatusBar.setStyle({
+          style: theme === "dark" ? Style.Light : Style.Dark,
+        }))
+        .catch(() => {});
     }
   }, [theme]);
 

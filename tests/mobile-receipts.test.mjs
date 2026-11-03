@@ -40,3 +40,15 @@ test("Capacitor's allow-listed production API supports credentialed CORS", () =>
   assert.match(read(".env.example"), /capacitor:\/\/localhost/);
   assert.match(read(".env.example"), /https:\/\/localhost/);
 });
+
+test("the native accounting shell respects iPhone and Android safe areas", () => {
+  const html = read("client/index.html");
+  const shell = read("client/src/pages/regnskabs-shell.tsx");
+  const config = read("capacitor.config.ts");
+  assert.match(html, /viewport-fit=cover/);
+  assert.match(shell, /env\(safe-area-inset-top\)/);
+  assert.match(shell, /env\(safe-area-inset-bottom\)/);
+  assert.match(shell, /min-h-\[100dvh\]/);
+  assert.match(config, /contentInset: 'never'/);
+  assert.doesNotMatch(config, /backgroundColor: '#ffffff'/);
+});

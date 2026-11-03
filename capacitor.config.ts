@@ -21,8 +21,8 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     StatusBar: {
-      style: 'DARK',
-      backgroundColor: '#047857',
+      style: 'DEFAULT',
+      backgroundColor: '#0d0f12',
     },
     Keyboard: {
       resize: 'native',
@@ -35,11 +35,12 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0d0f12',
   },
   ios: {
-    backgroundColor: '#ffffff',
-    contentInset: 'always',
+    backgroundColor: '#0d0f12',
+    // The app handles the notch and home-indicator in CSS via safe-area env().
+    contentInset: 'never',
     scrollEnabled: true,
   },
 };

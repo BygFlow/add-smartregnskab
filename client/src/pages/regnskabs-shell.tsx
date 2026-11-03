@@ -165,7 +165,7 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
     <Button variant="ghost" size="sm" onClick={logout} className="w-full justify-start text-sidebar-foreground/60 hover:text-destructive" data-testid="button-regnskab-logout"><LogOut className="mr-2 h-4 w-4" />Log ud</Button>
   </div>;
 
-  return <div className="flex min-h-screen bg-muted/20" data-testid="regnskabs-platform-shell">
+  return <div className="flex min-h-[100dvh] bg-muted/20" data-testid="regnskabs-platform-shell">
     <aside className="sticky top-0 hidden h-screen w-[272px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex" data-testid="regnskabs-sidebar">
       <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5"><Logo className="h-9 w-9 shrink-0 text-sidebar-primary" /><div className="min-w-0">
         <span className="block text-[15px] font-bold text-sidebar-foreground">ADD SmartRegnskab</span>
@@ -176,20 +176,20 @@ export function RegnskabsPlatformShell({ user, role, companyName }: {
     </aside>
 
     <div className="min-w-0 flex-1">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/95 px-4 shadow-sm backdrop-blur md:px-6">
+      <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center justify-between border-b bg-background/95 px-4 pt-[env(safe-area-inset-top)] shadow-sm backdrop-blur md:h-14 md:px-6 md:pt-0">
         <div className="flex min-w-0 items-center gap-3"><button className="rounded-lg p-2 hover:bg-muted md:hidden" onClick={() => setMobileNavOpen(true)} data-testid="button-mobile-regnskab-menu" aria-label="Åbn menu"><Menu className="h-5 w-5" /></button>
           <div className="min-w-0"><p className="truncate text-sm font-semibold" data-testid="text-regnskab-current-tab">{currentTabLabel}</p><p className="hidden truncate text-[11px] text-muted-foreground sm:block">{isPlatformAdmin ? "ADD SmartRegnskab platform" : companyName}</p></div>
         </div>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-xs font-bold text-emerald-700 dark:text-emerald-400">{initials}</div>
       </header>
-      <main className="mx-auto w-full max-w-[1500px] p-3 pb-24 sm:p-5 md:p-7 md:pb-8">
+      <main className="mx-auto w-full max-w-[1500px] p-3 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-7 md:pb-8">
         <Router hook={useHashLocation}><Suspense fallback={<div className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">Indlæser modul…</div>}><Switch>
           <Route path="/smartregnskab/app" component={Regnskabssystem} /><Route path="/smartregnskab/app/:tab" component={Regnskabssystem} /><Route><Redirect to="/smartregnskab/app" /></Route>
         </Switch></Suspense></Router>
       </main>
     </div>
 
-    {mobileNavOpen && <div className="fixed inset-0 z-50 bg-black/55 md:hidden" onClick={() => setMobileNavOpen(false)}><aside className="absolute inset-y-0 left-0 flex w-[min(88vw,320px)] flex-col bg-sidebar shadow-2xl" onClick={(event) => event.stopPropagation()} data-testid="mobile-regnskab-nav">
+    {mobileNavOpen && <div className="fixed inset-0 z-50 bg-black/55 md:hidden" onClick={() => setMobileNavOpen(false)}><aside className="absolute inset-y-0 left-0 flex w-[min(88vw,320px)] flex-col bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl" onClick={(event) => event.stopPropagation()} data-testid="mobile-regnskab-nav">
       <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4"><div className="flex items-center gap-2.5"><Logo className="h-8 w-8 text-sidebar-primary" /><div><p className="text-sm font-bold text-sidebar-foreground">ADD SmartRegnskab</p><p className="text-[10px] text-sidebar-foreground/45">{isPlatformAdmin ? "Platformadministration" : companyName}</p></div></div><button onClick={() => setMobileNavOpen(false)} className="rounded-lg p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent/60" aria-label="Luk menu"><X className="h-5 w-5" /></button></div>
       {navigation(true)}{userFooter}
     </aside></div>}

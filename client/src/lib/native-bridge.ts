@@ -305,13 +305,6 @@ export async function initNative(): Promise<void> {
   if (!isNative()) return;
   
   try {
-    // Status bar
-    const { StatusBar, Style } = await import('@capacitor/status-bar');
-    await StatusBar.setStyle({ style: Style.Dark });
-    await StatusBar.setBackgroundColor({ color: '#1d4ed8' });
-  } catch {}
-  
-  try {
     // Splash screen — hide after 2s
     const { SplashScreen } = await import('@capacitor/splash-screen');
     setTimeout(async () => {
