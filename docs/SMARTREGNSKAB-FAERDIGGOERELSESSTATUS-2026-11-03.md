@@ -11,6 +11,7 @@
 - AiiA-produktionsadgang er godkendt.
 - Sproom-masterintegration og sikker kundetilmelding er implementeret; hver rigtig kunde kræver eget CVR og samtykke.
 - Google Play-versionen er offentliggjort.
+- iOS-version 3.16.4, build 31604, er uploadet og står som `Ready to Submit` i TestFlight.
 - Webklienten genindlæser nu automatisk én gang, hvis en åben browser efter en deploy forsøger at hente en udgået JavaScript-chunk.
 
 ## App Review-konto
@@ -27,16 +28,15 @@ Ingen demo-faktura er sendt, og ingen rigtig kunde, betaling eller CVR er anvend
 
 ## Åbne eksterne trin
 
-1. GitHub Actions-kørslen til iOS/TestFlight venter på en ledig macOS-runner. Mål: version 3.16.4, build 31604.
-2. Build 31604 skal behandles af Apple, vælges på version 1.0 og testes fysisk på iPhone/iPad.
-3. App Store-reviewnoten skal opdateres, og `Resubmit to App Review` kræver særskilt godkendelse på handlingstidspunktet.
-4. Render viser en betalingsfejl; kontoens betalingskort skal opdateres af kontoejeren.
-5. En kontrolleret rigtig QuickPay-opkrævning og refundering kræver brugerens kort og økonomiske godkendelse.
-6. Første rigtige AiiA-bankforbindelse kræver banklogin/MitID og samtykke fra virksomheden.
-7. Sproom/NemHandel end-to-end for en kundecase kræver et andet rigtigt kunde-CVR og kundens samtykke; ADD SmartDrift ApS må ikke oprettes som sit eget child-selskab.
-8. Det fulde femårsbevis kræver en rigtig afsluttet/valgt regnskabsperiode med mindst én bogført postering eller faktura og et tilknyttet originalbilag. Den tidligere testperiode havde en rigtig originalfil, men 0 bogførte posteringer og 0 fakturaer.
-9. De syv eksisterende selskabsposter uden regnskabsårsstart må ikke udfyldes ved gæt. Den regnskabsansvarlige skal vælge den korrekte dato pr. juridisk enhed.
-10. Myndighedsindsendelse bør først ske efter uafhængig juridisk/regnskabsmæssig gennemgang og særskilt godkendelse af selve indsendelsen.
+1. Build 31604 skal vælges på App Store-version 1.0 og testes fysisk på iPhone/iPad via TestFlight.
+2. App Store-reviewnoten skal opdateres, og `Resubmit to App Review` kræver særskilt godkendelse på handlingstidspunktet.
+3. Render viser en betalingsfejl; kontoens betalingskort skal opdateres af kontoejeren.
+4. En kontrolleret rigtig QuickPay-opkrævning og refundering kræver brugerens kort og økonomiske godkendelse.
+5. Første rigtige AiiA-bankforbindelse kræver banklogin/MitID og samtykke fra virksomheden.
+6. Sproom/NemHandel end-to-end for en kundecase kræver et andet rigtigt kunde-CVR og kundens samtykke; ADD SmartDrift ApS må ikke oprettes som sit eget child-selskab.
+7. Det fulde femårsbevis kræver en rigtig afsluttet/valgt regnskabsperiode med mindst én bogført postering eller faktura og et tilknyttet originalbilag. Den tidligere testperiode havde en rigtig originalfil, men 0 bogførte posteringer og 0 fakturaer.
+8. De syv eksisterende selskabsposter uden regnskabsårsstart må ikke udfyldes ved gæt. Den regnskabsansvarlige skal vælge den korrekte dato pr. juridisk enhed.
+9. Myndighedsindsendelse bør først ske efter uafhængig juridisk/regnskabsmæssig gennemgang og særskilt godkendelse af selve indsendelsen.
 
 ## Myndighedspakke
 

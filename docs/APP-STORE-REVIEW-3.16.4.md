@@ -26,7 +26,7 @@ Web login fallback: `https://app.addsmartregnskab.dk/#/login`
 
 ## Før ny indsendelse
 
-- Bekræft, at build 31604 er færdigbehandlet i App Store Connect.
+- Build 31604 er uploadet og står som `Ready to Submit` i TestFlight.
 - Vælg build 31604 på version 1.0.
 - Kontrollér App Privacy og kontaktoplysninger.
 - Indsæt ovenstående note uden testkontoens adgangskode.
