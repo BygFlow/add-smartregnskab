@@ -21,6 +21,7 @@ Testvirksomheden indeholder nu tydeligt markerede demo-data:
 - demo-kunde `DEMO-001`;
 - demo-produkt `DEMO-YD-001`;
 - usendt fakturakladde `F-2026-0001`;
+- tydeligt markeret demo-bilag `app-review-demo-bilag.png` i bilagsindbakken;
 - unik bilagsadresse;
 - fungerende bilagsapp og AI-assistentpanel.
 
@@ -28,8 +29,8 @@ Ingen demo-faktura er sendt, og ingen rigtig kunde, betaling eller CVR er anvend
 
 ## Åbne eksterne trin
 
-1. Build 31604 skal vælges på App Store-version 1.0 og testes fysisk på iPhone/iPad via TestFlight.
-2. App Store-reviewnoten skal opdateres, og `Resubmit to App Review` kræver særskilt godkendelse på handlingstidspunktet.
+1. Build 31604 er valgt på App Store-version 1.0, og reviewnoten er opdateret. Buildet skal stadig testes fysisk på iPhone/iPad via TestFlight.
+2. App Store Connect står på `Prepare for Submission`; `Update Review`/genindsendelse kræver særskilt godkendelse på handlingstidspunktet.
 3. Render viser en betalingsfejl; kontoens betalingskort skal opdateres af kontoejeren.
 4. En kontrolleret rigtig QuickPay-opkrævning og refundering kræver brugerens kort og økonomiske godkendelse.
 5. Første rigtige AiiA-bankforbindelse kræver banklogin/MitID og samtykke fra virksomheden.

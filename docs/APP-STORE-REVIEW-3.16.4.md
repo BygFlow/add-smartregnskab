@@ -27,9 +27,10 @@ Web login fallback: `https://app.addsmartregnskab.dk/#/login`
 ## Før ny indsendelse
 
 - Build 31604 er uploadet og står som `Ready to Submit` i TestFlight.
-- Vælg build 31604 på version 1.0.
+- Build 31604 er valgt på version 1.0.
 - Kontrollér App Privacy og kontaktoplysninger.
-- Indsæt ovenstående note uden testkontoens adgangskode.
+- Ovenstående note er indsat uden testkontoens adgangskode.
+- Det markerede demo-bilag `app-review-demo-bilag.png` ligger i testvirksomhedens bilagsindbakke.
 - Test buildet fysisk på iPhone eller iPad via TestFlight.
 - Tag et skærmbillede eller en kort video af login, bilagsindbakke og fakturakladde som internt bevis.
-- Indsend først efter en særskilt bekræftelse på selve **Resubmit to App Review**-handlingen.
+- App Store Connect står på `Prepare for Submission`. Vælg først **Update Review** efter en særskilt bekræftelse på selve genindsendelsen.
