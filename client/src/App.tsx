@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { Route, Router, Switch, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
 import { isNative } from "@/lib/native-bridge";
+import { lazyWithReload as lazy } from "@/lib/lazy-with-reload";
 import RegnskabLogin from "@/pages/regnskab-login";
 import { RegnskabsPlatformShell } from "@/pages/regnskabs-shell";
 import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig";

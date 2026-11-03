@@ -1,8 +1,9 @@
-import { lazy, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, openAuthedFile, queryClient } from "@//lib/queryClient";
 import { useAuth } from "@//lib/auth";
 import { getSmartRegnskabAddonForRoute, isSmartRegnskabAddonIncluded } from "@/lib/smartregnskab-addons";
+import { lazyWithReload as lazy } from "@/lib/lazy-with-reload";
 import { useToast } from "@//hooks/use-toast";
 import { auditActionLabel, auditChangeLabels, auditEntityLabel, auditModuleLabel } from "@shared/audit-display";
 import { PageHeader, SectionCard, StatusChip } from "@/components/premium";
