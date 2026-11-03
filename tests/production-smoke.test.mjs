@@ -11,6 +11,7 @@ import { createHmac } from "node:crypto";
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("SmartRegnskab production deployment migrates, starts and keeps bootstrap secrets private", { timeout: 45_000 }, async () => {
+  const packageVersion = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")).version;
   const temp = await mkdtemp(join(tmpdir(), "smartregnskab-smoke-"));
   const files = join(temp, "files");
   await mkdir(files);
@@ -590,7 +591,10 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(saftExport.status, 200);
     const saftXml = await saftExport.text();
     assert.match(saftXml, /<AuditFileVersion>2\.1<\/AuditFileVersion>/);
-    assert.match(saftXml, /<SoftwareVersion>3\.16\.3<\/SoftwareVersion>/);
+    assert.ok(
+      saftXml.includes(`<SoftwareVersion>${packageVersion}</SoftwareVersion>`),
+      "SAF-T export must report the package version",
+    );
     assert.match(saftXml, /<TransactionID>SMOKE-1<\/TransactionID>/);
     assert.match(saftXml, /<TaxTable>/);
     assert.match(saftXml, /<TaxTableEntry><TaxType>VAT<\/TaxType><Description>VAT<\/Description>/);
@@ -607,7 +611,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operationsResponse = await fetch(`${base}/api/operations/status`, { headers: { Authorization: `Bearer ${platformToken}` } });
     assert.equal(operationsResponse.status, 200);
     const operations = await operationsResponse.json();
-    assert.equal(operations.version, "3.16.4");
+    assert.equal(operations.version, packageVersion);
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
     const backupProtectionResponse = await fetch(`${base}/api/backup-protection/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(backupProtectionResponse.status, 200);

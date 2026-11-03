@@ -42,7 +42,11 @@ test("API documentation links to real key management instead of a sandbox mock",
 
 test("SAF-T export reports the deployed application version", () => {
   const saft = read("server/saft.ts");
-  assert.match(saft, /process\.env\.APP_VERSION \|\| "3\.16\.3"/);
+  const packageVersion = JSON.parse(read("package.json")).version;
+  assert.ok(
+    saft.includes(`process.env.APP_VERSION || "${packageVersion}"`),
+    "SAF-T fallback version must match package.json",
+  );
   assert.match(saft, /<SoftwareVersion>\$\{SOFTWARE_VERSION\}<\/SoftwareVersion>/);
   assert.doesNotMatch(saft, /<SoftwareVersion>3\.5\.1<\/SoftwareVersion>/);
 });
