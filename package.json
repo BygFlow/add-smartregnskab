@@ -17,6 +17,7 @@
     "archive:drill": "node dist/archive-drill.cjs",
     "archive:real": "node dist/archive-real-bookkeeping.cjs",
     "archive:real-from-backup": "node dist/archive-real-from-backup.cjs",
+    "archive:preflight-from-backup": "node dist/preflight-real-from-backup.cjs",
     "archive:preflight": "node dist/archive-preflight.cjs",
     "archive:verify": "node dist/archive-verify.cjs",
     "db:generate": "drizzle-kit generate",

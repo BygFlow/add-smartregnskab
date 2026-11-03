@@ -92,6 +92,18 @@ async function buildAll() {
     logLevel: "info",
   });
 
+  // Skrivebeskyttet optælling fra den seneste verificerede eksterne backup.
+  // Udskriver kun ID'er, hashes og antal; aldrig virksomhedsnavne eller bilagsindhold.
+  await esbuild({
+    entryPoints: ["scripts/preflight-real-from-backup.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/preflight-real-from-backup.cjs",
+    external: externals,
+    logLevel: "info",
+  });
+
   // Skrivebeskyttet for-kontrol af virkelige regnskabsdata og originalfiler.
   // Kommandoen uploader, låser eller registrerer intet.
   await esbuild({
