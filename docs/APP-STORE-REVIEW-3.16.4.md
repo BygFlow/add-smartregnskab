@@ -32,5 +32,6 @@ Web login fallback: `https://app.addsmartregnskab.dk/#/login`
 - Ovenstående note er indsat uden testkontoens adgangskode.
 - Det markerede demo-bilag `app-review-demo-bilag.png` ligger i testvirksomhedens bilagsindbakke.
 - Test buildet fysisk på iPhone eller iPad via TestFlight.
+- Den interne gruppe `Intern test – ADD SmartRegnskab` indeholder build 31604, og kontoindehaveren er inviteret som tester.
 - Tag et skærmbillede eller en kort video af login, bilagsindbakke og fakturakladde som internt bevis.
 - App Store Connect står på `Prepare for Submission`. Vælg først **Update Review** efter en særskilt bekræftelse på selve genindsendelsen.
