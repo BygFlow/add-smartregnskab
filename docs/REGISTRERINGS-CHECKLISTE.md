@@ -19,7 +19,7 @@ Denne mappe forbereder den dokumentation, ADD SmartDrift ApS normalt skal bruge 
 - [x] Klargør beskrivelse af elektronisk fakturering og SAF-T.
 - [x] Validér en syntetisk SAF-T 2.1-eksport mod Erhvervsstyrelsens officielle XSD og gem hashes.
 - [x] Vedlæg syntetisk Object Lock-bevis og identisk restore fra den faktiske produktionsbucket.
-- [ ] Gennemfør og vedlæg isoleret restore af repræsentative, rigtige bogføringsdata og originalbilag.
+- [ ] Gennemfør og vedlæg isoleret restore af repræsentative, rigtige bogføringsdata og originalbilag. Første produktionsprøve med ét rigtigt originalbilag bestod 3. november 2026; bogførte posteringer/fakturaer mangler fortsat i stikprøven. Se `REAL-ARKIV-OG-GENDANNELSE-BEVIS-2026-11-03.md`.
 - [x] Angiv aktuelle underdatabehandlere og kendte datalokaliteter i dokumentationen.
 - [x] Kontrollér skrivebeskyttet adgang til Sprooms master-API i produktion uden at eksponere tokenet.
 - [ ] Gennemfør den første rigtige Sproom/NemHandel-produktionsprøve med separat kunde.

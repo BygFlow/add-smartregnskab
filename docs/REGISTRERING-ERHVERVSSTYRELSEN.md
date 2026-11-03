@@ -1,6 +1,6 @@
 # Registreringspakke — ADD SmartRegnskab
 
-Status: teknisk bevispakke under færdiggørelse pr. 17. oktober 2026.
+Status: teknisk bevispakke under færdiggørelse pr. 3. november 2026.
 Dokumentet er ikke en myndighedsgodkendelse.
 
 ## Produkt og udbyder
@@ -26,7 +26,7 @@ før anmeldelsen.
 | Bilag | Bilag tilhører én virksomhed. Bogførte bilag er låst. | Adgangs- og uforanderlighedstest. |
 | SAF-T | Import, forhåndskontrol og eksport af dansk SAF-T 2.1. Standardkontoplanversion `20260101`. | Roundtrip-test og officiel XSD-validering er bestået og gemt for release 3.16.2. |
 | Kontoplan | Hver lokal konto kan mappes til `standardAccountNumber`. | Rapport over ikke-mappede konti i SAF-T-klarhedskontrollen. |
-| Backup | Konsistent SQLite-backup, `quick_check`, SHA-256, krypteret S3-upload og downloadbaseret gendannelseskontrol. | Dagligt job samt bestået syntetisk Object Lock-/restore-øvelse i produktionsbucket; restore af repræsentative rigtige data mangler. |
+| Backup | Konsistent SQLite-backup, `quick_check`, SHA-256, krypteret S3-upload og downloadbaseret gendannelseskontrol. | Dagligt job, bestået syntetisk Object Lock-/restore-øvelse og bestået isoleret arkiv/restore af ét rigtigt originalbilag; en stikprøve med bogførte posteringer mangler fortsat. |
 | Adgangskontrol | Tenant-filtrering, rollebaseret adgang, stærke adgangskoder, loginlås og TOTP. | Produktionstest og ekstern penetrationstest. |
 | Hændelseslog | Væsentlige handlinger logges med bruger, tidspunkt og virksomhed. | Revisionspakke og stikprøvetest. |
 | E-fakturering | OIOUBL 2.1/Peppol BIS 3-generering, kø, fail-closed afsendelse, signeret indgående webhook og revisionsspor er implementeret. Sproom-masteraftale, token, child-company-flow og stagingtest er gennemført. | Rigtig produktionsprøve med separat kunde, send/modtag, kreditnota, afvisning og kvittering mangler. |
@@ -38,9 +38,9 @@ før anmeldelsen.
    modtagelse, kreditnota, afvisning og application response.
 2. Indsæt korrekte virksomhedsoplysninger og få privatlivspolitik,
    databehandleraftale, abonnementsvilkår og underdatabehandlerliste godkendt.
-3. Vedlæg det beståede syntetiske Object Lock-bevis og gennemfør derudover
-   en dokumenteret restore-øvelse med repræsentative rigtige bogføringsdata
-   fra den eksterne kopi i et isoleret miljø.
+3. Vedlæg Object Lock-beviserne og produktionsbeviset fra 3. november 2026.
+   Gentag derudover stikprøven med mindst én bogført postering og det
+   tilknyttede originalbilag fra den eksterne kopi i et isoleret miljø.
 4. Vedlæg den gemte SAF-T 2.1-XSD-validering og den syntetiske eksport fra release 3.16.2.
 5. Bestil uvildig sikkerhedstest og luk alle fund med høj eller kritisk risiko.
 6. Udarbejd produktbeskrivelse, systemarkitektur, ændringsstyring,
