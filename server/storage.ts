@@ -240,6 +240,22 @@ if (!hasApplicationSchema) {
     addColumn("document_inbox", "external_message_id", "text");
     addColumn("document_inbox", "posted_journal_entry_id", "integer");
     addColumn("subscriptions", "ai_addon_enabled", "integer DEFAULT 0 NOT NULL");
+    // Vedvarende produktionsdatabaser fra før migrationsjournalen kører ikke
+    // migrationsfilerne ovenfor. Genopret derfor også data-invarianten her:
+    // et aktivt, betalt AI-tilkøb skal give den tilknyttede virksomhed AI-adgang.
+    // UPDATE'en er idempotent og ændrer kun virksomheder, der allerede har
+    // tilkøbet slået til på deres abonnement.
+    if (columnExists("companies", "ai_enabled") && tableExists("subscriptions")) {
+      sqlite.exec(`
+        UPDATE companies
+        SET ai_enabled = 1
+        WHERE id IN (
+          SELECT company_id
+          FROM subscriptions
+          WHERE ai_addon_enabled = 1
+        )
+      `);
+    }
     addColumn("sproom_child_companies", "enrollment_id", "text");
     addColumn("sproom_child_companies", "nemhandel_network_id", "text");
     addColumn("sproom_child_companies", "peppol_network_id", "text");
