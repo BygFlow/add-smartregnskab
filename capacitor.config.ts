@@ -6,10 +6,9 @@ const config: CapacitorConfig = {
   webDir: 'dist/public',
   server: {
     androidScheme: 'https',
-    iosScheme: 'https',
-    // In production: set live URL here for API calls, or use localhost for embedded
-    // hostname: 'app.smartregnskab.dk',
-    // androidScheme: 'https',
+    // Capacitor's supported local iOS scheme. API calls still use the explicit
+    // HTTPS production base configured in client/src/lib/queryClient.ts.
+    iosScheme: 'capacitor',
   },
   plugins: {
     SplashScreen: {

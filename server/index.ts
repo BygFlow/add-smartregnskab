@@ -26,8 +26,10 @@ const allowedOrigins = new Set(
     .map((origin) => origin.trim())
     .filter(Boolean),
 );
-// Capacitor kører den signerede, indlejrede klient fra denne faste origin.
-// Den skal ikke afhænge af en manuelt vedligeholdt Render-variabel.
+// Capacitor kører de signerede, indlejrede klienter fra faste lokale origins.
+// iOS bruger capacitor://localhost, mens Android bruger https://localhost.
+// De skal ikke afhænge af en manuelt vedligeholdt Render-variabel.
+allowedOrigins.add("capacitor://localhost");
 allowedOrigins.add("https://localhost");
 app.use((req, res, next) => {
   const origin = req.headers.origin;
