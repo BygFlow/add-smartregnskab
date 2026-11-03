@@ -34,6 +34,8 @@
 	<string>ADD SmartRegnskab kan gemme et dokument i dit fotobibliotek, når du selv vælger det.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Placering bruges kun til funktioner, hvor du aktivt vælger at registrere lokation sammen med et bilag.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Placering bruges kun, hvis du aktivt vælger en funktion, der registrerer lokation sammen med et bilag, også når appen midlertidigt er i baggrunden.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

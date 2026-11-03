@@ -22,14 +22,17 @@ test("administrator can initiate account deletion separately from subscription c
 });
 
 test("iOS and Android release numbers are incremented for the deletion flow", async () => {
-  const [project, gradle, pkg] = await Promise.all([
+  const [project, infoPlist, gradle, pkg] = await Promise.all([
     read("../ios/App/App.xcodeproj/project.pbxproj"),
+    read("../ios/App/App/Info.plist"),
     read("../android/app/build.gradle"),
     read("../package.json"),
   ]);
 
-  assert.match(project, /CURRENT_PROJECT_VERSION = 31606;/);
+  assert.match(project, /CURRENT_PROJECT_VERSION = 31607;/);
   assert.match(project, /MARKETING_VERSION = 3\.16\.4;/);
+  assert.match(infoPlist, /<key>NSLocationAlwaysAndWhenInUseUsageDescription<\/key>/);
+  assert.match(infoPlist, /også når appen midlertidigt er i baggrunden/);
   assert.match(gradle, /versionCode 30/);
   assert.match(gradle, /versionName "3\.16\.4"/);
   assert.equal(JSON.parse(pkg).version, "3.16.4");
