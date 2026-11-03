@@ -75,6 +75,7 @@ test("add-on purchase and monthly packages have one truthful commercial flow", (
   const marketing = read("client/src/pages/marketing.tsx");
   const platform = read("client/src/pages/regnskabssystem.tsx");
   const routes = read("server/routes.ts");
+  const migration = read("migrations/0017_sync_ai_addon_access.sql");
 
   assert.match(marketplace, /POST", "\/api\/subscription\/ai-addon"/);
   assert.match(marketplace, /POST", "\/api\/subscription\/plan"/);
@@ -90,6 +91,7 @@ test("add-on purchase and monthly packages have one truthful commercial flow", (
   assert.match(routes, /tx\.update\(subscriptions\)[\s\S]*aiAddonEnabled: enabled \? 1 : 0/);
   assert.match(routes, /tx\.update\(companies\)[\s\S]*aiEnabled: enabled \? 1 : 0/);
   assert.match(marketplace, /invalidateQueries\(\{ queryKey: \["\/api\/ai-usage"\] \}\)[\s\S]*refresh\(\)/);
+  assert.match(migration, /UPDATE `companies`[\s\S]*`ai_enabled` = 1[\s\S]*`ai_addon_enabled` = 1/);
   assert.match(routes, /planId: plan\.id, billingCycle: "maanedlig"/);
 });
 
