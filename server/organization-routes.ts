@@ -18,6 +18,23 @@ function h(fn: (req: Request, res: Response) => Promise<unknown>) {
 
 const digits8 = (value: unknown) => String(value ?? "").replace(/\D/g, "");
 
+function wouldCreateCompanyCycle(
+  companies: Array<{ id: number; parentCompanyId?: number | null }>,
+  companyId: number,
+  parentCompanyId: number | null,
+) {
+  if (parentCompanyId == null) return false;
+  const byId = new Map(companies.map((company) => [company.id, company]));
+  const visited = new Set<number>([companyId]);
+  let current: number | null = parentCompanyId;
+  while (current != null) {
+    if (visited.has(current)) return true;
+    visited.add(current);
+    current = byId.get(current)?.parentCompanyId ?? null;
+  }
+  return false;
+}
+
 async function context(req: Request) {
   // Brug altid den virksomhed, som den godkendte session aktuelt arbejder i.
   // Det er afgørende for fagbrugere, som kan skifte mellem flere klienter.
@@ -113,10 +130,20 @@ export function registerOrganizationRoutes(app: Express) {
     const parentCompanyId = req.body?.parentCompanyId === null ? null : Number(req.body?.parentCompanyId ?? company.parentCompanyId);
     if (parentCompanyId === id) return res.status(400).json({ error: "Et selskab kan ikke være sit eget moderselskab." });
     if (parentCompanyId && !companies.some((item) => item.id === parentCompanyId)) return res.status(400).json({ error: "Moderselskabet skal være i samme kundeorganisation." });
+    if (wouldCreateCompanyCycle(companies, id, parentCompanyId)) {
+      return res.status(400).json({ error: "Selskabsstrukturen må ikke indeholde en cirkel." });
+    }
     const ownershipPercent = req.body?.ownershipPercent == null ? company.ownershipPercent : Number(req.body.ownershipPercent);
+    const groupRole = String(req.body?.groupRole ?? company.groupRole);
+    if (parentCompanyId == null && groupRole !== "standalone" && groupRole !== "holding" && groupRole !== "parent") {
+      return res.status(400).json({ error: "Et selskab uden internt moderselskab skal være selvstændigt, holding eller moderselskab." });
+    }
     const updated = await storage.updateCompany(id, {
-      parentCompanyId: id === ownerId ? null : parentCompanyId,
-      groupRole: String(req.body?.groupRole ?? company.groupRole),
+      // Abonnementsejeren er en faktureringsrolle, ikke nødvendigvis det juridiske
+      // moderselskab. Et driftsselskab kan derfor fortsat eje abonnementet, selv om
+      // en holding placeres over det i koncernstrukturen.
+      parentCompanyId,
+      groupRole,
       ownershipPercent,
     });
     await audit(req, "opdater_selskabsstruktur", "company", String(id));
