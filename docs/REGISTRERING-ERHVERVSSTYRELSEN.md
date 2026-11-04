@@ -1,6 +1,6 @@
 # Registreringspakke — ADD SmartRegnskab
 
-Status: teknisk bevispakke under færdiggørelse pr. 3. november 2026.
+Status: teknisk bevispakke under færdiggørelse pr. 4. november 2026.
 Dokumentet er ikke en myndighedsgodkendelse.
 
 ## Produkt og udbyder
@@ -31,6 +31,7 @@ før anmeldelsen.
 | Hændelseslog | Væsentlige handlinger logges med bruger, tidspunkt og virksomhed. | Revisionspakke og stikprøvetest. |
 | E-fakturering | OIOUBL 2.1/Peppol BIS 3-generering, kø, fail-closed afsendelse, signeret indgående webhook og revisionsspor er implementeret. Sproom-masteraftale, token, child-company-flow og stagingtest er gennemført. | Rigtig produktionsprøve med separat kunde, send/modtag, kreditnota, afvisning og kvittering mangler. |
 | Bankafstemning | Filimport og afstemningsstatus findes. Direkte bankfeed kræver leverandøraftale. | Test af synlige differencer og afstemningsspor. |
+| Moms API | SKAT NemVirksomheds tre SOAP-tjenester er implementeret med OCES3/WS-Security, 17 officielle momsangivelsesfelter, eksplicit ledergodkendelse og efterfølgende TastSelv-godkendelse. | Automatiske tests er bestået. Officiel test af delegation, endpoints, kladde og kvittering afventer Skattestyrelsens testadgang. |
 
 ## Før anmeldelse
 
@@ -42,10 +43,12 @@ før anmeldelsen.
    Gentag derudover stikprøven med mindst én bogført postering og det
    tilknyttede originalbilag fra den eksterne kopi i et isoleret miljø.
 4. Vedlæg den gemte SAF-T 2.1-XSD-validering og den syntetiske eksport fra release 3.16.2.
-5. Bestil uvildig sikkerhedstest og luk alle fund med høj eller kritisk risiko.
-6. Udarbejd produktbeskrivelse, systemarkitektur, ændringsstyring,
+5. Få SKATs testadgang via `momsapi@sktst.dk`, gennemfør delegations-, kladde-
+   og kvitteringstesten og gem resultatet i myndighedspakken.
+6. Bestil uvildig sikkerhedstest og luk alle fund med høj eller kritisk risiko.
+7. Udarbejd produktbeskrivelse, systemarkitektur, ændringsstyring,
    hændelsesberedskab, driftsaftale og supportprocedure.
-7. Indsend anmeldelsen via Virk og afvent Erhvervsstyrelsens registrering, før
+8. Indsend anmeldelsen via Virk og afvent Erhvervsstyrelsens registrering, før
    produktet markedsføres som et registreret bogføringssystem.
 
 ## Kommende krav 2027–2028

@@ -14,6 +14,7 @@ const requiredFiles = [
   "docs/INTEGRATIONSADAPTERE.md", "docs/SIKKERHEDSREVIEW-3.6.0.md", "docs/LOVSTATUS-2026-09-10.md",
   "docs/FAGPORTAL-3.7.0.md", "server/professional-routes.ts",
   "docs/AIIA-QUICKPAY-DRIFT.md", "server/aiia.ts", "server/payments.ts",
+  "docs/SKAT-MOMS-API.md", "server/vat-api.ts", "server/vat-api-routes.ts",
   "server/saft.ts", "server/backup-service.ts", "server/einvoice.ts", "server/einvoice-routes.ts",
   "server/import-adapters.ts", "server/migration-routes.ts", "server/readiness-routes.ts",
   "docs/SAF-T-XSD-VALIDERING-2026-10-17.md",
@@ -38,6 +39,11 @@ const productionEnv = [
   ["einvoice-inbound", sproom ? [] : ["EINVOICE_WEBHOOK_SECRET"]],
   ["subscription-payments", ["QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY"]],
   ["automatic-bankdata", ["AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET"]],
+  ["skat-moms-api", [
+    "SKAT_MOMS_API_PROVIDER_CVR", "SKAT_MOMS_API_CALENDAR_WSDL", "SKAT_MOMS_API_CALENDAR_ENDPOINT",
+    "SKAT_MOMS_API_DRAFT_WSDL", "SKAT_MOMS_API_DRAFT_ENDPOINT", "SKAT_MOMS_API_RECEIPT_WSDL",
+    "SKAT_MOMS_API_RECEIPT_ENDPOINT", "SKAT_MOMS_API_PRIVATE_KEY_PEM", "SKAT_MOMS_API_CERT_PEM",
+  ]],
 ];
 for (const [id, names] of productionEnv) {
   if (names.length === 0) continue;

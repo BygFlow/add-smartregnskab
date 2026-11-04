@@ -24,6 +24,8 @@ import { registerPublicAddConnectRoutes } from "./add-connect";
 import { registerExternalAccountingApi } from "./external-accounting-api";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
+import { registerVatApiRoutes } from "./vat-api-routes";
+import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -401,6 +403,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       relatedType: "tilmelding",
       relatedId: user.id,
     });
+    await ensureNemhandelRegistrationNotice(company.id, user.id);
 
     res.status(201).json({
       ok: true,
@@ -626,7 +629,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
     "/regulatory-changes", "/reminder-flow", "/reports", "/role-controls", "/professional",
     "/security-audit-events", "/suppliers", "/system-health-events", "/tax-deadlines", "/saft", "/external-backup", "/backup-protection",
-    "/vat-periods", "/vat-reconciliations", "/vouchers", "/workflow-definitions",
+    "/vat-api", "/vat-periods", "/vat-reconciliations", "/vouchers", "/workflow-definitions",
     "/workflow-runs", "/year-end-closes",
   ];
   app.use("/api", (req, res, next) => {
@@ -2461,6 +2464,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       startedAt: nowIso(), cancelledAt: null,
     }));
     await audit(req, "opret_virksomhed", "company", company.id, company.name);
+    await ensureNemhandelRegistrationNotice(company.id, admin.id);
     res.status(201).json({ company, admin: safeUser(admin), subscription, plan });
   }));
 
@@ -6270,6 +6274,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerMigrationRoutes(app);
   registerReadinessRoutes(app);
   registerEInvoiceRoutes(app);
+  registerVatApiRoutes(app);
   registerProfessionalRoutes(app);
   registerOrganizationRoutes(app);
   registerAiiaRoutes(app);

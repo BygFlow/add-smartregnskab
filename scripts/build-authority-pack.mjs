@@ -13,6 +13,7 @@ const files = [
   "docs/LOVSTATUS-2026-09-10.md",
   "docs/FAGPORTAL-3.7.0.md",
   "docs/AIIA-QUICKPAY-DRIFT.md",
+  "docs/SKAT-MOMS-API.md",
   "docs/SAF-T-EKSPORT.md",
   "docs/SAF-T-XSD-VALIDERING-2026-10-17.md",
   "docs/OBJECT-LOCK-RESTORE-BEVIS-2026-10-17.md",

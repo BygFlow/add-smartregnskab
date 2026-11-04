@@ -8,6 +8,7 @@ import { monitorRegulatorySources } from "./regulatory-monitor";
 import { createExternalBackup, externalBackupConfigured } from "./backup-service";
 import { runWeeklyBookkeepingArchive, weeklyArchiveEnabled } from "./bookkeeping-archive-weekly";
 import { syncAllAiia } from "./aiia";
+import { ensureNemhandelRegistrationNoticesForAllCompanies } from "./nemhandel-registration-notice";
 
 /**
  * Automatiske job.
@@ -311,6 +312,20 @@ export async function jobRegulatoryMonitor(): Promise<JobResult> {
 // ══════════════════════════════════════════════════
 
 const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Promise<JobResult> }> = {
+  nemhandel_registreringsbesked: {
+    label: "Udsend lovpligtig information om Nemhandelsregisteret",
+    everyMinutes: 60 * 24,
+    run: async () => {
+      const created = await ensureNemhandelRegistrationNoticesForAllCompanies();
+      return {
+        job: "nemhandel_registreringsbesked",
+        affected: created,
+        detail: created === 0
+          ? "Ingen nye NemHandel-meddelelser skulle oprettes."
+          : `${created} virksomhed(er) fik information om muligheden for tilmelding til Nemhandelsregisteret.`,
+      };
+    },
+  },
   aiia_bank_sync: {
     label: "Hent nye bankposter fra AiiA",
     everyMinutes: 15,

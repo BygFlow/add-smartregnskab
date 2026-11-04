@@ -5,6 +5,7 @@ import {
 } from "@shared/schema";
 import { db, storage } from "./storage";
 import { requireRole, tenantId } from "./auth";
+import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
 
 function h(fn: (req: Request, res: Response) => Promise<unknown>) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -97,6 +98,7 @@ export function registerOrganizationRoutes(app: Express) {
       userId: req.auth!.userId, companyId: company.id, role: "leder", status: "active", createdAt: new Date().toISOString(),
     }).onConflictDoNothing({ target: [companyAccessMemberships.userId, companyAccessMemberships.companyId] });
     await audit(req, "opret_selskab", "company", `${company.name} (${company.cvr})`);
+    await ensureNemhandelRegistrationNotice(company.id, req.auth!.userId);
     res.status(201).json(company);
   }));
 

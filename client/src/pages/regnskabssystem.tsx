@@ -121,6 +121,7 @@ const KontoplanSkabeloner = lazy(() => import("@/pages/regnskab-tabs/kontoplan-s
 const Dimensioner = lazy(() => import("@/pages/regnskab-tabs/dimensioner"));
 const Regnskabskategorier = lazy(() => import("@/pages/regnskab-tabs/regnskabskategorier"));
 const Saft = lazy(() => import("@/pages/regnskab-tabs/saft"));
+const MomsApi = lazy(() => import("@/pages/regnskab-tabs/moms-api"));
 const WorkflowBuilder = lazy(() => import("@/pages/regnskab-tabs/workflow-builder"));
 const IntegrationRuns = lazy(() => import("@/pages/regnskab-tabs/integration-runs"));
 const RetryQueue = lazy(() => import("@/pages/regnskab-tabs/retry-queue"));
@@ -3091,6 +3092,8 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </div>
                   )}
                 </SectionCard>
+
+                <MomsApi />
 
                 <SectionCard title="Momsfunktioner" icon={<Calculator className="size-4" />}>
                   <div className="grid gap-3 md:grid-cols-2">

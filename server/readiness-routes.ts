@@ -6,6 +6,7 @@ import { providerStatus } from "./einvoice";
 import { emailConfigured } from "./messaging";
 import { aiProviderConfigured } from "./ai-provider";
 import { mitidProviderStatus } from "./mitid";
+import { vatApiProviderStatus } from "./vat-api";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: any) => Promise.resolve(fn(req, res)).catch(next);
 const configured = (...names: string[]) => names.every((name) => Boolean(process.env[name]?.trim()));
@@ -63,6 +64,7 @@ export function registerReadinessRoutes(app: Express) {
       { id: "quickpay", name: "QuickPay", mode: "API v10", configured: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") },
       { id: "openai", name: "OpenAI", mode: "Responses API", configured: aiProviderConfigured() },
       { id: "mitid", name: "MitID Erhverv / Idura", mode: "OIDC + PKCE", configured: mitidProviderStatus().configured },
+      { id: "skat_moms", name: "SKAT NemVirksomhed / Moms API", mode: "SOAP + OCES3", configured: vatApiProviderStatus().configured },
       { id: "stripe", name: "Stripe", mode: "API", configured: configured("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET") },
     ] });
   }));
@@ -80,6 +82,7 @@ export function registerReadinessRoutes(app: Express) {
       { id: "payments", name: "Betalinger", status: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") ? "ok" : "warning", message: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") ? "QuickPay API og callbacksignatur er konfigureret." : "QuickPay-produktionsnøgler mangler." },
       { id: "ai", name: "AI-assistent", status: aiProviderConfigured() ? "ok" : "warning", message: aiProviderConfigured() ? "OpenAI Responses API er konfigureret med forbrugsmåling og dataminimering." : "AI bruger verificerede standardsvar, indtil en produktionsnøgle er konfigureret." },
       { id: "mitid", name: "MitID Erhverv", status: mitidProviderStatus().configured ? (mitidProviderStatus().environment === "production" ? "ok" : "warning") : "warning", message: mitidProviderStatus().configured ? `Idura OIDC er konfigureret i ${mitidProviderStatus().environment === "production" ? "produktion" : "testmiljø"}.` : "Idura OIDC-nøgler mangler." },
+      { id: "skat_moms", name: "SKAT NemVirksomhed / Moms API", status: vatApiProviderStatus().configured ? (vatApiProviderStatus().environment === "production" ? "ok" : "warning") : "warning", message: vatApiProviderStatus().configured ? `Moms API er konfigureret i ${vatApiProviderStatus().environment === "production" ? "produktion" : "testmiljø"}; endelig godkendelse sker altid i TastSelv.` : "SKAT testendpoints og OCES3-certifikat mangler." },
       { id: "security", name: "Sikkerhedsnøgler", status: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "ok" : "error", message: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "Session og kryptering bruger produktionsnøgler." : "Kritiske sikkerhedsnøgler mangler." },
     ];
     const blocking = services.filter((service) => service.status === "error");
