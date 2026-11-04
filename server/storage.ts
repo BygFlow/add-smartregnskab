@@ -186,6 +186,40 @@ if (!hasApplicationSchema) {
         created_at text NOT NULL,
         updated_at text NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS company_identity_verifications (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        company_id integer NOT NULL,
+        provider text DEFAULT 'idura' NOT NULL,
+        environment text DEFAULT 'test' NOT NULL,
+        status text DEFAULT 'pending' NOT NULL,
+        expected_cvr text NOT NULL,
+        verified_cvr text,
+        subject_hash text,
+        identity_uuid_hash text,
+        actor_role text,
+        assurance_level text,
+        initiated_by integer NOT NULL,
+        started_at text NOT NULL,
+        verified_at text,
+        failed_at text,
+        failure_reason text,
+        evidence text,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS mitid_oidc_states (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        state_hash text NOT NULL,
+        company_id integer NOT NULL,
+        user_id integer NOT NULL,
+        verification_id integer NOT NULL,
+        expected_cvr text NOT NULL,
+        code_verifier_encrypted text NOT NULL,
+        nonce_encrypted text NOT NULL,
+        expires_at text NOT NULL,
+        used_at text,
+        created_at text NOT NULL
+      );
     `);
 
     addColumn("dimension_values", "company_id", "integer");
@@ -278,6 +312,8 @@ if (!hasApplicationSchema) {
     "CREATE UNIQUE INDEX IF NOT EXISTS journal_entries_company_number_unique ON journal_entries (company_id, entry_number)",
     "CREATE UNIQUE INDEX IF NOT EXISTS quotes_company_number_unique ON quotes (company_id, quote_number)",
     "CREATE UNIQUE INDEX IF NOT EXISTS einvoice_company_provider_message_unique ON einvoice_queue (company_id, provider_message_id)",
+    "CREATE INDEX IF NOT EXISTS company_identity_verification_company_created_idx ON company_identity_verifications (company_id, created_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS mitid_oidc_states_state_hash_unique ON mitid_oidc_states (state_hash)",
     "CREATE UNIQUE INDEX IF NOT EXISTS bank_transactions_company_external_unique ON bank_transactions (company_id, external_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS companies_document_inbox_token_unique ON companies (document_inbox_token)",
     "CREATE UNIQUE INDEX IF NOT EXISTS document_inbox_company_message_unique ON document_inbox (company_id, external_message_id)",

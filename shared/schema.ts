@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import type * as z from "zod/mini";
 
@@ -685,6 +685,54 @@ export const authTokens = sqliteTable("auth_tokens", {
 
 export const insertAuthTokenSchema = createInsertSchema(authTokens).omit({ id: true });
 export type AuthToken = typeof authTokens.$inferSelect;
+
+// ── MitID Erhverv — virksomhedsidentitet via certificeret broker ──
+// Rå ID-tokens, CPR-numre og UUID'er gemmes aldrig. Kun hashede tekniske
+// identifikatorer og det verificerede CVR opbevares som revisionsbevis.
+export const companyIdentityVerifications = sqliteTable("company_identity_verifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  provider: text("provider").notNull().default("idura"),
+  environment: text("environment").notNull().default("test"),
+  status: text("status").notNull().default("pending"), // pending, verified, failed, expired
+  expectedCvr: text("expected_cvr").notNull(),
+  verifiedCvr: text("verified_cvr"),
+  subjectHash: text("subject_hash"),
+  identityUuidHash: text("identity_uuid_hash"),
+  actorRole: text("actor_role"), // company_signatory, employee
+  assuranceLevel: text("assurance_level"),
+  initiatedBy: integer("initiated_by").notNull(),
+  startedAt: text("started_at").notNull(),
+  verifiedAt: text("verified_at"),
+  failedAt: text("failed_at"),
+  failureReason: text("failure_reason"),
+  evidence: text("evidence"), // Dataminimeret JSON uden CPR, navn eller rå token
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({
+  companyCreatedIdx: index("company_identity_verification_company_created_idx")
+    .on(table.companyId, table.createdAt),
+}));
+
+export type CompanyIdentityVerification = typeof companyIdentityVerifications.$inferSelect;
+
+// Kortlivet, engangs OIDC-state. State lagres kun som hash, mens PKCE-verifier
+// og nonce er AES-GCM-krypteret med programmets ENCRYPTION_KEY.
+export const mitidOidcStates = sqliteTable("mitid_oidc_states", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  stateHash: text("state_hash").notNull().unique(),
+  companyId: integer("company_id").notNull(),
+  userId: integer("user_id").notNull(),
+  verificationId: integer("verification_id").notNull(),
+  expectedCvr: text("expected_cvr").notNull(),
+  codeVerifierEncrypted: text("code_verifier_encrypted").notNull(),
+  nonceEncrypted: text("nonce_encrypted").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type MitidOidcState = typeof mitidOidcStates.$inferSelect;
 
 // ── Login Attempts (bremser maskinel gætning af kodeord) ──
 export const loginAttempts = sqliteTable("login_attempts", {

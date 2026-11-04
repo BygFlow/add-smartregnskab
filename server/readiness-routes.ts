@@ -5,6 +5,7 @@ import { externalBackupConfigured } from "./backup-service";
 import { providerStatus } from "./einvoice";
 import { emailConfigured } from "./messaging";
 import { aiProviderConfigured } from "./ai-provider";
+import { mitidProviderStatus } from "./mitid";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: any) => Promise.resolve(fn(req, res)).catch(next);
 const configured = (...names: string[]) => names.every((name) => Boolean(process.env[name]?.trim()));
@@ -61,6 +62,7 @@ export function registerReadinessRoutes(app: Express) {
       { id: "aiia", name: "AiiA / Mastercard Open Banking", mode: "OAuth 2.0", configured: configured("AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET") },
       { id: "quickpay", name: "QuickPay", mode: "API v10", configured: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") },
       { id: "openai", name: "OpenAI", mode: "Responses API", configured: aiProviderConfigured() },
+      { id: "mitid", name: "MitID Erhverv / Idura", mode: "OIDC + PKCE", configured: mitidProviderStatus().configured },
       { id: "stripe", name: "Stripe", mode: "API", configured: configured("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET") },
     ] });
   }));
@@ -77,6 +79,7 @@ export function registerReadinessRoutes(app: Express) {
       { id: "bankdata", name: "Automatisk bankdata", status: configured("AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET") ? "ok" : "warning", message: configured("AIIA_CLIENT_ID", "AIIA_CLIENT_SECRET") ? "AiiA OAuth er konfigureret." : "AiiA-produktionsnøgler mangler." },
       { id: "payments", name: "Betalinger", status: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") ? "ok" : "warning", message: configured("QUICKPAY_API_KEY", "QUICKPAY_PRIVATE_KEY") ? "QuickPay API og callbacksignatur er konfigureret." : "QuickPay-produktionsnøgler mangler." },
       { id: "ai", name: "AI-assistent", status: aiProviderConfigured() ? "ok" : "warning", message: aiProviderConfigured() ? "OpenAI Responses API er konfigureret med forbrugsmåling og dataminimering." : "AI bruger verificerede standardsvar, indtil en produktionsnøgle er konfigureret." },
+      { id: "mitid", name: "MitID Erhverv", status: mitidProviderStatus().configured ? (mitidProviderStatus().environment === "production" ? "ok" : "warning") : "warning", message: mitidProviderStatus().configured ? `Idura OIDC er konfigureret i ${mitidProviderStatus().environment === "production" ? "produktion" : "testmiljø"}.` : "Idura OIDC-nøgler mangler." },
       { id: "security", name: "Sikkerhedsnøgler", status: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "ok" : "error", message: configured("SESSION_SECRET", "ENCRYPTION_KEY") ? "Session og kryptering bruger produktionsnøgler." : "Kritiske sikkerhedsnøgler mangler." },
     ];
     const blocking = services.filter((service) => service.status === "error");

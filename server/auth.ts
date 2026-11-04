@@ -224,6 +224,7 @@ export function subscriptionAccessGuard(req: Request, res: Response, next: NextF
     "/subscription",
     "/payment",
     "/billing",
+    "/mitid",
     "/support",
     "/support-cases",
   ];
@@ -288,6 +289,7 @@ export function platformCustomerDataGuard(req: Request, res: Response, next: Nex
   const allowed =
     path.startsWith("/auth/")
     || path === "/company"
+    || path.startsWith("/mitid")
     || path === "/plans"
     || path.startsWith("/security")
     || path.startsWith("/platform/")

@@ -156,7 +156,7 @@ export function Tilmeld() {
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/signup", {
         companyName,
-        cvr: cvr.trim() || undefined,
+        cvr: cvr.replace(/\D/g, ""),
         name,
         email,
         phone: phone.trim() || undefined,
@@ -209,8 +209,8 @@ export function Tilmeld() {
             <Input id="signup-company" data-testid="input-signup-company" value={companyName} onChange={(event) => setCompanyName(event.target.value)} required />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="signup-cvr">CVR <span className="text-muted-foreground">(valgfri)</span></Label>
-            <Input id="signup-cvr" data-testid="input-signup-cvr" value={cvr} onChange={(event) => setCvr(event.target.value)} inputMode="numeric" />
+            <Label htmlFor="signup-cvr">CVR</Label>
+            <Input id="signup-cvr" data-testid="input-signup-cvr" value={cvr} onChange={(event) => setCvr(event.target.value.replace(/\D/g, ""))} inputMode="numeric" maxLength={8} required />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="signup-name">Dit navn</Label>

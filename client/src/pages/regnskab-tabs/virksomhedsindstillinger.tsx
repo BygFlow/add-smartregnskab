@@ -9,7 +9,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Landmark, Save } from "lucide-react";
+import { AlertTriangle, Building2, CheckCircle2, Landmark, Loader2, Save, ShieldCheck } from "lucide-react";
+
+type MitidStatus = {
+  configured: boolean;
+  environment: string;
+  missing: string[];
+  verified: boolean;
+  verification: null | {
+    id: number;
+    status: string;
+    expectedCvr: string;
+    verifiedCvr: string | null;
+    actorRole: string | null;
+    startedAt: string;
+    verifiedAt: string | null;
+    failureReason: string | null;
+  };
+};
 
 type CompanyForm = {
   name: string;
@@ -37,13 +54,45 @@ const value = (input: unknown) => input == null ? "" : String(input);
 
 export default function Virksomhedsindstillinger() {
   const { toast } = useToast();
-  const { refresh } = useAuth();
+  const { refresh, user } = useAuth();
   const qc = useQueryClient();
   const [form, setForm] = useState<CompanyForm>(EMPTY);
 
   const company = useQuery<Company>({
     queryKey: ["/api/company"],
     queryFn: async () => (await apiRequest("GET", "/api/company")).json(),
+  });
+
+  const mitid = useQuery<MitidStatus>({
+    queryKey: ["/api/mitid/status"],
+    queryFn: async () => (await apiRequest("GET", "/api/mitid/status")).json(),
+    enabled: user?.role === "leder",
+  });
+
+  useEffect(() => {
+    const query = window.location.hash.split("?")[1] ?? "";
+    const params = new URLSearchParams(query);
+    const result = params.get("mitid");
+    if (result === "success") {
+      void qc.invalidateQueries({ queryKey: ["/api/mitid/status"] });
+      toast({ title: "Virksomheden er verificeret", description: "CVR og tegningsberettigelse er bekræftet med MitID Erhverv." });
+    } else if (result === "failed") {
+      void qc.invalidateQueries({ queryKey: ["/api/mitid/status"] });
+      toast({ title: "MitID-verificeringen blev ikke gennemført", description: "Prøv igen, eller kontrollér at den tegningsberettigede bruger det korrekte MitID Erhverv.", variant: "destructive" });
+    }
+  }, [qc, toast]);
+
+  const startMitid = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/mitid/start");
+      return response.json() as Promise<{ authorizationUrl: string; environment: string }>;
+    },
+    onSuccess: ({ authorizationUrl }) => window.location.assign(authorizationUrl),
+    onError: (error: unknown) => toast({
+      title: "MitID kunne ikke startes",
+      description: error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Ukendt fejl",
+      variant: "destructive",
+    }),
   });
 
   useEffect(() => {
@@ -129,6 +178,43 @@ export default function Virksomhedsindstillinger() {
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="company-website">Hjemmeside</Label><Input id="company-website" type="url" value={form.website} onChange={(event) => set("website", event.target.value)} placeholder="https://" /></div>
         </div>
       </section>
+
+      {user?.role === "leder" && <section className="rounded-xl border bg-card p-5 shadow-sm" data-testid="mitid-company-verification">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary"><ShieldCheck className="h-5 w-5" /></div>
+            <div>
+              <h3 className="font-semibold">Virksomhedsidentitet med MitID Erhverv</h3>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Bekræft CVR og tegningsberettigelse via den certificerede broker Idura. SmartRegnskab gemmer ikke CPR-nummer eller rå MitID-token.</p>
+            </div>
+          </div>
+          {mitid.data?.verified
+            ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/10 px-3 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Verificeret</span>
+            : <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700"><AlertTriangle className="h-3.5 w-3.5" />Afventer</span>}
+        </div>
+
+        {mitid.isLoading ? <Skeleton className="h-20 w-full" /> : <div className="space-y-4">
+          {mitid.data?.environment !== "production" && <div className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            Testmiljø: flowet kan afprøves med Iduras testidentiteter. Det bliver først bindende for kunder, når Idura har åbnet produktion.
+          </div>}
+          {mitid.data?.verified && mitid.data.verification ? <div className="grid gap-2 rounded-lg border p-4 text-sm sm:grid-cols-2">
+            <p><span className="text-muted-foreground">Verificeret CVR:</span> <strong>{mitid.data.verification.verifiedCvr}</strong></p>
+            <p><span className="text-muted-foreground">Rolle:</span> <strong>Tegningsberettiget</strong></p>
+            <p className="sm:col-span-2"><span className="text-muted-foreground">Tidspunkt:</span> {mitid.data.verification.verifiedAt ? new Date(mitid.data.verification.verifiedAt).toLocaleString("da-DK") : "—"}</p>
+          </div> : <Button
+            type="button"
+            variant="outline"
+            onClick={() => startMitid.mutate()}
+            disabled={startMitid.isPending || !mitid.data?.configured || !/^\d{8}$/.test(value(company.data?.cvr))}
+            data-testid="start-mitid-company-verification"
+          >
+            {startMitid.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+            Bekræft med MitID Erhverv
+          </Button>}
+          {!mitid.data?.configured && <p className="text-sm text-destructive">Idura-forbindelsen mangler teknisk konfiguration.</p>}
+          {!/^\d{8}$/.test(value(company.data?.cvr)) && <p className="text-sm text-muted-foreground">Gem et gyldigt CVR-nummer ovenfor, før verificeringen startes.</p>}
+        </div>}
+      </section>}
 
       <section className="rounded-xl border bg-card p-5 shadow-sm">
         <div className="mb-5 flex items-center gap-2"><Landmark className="h-5 w-5 text-primary" /><h3 className="font-semibold">Moms, valuta og bank</h3></div>

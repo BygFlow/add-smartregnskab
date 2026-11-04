@@ -23,6 +23,7 @@ import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import { registerPublicAddConnectRoutes } from "./add-connect";
 import { registerExternalAccountingApi } from "./external-accounting-api";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
+import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -59,7 +60,7 @@ import {
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
   insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, auditLogs, documentInbox,
-  companies, subscriptions,
+  companies, companyIdentityVerifications, subscriptions,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
 import { DPA_VERSION } from "@shared/legal-documents";
@@ -315,9 +316,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const name = String(b.name ?? "").trim();
     const companyName = String(b.companyName ?? "").trim();
     const password = String(b.password ?? "");
+    const cvr = String(b.cvr ?? "").replace(/\D/g, "");
 
-    if (!email.includes("@") || !name || !companyName) {
-      return res.status(400).json({ error: "Udfyld virksomhedsnavn, dit navn og en gyldig e-mailadresse." });
+    if (!email.includes("@") || !name || !companyName || !/^\d{8}$/.test(cvr)) {
+      return res.status(400).json({ error: "Udfyld virksomhedsnavn, CVR på 8 cifre, dit navn og en gyldig e-mailadresse." });
     }
     const strength = passwordStrength(password);
     if (!strength.ok) {
@@ -346,7 +348,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const company = await storage.createCompany({
       name: companyName,
       address: b.address ?? null,
-      cvr: b.cvr ?? null,
+      cvr,
       phone: b.phone ?? null,
       email,
       status: "proeve",
@@ -595,6 +597,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   registerPublicEInvoiceRoutes(app);
   registerPublicAiiaRoutes(app);
+  registerPublicMitidRoutes(app);
   registerPublicAddConnectRoutes(app);
   registerPublicDocumentIntakeRoutes(app);
   registerExternalAccountingApi(app);
@@ -604,7 +607,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use("/api", platformCustomerDataGuard);
   app.use("/api", professionalAccessGuard);
   const regnskabApiPrefixes = [
-    "/auth", "/company", "/organization", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform",
+    "/auth", "/company", "/organization", "/users", "/security", "/support", "/support-cases", "/subscription", "/platform", "/mitid",
     "/accounting-category-rules", "/accounting-control-center", "/accounting-integrations",
     "/accounting-rules", "/accounts", "/accruals", "/advanced-vat", "/ai-accounting-tasks",
     "/ai-governance", "/ai-regnskab", "/ai-usage", "/annual-reports", "/api-keys", "/archive-records",
@@ -660,6 +663,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // af kunde- eller assistentroller, heller ikke via en skjult URL.
   app.use("/api/regnskabssystem", requireRole("leder", "holdleder", "platform_admin"));
   app.use("/api/ai-regnskab", requireRole("leder", "holdleder", "platform_admin"));
+  registerMitidRoutes(app);
   registerDocumentIntakeRoutes(app);
 
   app.get("/api/auth/me", h(async (req, res) => {
@@ -706,8 +710,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const data = validate(insertCompanySchema.partial(), req.body);
     // Status styres kun fra platformen — ikke af virksomheden selv
     delete (data as any).status;
-    const item = await storage.updateCompany(tenantId(req), data);
-    await audit(req, "opdater", "company", tenantId(req));
+    const companyId = tenantId(req);
+    const existing = await storage.getCompany(companyId);
+    if (Object.prototype.hasOwnProperty.call(data, "cvr") && data.cvr != null && !/^\d{8}$/.test(String(data.cvr))) {
+      return res.status(400).json({ error: "CVR-nummeret skal bestå af præcis 8 cifre." });
+    }
+    const item = await storage.updateCompany(companyId, data);
+    if (Object.prototype.hasOwnProperty.call(data, "cvr") && String(existing?.cvr ?? "") !== String(data.cvr ?? "")) {
+      const changedAt = nowIso();
+      db.update(companyIdentityVerifications).set({
+        status: "expired",
+        failedAt: changedAt,
+        failureReason: "cvr_changed",
+        updatedAt: changedAt,
+      }).where(and(
+        eq(companyIdentityVerifications.companyId, companyId),
+        eq(companyIdentityVerifications.status, "verified"),
+      )).run();
+      await audit(req, "mitid_verificering_udloebet", "company", companyId, "CVR blev ændret");
+    }
+    await audit(req, "opdater", "company", companyId);
     res.json(item);
   }));
 
