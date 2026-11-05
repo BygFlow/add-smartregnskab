@@ -2510,6 +2510,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(updated);
   }));
 
+  /** Forlæng en gratis prøveperiode uden at aktivere betaling eller markere kunden som betalende. */
+  app.post("/api/platform/companies/:id/extend-trial", requirePlatformAdmin, h(async (req, res) => {
+    const id = Number(req.params.id);
+    const company = await storage.getCompany(id);
+    if (!company) return res.status(404).json({ error: "Virksomheden blev ikke fundet." });
+    const sub = await storage.getSubscriptionByCompany(id);
+    if (!sub) return res.status(404).json({ error: "Virksomheden har ikke et abonnement." });
+    if (sub.status !== "proeve") {
+      return res.status(409).json({ error: "Kun en prøveperiode kan forlænges. Et aktivt eller opsagt abonnement ændres ikke." });
+    }
+    const days = Number(req.body?.days ?? 14);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      return res.status(400).json({ error: "Prøveperioden skal forlænges med mellem 1 og 90 hele dage." });
+    }
+    const start = today();
+    const trialEndsAt = addDays(start, days);
+    const updatedSubscription = await storage.updateSubscription(sub.id, {
+      status: "proeve",
+      trialEndsAt,
+      currentPeriodStart: start,
+      currentPeriodEnd: trialEndsAt,
+    });
+    const updatedCompany = await storage.updateCompany(id, { status: "proeve" });
+    await audit(req, "forlaeng_proeveperiode", "subscription", sub.id, `${company.name}; ${days} dage til ${trialEndsAt}`);
+    res.json({ company: updatedCompany, subscription: updatedSubscription });
+  }));
+
   app.post("/api/platform/companies/:id/cancel", requirePlatformAdmin, h(async (req, res) => {
     const id = Number(req.params.id);
     const company = await storage.getCompany(id);

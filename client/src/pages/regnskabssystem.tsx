@@ -6352,10 +6352,10 @@ function PlatformRegnskabssystemPage() {
     onError: mutationError,
   });
   const companyActionMutation = useMutation({
-    mutationFn: async ({ companyId, action }: { companyId: number; action: "invoice" | "suspend" | "reactivate" }) => (await apiRequest("POST", `/api/platform/companies/${companyId}/${action}`, action === "suspend" ? { reason: "Spærret af platformadministrator" } : undefined)).json(),
+    mutationFn: async ({ companyId, action }: { companyId: number; action: "invoice" | "suspend" | "reactivate" | "extend-trial" }) => (await apiRequest("POST", `/api/platform/companies/${companyId}/${action}`, action === "suspend" ? { reason: "Spærret af platformadministrator" } : action === "extend-trial" ? { days: 14 } : undefined)).json(),
     onSuccess: async (_data, variables) => {
       await refreshPlatform("/api/platform/companies", "/api/platform/stats", "/api/platform/invoices");
-      toast({ title: variables.action === "invoice" ? "Abonnementsfaktura oprettet" : variables.action === "suspend" ? "Virksomheden er spærret" : "Virksomheden er genåbnet" });
+      toast({ title: variables.action === "invoice" ? "Abonnementsfaktura oprettet" : variables.action === "suspend" ? "Virksomheden er spærret" : variables.action === "extend-trial" ? "Prøveperioden er forlænget 14 dage" : "Virksomheden er genåbnet" });
     },
     onError: mutationError,
   });
@@ -6478,6 +6478,7 @@ function PlatformRegnskabssystemPage() {
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Brugere</span><strong>{num(company.userCount ?? 0)}</strong></div><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Næste periode</span><strong>{company.currentPeriodEnd ?? "—"}</strong></div></div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => companyActionMutation.mutate({ companyId: company.id, action: "invoice" })}><FileText className="mr-1.5 h-3.5 w-3.5"/>Opret faktura</Button>
+            {company.subscriptionStatus === "proeve" && <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => { if (window.confirm(`Forlæng prøveperioden for ${company.name} med 14 dage? Der oprettes ingen betaling.`)) companyActionMutation.mutate({ companyId: company.id, action: "extend-trial" }); }}><Clock className="mr-1.5 h-3.5 w-3.5"/>Forlæng prøve 14 dage</Button>}
             {company.status === "spaerret" ? <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => companyActionMutation.mutate({ companyId: company.id, action: "reactivate" })}><Power className="mr-1.5 h-3.5 w-3.5"/>Genåbn</Button> : <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => { if (window.confirm(`Spær adgangen for ${company.name}?`)) companyActionMutation.mutate({ companyId: company.id, action: "suspend" }); }}><Lock className="mr-1.5 h-3.5 w-3.5"/>Spær</Button>}
           </div>
           <p className="mt-3 flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> Regnskabsdata er ikke tilgængelige</p>

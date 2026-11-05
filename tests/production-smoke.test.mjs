@@ -212,6 +212,17 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const companyResult = await companyResponse.json();
     assert.ok(companyResult.company?.id);
 
+    const extendTrialResponse = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/extend-trial`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 30 }),
+    });
+    assert.equal(extendTrialResponse.status, 200);
+    const extendedTrial = await extendTrialResponse.json();
+    assert.equal(extendedTrial.company.status, "proeve");
+    assert.equal(extendedTrial.subscription.status, "proeve");
+    assert.equal(extendedTrial.subscription.trialEndsAt, extendedTrial.subscription.currentPeriodEnd);
+
     const platformCompanyList = await fetch(`${base}/api/platform/companies`, {
       headers: { Authorization: `Bearer ${platformToken}` },
     });
