@@ -349,6 +349,29 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const groupedCustomers = await groupedPlatformList.json();
     assert.equal(groupedCustomers.length, 1, "a subsidiary must not be billed as a separate platform customer");
     assert.equal(groupedCustomers[0].legalCompanyCount, 2);
+    assert.equal(groupedCustomers[0].legalCompanies.length, 2, "the platform must still list every legal company in the subscription group");
+    assert.ok(groupedCustomers[0].legalCompanies.some((company) => company.id === subsidiary.id && company.name === "Smoke Child ApS"));
+
+    const platformChildDetail = await fetch(`${base}/api/platform/companies/${subsidiary.id}`, {
+      headers: { Authorization: `Bearer ${platformToken}` },
+    });
+    assert.equal(platformChildDetail.status, 200, "the platform must be able to open safe company metadata for a subsidiary");
+    const platformChildMetadata = await platformChildDetail.json();
+    assert.equal(platformChildMetadata.company.name, "Smoke Child ApS");
+    assert.equal(platformChildMetadata.organization.subscriptionOwnerId, companyResult.company.id);
+    assert.equal(platformChildMetadata.organization.isSubscriptionOwner, false);
+    assert.equal(Object.hasOwn(platformChildMetadata.company, "bankAccount"), false, "company metadata must not expose bank details");
+
+    const updatePlatformChild = await fetch(`${base}/api/platform/companies/${subsidiary.id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: "31242426", address: "Platformvej 1", bankAccount: "must-not-be-written" }),
+    });
+    assert.equal(updatePlatformChild.status, 200);
+    const updatedPlatformChild = await updatePlatformChild.json();
+    assert.equal(updatedPlatformChild.phone, "31242426");
+    assert.equal(updatedPlatformChild.address, "Platformvej 1");
+    assert.equal(updatedPlatformChild.bankAccount, null, "platform metadata editing must not alter customer bank settings");
 
     const groupedSubscription = await fetch(`${base}/api/subscription`, {
       headers: { Authorization: `Bearer ${leaderToken}` },

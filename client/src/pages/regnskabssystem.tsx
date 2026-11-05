@@ -174,6 +174,18 @@ type PlatformCompanySummary = {
   trialEndsAt?: string | null;
   currentPeriodEnd?: string | null;
   monthlyValue?: number | null;
+  legalCompanyCount?: number | null;
+  legalCompanies?: Array<{
+    id: number;
+    name: string;
+    cvr?: string | null;
+    status?: string | null;
+    groupRole?: string | null;
+    parentCompanyId?: number | null;
+    subscriptionOwnerId: number;
+    isSubscriptionOwner: boolean;
+    userCount?: number | null;
+  }>;
 };
 
 type PlatformStats = {
@@ -6292,12 +6304,16 @@ function PlatformRegnskabssystemPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(getTabFromHash());
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [selectedPlatformCompanyId, setSelectedPlatformCompanyId] = useState<number | null>(null);
   const [editingPlan, setEditingPlan] = useState<any | null>(null);
   const [selectedSupportCase, setSelectedSupportCase] = useState<any | null>(null);
   const [supportReply, setSupportReply] = useState("");
   const [companyForm, setCompanyForm] = useState({
     name: "", cvr: "", email: "", address: "", phone: "",
     adminName: "", adminEmail: "", adminPassword: "", planId: "", billingCycle: "maanedlig", trialDays: "14",
+  });
+  const [companyEditForm, setCompanyEditForm] = useState({
+    name: "", cvr: "", email: "", phone: "", address: "", website: "", notes: "",
   });
   const [planForm, setPlanForm] = useState({
     name: "", slug: "", description: "", monthlyPrice: "", pricePerEmployee: "",
@@ -6321,6 +6337,11 @@ function PlatformRegnskabssystemPage() {
     queryKey: ["/api/platform/companies"],
     queryFn: async () => (await apiRequest("GET", "/api/platform/companies")).json(),
   });
+  const companyDetailQuery = useQuery<any>({
+    queryKey: ["/api/platform/companies", selectedPlatformCompanyId],
+    enabled: Boolean(selectedPlatformCompanyId),
+    queryFn: async () => (await apiRequest("GET", `/api/platform/companies/${selectedPlatformCompanyId}`)).json(),
+  });
   const plansQuery = useQuery<any[]>({ queryKey: ["/api/platform/plans"], enabled: activeTab === "pakker" || activeTab === "virksomheder", queryFn: async () => (await apiRequest("GET", "/api/platform/plans")).json() });
   const paymentsQuery = useQuery<any>({ queryKey: ["/api/platform/payments"], enabled: activeTab === "betalinger", queryFn: async () => (await apiRequest("GET", "/api/platform/payments")).json() });
   const platformInvoicesQuery = useQuery<any[]>({ queryKey: ["/api/platform/invoices"], enabled: activeTab === "betalinger", queryFn: async () => (await apiRequest("GET", "/api/platform/invoices")).json() });
@@ -6333,6 +6354,19 @@ function PlatformRegnskabssystemPage() {
   const platformAuditQuery = useQuery<any[]>({ queryKey: ["/api/platform/audit-logs"], enabled: activeTab === "adgangspolitik", queryFn: async () => (await apiRequest("GET", "/api/platform/audit-logs")).json() });
   const stats = statsQuery.data;
   const companies = companiesQuery.data ?? [];
+  useEffect(() => {
+    const company = companyDetailQuery.data?.company;
+    if (!company) return;
+    setCompanyEditForm({
+      name: company.name ?? "",
+      cvr: company.cvr ?? "",
+      email: company.email ?? "",
+      phone: company.phone ?? "",
+      address: company.address ?? "",
+      website: company.website ?? "",
+      notes: company.notes ?? "",
+    });
+  }, [companyDetailQuery.data]);
   const refreshPlatform = async (...keys: string[]) => {
     await Promise.all(keys.map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
   };
@@ -6348,6 +6382,23 @@ function PlatformRegnskabssystemPage() {
       setCompanyDialogOpen(false);
       setCompanyForm({ name: "", cvr: "", email: "", address: "", phone: "", adminName: "", adminEmail: "", adminPassword: "", planId: "", billingCycle: "maanedlig", trialDays: "14" });
       toast({ title: "Virksomheden er oprettet", description: "Lederkonto og prøveabonnement er klar." });
+    },
+    onError: mutationError,
+  });
+  const updateCompanyMutation = useMutation({
+    mutationFn: async () => (await apiRequest("PATCH", `/api/platform/companies/${selectedPlatformCompanyId}`, {
+      name: companyEditForm.name.trim(),
+      cvr: companyEditForm.cvr.trim() || null,
+      email: companyEditForm.email.trim() || null,
+      phone: companyEditForm.phone.trim() || null,
+      address: companyEditForm.address.trim() || null,
+      website: companyEditForm.website.trim() || null,
+      notes: companyEditForm.notes.trim() || null,
+    })).json(),
+    onSuccess: async () => {
+      await refreshPlatform("/api/platform/companies", "/api/platform/stats");
+      await queryClient.invalidateQueries({ queryKey: ["/api/platform/companies", selectedPlatformCompanyId] });
+      toast({ title: "Virksomhedsoplysningerne er gemt" });
     },
     onError: mutationError,
   });
@@ -6448,11 +6499,12 @@ function PlatformRegnskabssystemPage() {
         <SectionCard title="Kundestatus" icon={<Building2 className="size-4" />} noPadding>
           {companiesQuery.isLoading ? <div className="space-y-2 p-4"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
             : companies.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen kundevirksomheder er oprettet.</p>
-            : <div className="divide-y">{companies.slice(0, 8).map((company) => <div key={company.id} className="flex items-center gap-3 px-4 py-3">
+            : <div className="divide-y">{companies.slice(0, 8).map((company) => <button type="button" key={company.id} onClick={() => setSelectedPlatformCompanyId(company.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-4 w-4" /></div>
-              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{company.name}</p><p className="text-xs text-muted-foreground">{company.planName ?? "Ingen pakke"} · {num(company.userCount ?? 0)} brugere</p></div>
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{company.name}</p><p className="text-xs text-muted-foreground">{company.planName ?? "Ingen pakke"} · {num(company.legalCompanyCount ?? 1)} juridiske virksomheder</p></div>
               <StatusChip status={company.status ?? "ukendt"} />
-            </div>)}</div>}
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>)}</div>}
         </SectionCard>
         <SectionCard title="Databeskyttelse" icon={<ShieldCheck className="size-4" />}>
           <div className="space-y-3 text-sm">
@@ -6477,10 +6529,19 @@ function PlatformRegnskabssystemPage() {
           <p className="mt-1 text-xs text-muted-foreground">{company.cvr ? `CVR ${company.cvr} · ` : ""}{company.planName ?? "Ingen pakke"}</p>
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Brugere</span><strong>{num(company.userCount ?? 0)}</strong></div><div className="rounded-lg bg-muted p-2"><span className="block text-muted-foreground">Næste periode</span><strong>{company.currentPeriodEnd ?? "—"}</strong></div></div>
           <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => setSelectedPlatformCompanyId(company.id)}><Pencil className="mr-1.5 h-3.5 w-3.5"/>Virksomhedsinfo</Button>
             <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => companyActionMutation.mutate({ companyId: company.id, action: "invoice" })}><FileText className="mr-1.5 h-3.5 w-3.5"/>Opret faktura</Button>
             {company.subscriptionStatus === "proeve" && <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => { if (window.confirm(`Forlæng prøveperioden for ${company.name} med 14 dage? Der oprettes ingen betaling.`)) companyActionMutation.mutate({ companyId: company.id, action: "extend-trial" }); }}><Clock className="mr-1.5 h-3.5 w-3.5"/>Forlæng prøve 14 dage</Button>}
             {company.status === "spaerret" ? <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => companyActionMutation.mutate({ companyId: company.id, action: "reactivate" })}><Power className="mr-1.5 h-3.5 w-3.5"/>Genåbn</Button> : <Button size="sm" variant="outline" disabled={companyActionMutation.isPending} onClick={() => { if (window.confirm(`Spær adgangen for ${company.name}?`)) companyActionMutation.mutate({ companyId: company.id, action: "suspend" }); }}><Lock className="mr-1.5 h-3.5 w-3.5"/>Spær</Button>}
           </div>
+          {(company.legalCompanies ?? []).length > 1 && <div className="mt-4 rounded-lg border bg-muted/25 p-2">
+            <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Alle juridiske virksomheder</p>
+            <div className="space-y-1">{(company.legalCompanies ?? []).map((legalCompany) => <button type="button" key={legalCompany.id} onClick={() => setSelectedPlatformCompanyId(legalCompany.id)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-background">
+              <Building2 className="h-3.5 w-3.5 shrink-0 text-primary"/>
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{legalCompany.name}</span><span className="block text-[10px] text-muted-foreground">{legalCompany.cvr ? `CVR ${legalCompany.cvr}` : "CVR mangler"}{legalCompany.isSubscriptionOwner ? " · abonnementsejer" : " · del af abonnementet"}</span></span>
+              <StatusChip status={legalCompany.status ?? "ukendt"}/><ChevronRight className="h-3.5 w-3.5 text-muted-foreground"/>
+            </button>)}</div>
+          </div>}
           <p className="mt-3 flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> Regnskabsdata er ikke tilgængelige</p>
         </div>)}</div>}
     </SectionCard>}
@@ -6560,6 +6621,35 @@ function PlatformRegnskabssystemPage() {
       <SectionCard title="Databehandleraftaler" icon={<FileCheck2 className="size-4" />}><div className="grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-muted p-3"><strong className="block text-xl">{gdprQuery.data?.companyCount ?? 0}</strong><span className="text-xs text-muted-foreground">Virksomheder</span></div><div className="rounded-lg bg-muted p-3"><strong className="block text-xl text-emerald-600">{gdprQuery.data?.dpaAccepted ?? 0}</strong><span className="text-xs text-muted-foreground">Accepteret</span></div><div className="rounded-lg bg-muted p-3"><strong className="block text-xl text-amber-600">{gdprQuery.data?.dpaPending ?? 0}</strong><span className="text-xs text-muted-foreground">Mangler</span></div></div></SectionCard>
       <SectionCard title="Seneste platformhandlinger" icon={<ListChecks className="size-4" />} noPadding>{platformAuditQuery.isLoading ? <div className="p-4"><Skeleton className="h-24 w-full"/></div> : (platformAuditQuery.data ?? []).length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen platformhandlinger registreret.</p> : <div className="divide-y">{(platformAuditQuery.data ?? []).slice(0, 8).map((entry) => <div key={entry.id} className="px-4 py-3"><p className="text-sm font-medium">{entry.action} · {entry.target}</p><p className="text-xs text-muted-foreground">{entry.createdAt ?? "—"} · {entry.userEmail ?? "system"}</p></div>)}</div>}</SectionCard>
     </div>}
+
+    <Dialog open={Boolean(selectedPlatformCompanyId)} onOpenChange={(open) => { if (!open) setSelectedPlatformCompanyId(null); }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader><DialogTitle>Virksomhedsoplysninger</DialogTitle></DialogHeader>
+        {companyDetailQuery.isLoading ? <div className="space-y-3 py-4"><Skeleton className="h-24 w-full"/><Skeleton className="h-48 w-full"/></div>
+          : companyDetailQuery.isError ? <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Virksomhedsoplysningerne kunne ikke hentes.</div>
+          : companyDetailQuery.data && <div className="space-y-4">
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs sm:grid-cols-2">
+              <p><span className="text-muted-foreground">Status:</span> <StatusChip status={companyDetailQuery.data.company?.status ?? "ukendt"}/></p>
+              <p><span className="text-muted-foreground">Rolle:</span> {companyDetailQuery.data.organization?.isSubscriptionOwner ? "Abonnementsejer" : "Juridisk virksomhed i fælles abonnement"}</p>
+              <p><span className="text-muted-foreground">Abonnementsejer:</span> {companyDetailQuery.data.organization?.subscriptionOwnerName ?? "—"}</p>
+              <p><span className="text-muted-foreground">Pakke:</span> {companyDetailQuery.data.plan?.name ?? "Ingen pakke"}</p>
+              <p><span className="text-muted-foreground">Brugere:</span> {num(companyDetailQuery.data.userCount ?? 0)}</p>
+              <p><span className="text-muted-foreground">Databehandleraftale:</span> {companyDetailQuery.data.dpa?.accepted ? "Accepteret" : "Mangler"}</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2"><Label htmlFor="platform-edit-company-name">Virksomhedsnavn *</Label><Input id="platform-edit-company-name" value={companyEditForm.name} onChange={(event) => setCompanyEditForm((form) => ({ ...form, name: event.target.value }))}/></div>
+              <div className="space-y-2"><Label htmlFor="platform-edit-company-cvr">CVR/SE-nummer</Label><Input id="platform-edit-company-cvr" inputMode="numeric" value={companyEditForm.cvr} onChange={(event) => setCompanyEditForm((form) => ({ ...form, cvr: event.target.value }))}/></div>
+              <div className="space-y-2"><Label htmlFor="platform-edit-company-email">E-mail</Label><Input id="platform-edit-company-email" type="email" value={companyEditForm.email} onChange={(event) => setCompanyEditForm((form) => ({ ...form, email: event.target.value }))}/></div>
+              <div className="space-y-2"><Label htmlFor="platform-edit-company-phone">Telefon</Label><Input id="platform-edit-company-phone" inputMode="tel" value={companyEditForm.phone} onChange={(event) => setCompanyEditForm((form) => ({ ...form, phone: event.target.value }))}/></div>
+              <div className="space-y-2"><Label htmlFor="platform-edit-company-website">Hjemmeside</Label><Input id="platform-edit-company-website" type="url" value={companyEditForm.website} onChange={(event) => setCompanyEditForm((form) => ({ ...form, website: event.target.value }))}/></div>
+              <div className="space-y-2 sm:col-span-2"><Label htmlFor="platform-edit-company-address">Adresse</Label><Input id="platform-edit-company-address" value={companyEditForm.address} onChange={(event) => setCompanyEditForm((form) => ({ ...form, address: event.target.value }))}/></div>
+              <div className="space-y-2 sm:col-span-2"><Label htmlFor="platform-edit-company-notes">Interne platformnoter</Label><Textarea id="platform-edit-company-notes" value={companyEditForm.notes} onChange={(event) => setCompanyEditForm((form) => ({ ...form, notes: event.target.value }))}/></div>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"><Lock className="mr-1 inline h-3.5 w-3.5"/>Denne visning indeholder kun virksomheds-, abonnements- og kontaktoplysninger. Bilag, bankdata, posteringer og rapporter er fortsat afskærmet.</div>
+          </div>}
+        <DialogFooter><Button variant="outline" onClick={() => setSelectedPlatformCompanyId(null)}>Luk</Button><Button disabled={updateCompanyMutation.isPending || !companyEditForm.name.trim() || companyDetailQuery.isLoading || companyDetailQuery.isError} onClick={() => updateCompanyMutation.mutate()}>{updateCompanyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Gem virksomhedsinfo</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Dialog open={Boolean(selectedSupportCase)} onOpenChange={(open) => { if (!open) setSelectedSupportCase(null); }}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">

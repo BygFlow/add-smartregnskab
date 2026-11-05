@@ -168,6 +168,8 @@ export function registerOrganizationRoutes(app: Express) {
       : undefined;
 
     if (existingUnit) {
+      // existingUnit kan kun være fundet, når seNumber er sat ovenfor.
+      const verifiedSeNumber = seNumber as string;
       if (existingUnit.companyId === companyId) {
         return res.status(200).json(existingUnit);
       }
@@ -190,11 +192,11 @@ export function registerOrganizationRoutes(app: Express) {
         }).returning().get();
       }
       let dimensionValue = await db.select().from(dimensionValues).where(and(
-        eq(dimensionValues.companyId, companyId), eq(dimensionValues.code, seNumber),
+        eq(dimensionValues.companyId, companyId), eq(dimensionValues.code, verifiedSeNumber),
       )).get();
       if (!dimensionValue) {
         dimensionValue = await db.insert(dimensionValues).values({
-          companyId, dimensionId: definition.id, code: seNumber, name, parentId: null, isActive: true,
+          companyId, dimensionId: definition.id, code: verifiedSeNumber, name, parentId: null, isActive: true,
         }).returning().get();
       }
       const restoredUnit = await db.update(companyUnits).set({

@@ -2125,8 +2125,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (c.subscriptionOwnerId && c.subscriptionOwnerId !== c.id) continue;
       const sub = subs.find((s) => s.companyId === c.id);
       const plan = sub ? plans.get(sub.planId) : undefined;
-      const organizationIds = allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id).map((company) => company.id);
+      const organizationCompanies = allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id);
+      const organizationIds = organizationCompanies.map((company) => company.id);
       const employees = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
+      const legalCompanies = await Promise.all(organizationCompanies.map(async (company) => ({
+        id: company.id,
+        name: company.name,
+        cvr: company.cvr,
+        status: company.status,
+        groupRole: company.groupRole,
+        parentCompanyId: company.parentCompanyId,
+        subscriptionOwnerId: company.subscriptionOwnerId || company.id,
+        isSubscriptionOwner: company.id === c.id,
+        userCount: (await storage.getUsers(company.id)).length,
+      })));
       const charge = await previewBilling(c.id);
       const monthly = charge ? charge.netAmount / (sub?.billingCycle === "aarlig" ? 12 : 1) : 0;
       out.push({
@@ -2138,6 +2150,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         employeeCount: employees,
         userCount: (await storage.getUsers(c.id)).length,
         legalCompanyCount: organizationIds.length,
+        legalCompanies,
         planName: plan?.name ?? "Ingen pakke",
         planId: plan?.id ?? null,
         subscriptionStatus: sub?.status ?? "ingen",
@@ -2154,15 +2167,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const id = Number(req.params.id);
     const company = await storage.getCompany(id);
     if (!company) return res.status(404).json({ error: "Virksomheden blev ikke fundet." });
-    const sub = await storage.getSubscriptionByCompany(id);
-    const plan = await storage.getCompanyPlan(id);
+    const subscriptionOwnerId = company.subscriptionOwnerId || company.id;
+    const subscriptionOwner = await storage.getCompany(subscriptionOwnerId);
+    const sub = await storage.getSubscriptionByCompany(subscriptionOwnerId);
+    const plan = await storage.getCompanyPlan(subscriptionOwnerId);
     const employees = await storage.getEmployees(id);
     const users = await storage.getUsers(id);
-    const invoices = await storage.getPlatformInvoices(id);
+    const invoices = await storage.getPlatformInvoices(subscriptionOwnerId);
     const consents = await storage.getConsents(id);
     const dpaConsent = consents.find((cn: any) => cn.kind === "databehandling" && cn.granted);
-    const payments = await storage.getPayments(id, 20);
-    const nextCharge = await previewBilling(id);
+    const payments = await storage.getPayments(subscriptionOwnerId, 20);
+    const nextCharge = await previewBilling(subscriptionOwnerId);
     // AI-insigt: virksomhedens sundhed
     const unpaidInvoices = invoices.filter((i) => i.status !== "betalt");
     const outstanding = unpaidInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
@@ -2173,8 +2188,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         id: company.id,
         name: company.name,
         cvr: company.cvr,
+        address: company.address,
+        phone: company.phone,
+        email: company.email,
+        website: company.website,
         status: company.status,
+        groupRole: company.groupRole,
+        parentCompanyId: company.parentCompanyId,
+        subscriptionOwnerId,
+        notes: company.notes,
         createdAt: company.createdAt,
+      },
+      organization: {
+        subscriptionOwnerId,
+        subscriptionOwnerName: subscriptionOwner?.name ?? company.name,
+        isSubscriptionOwner: subscriptionOwnerId === company.id,
       },
       subscription: sub,
       plan,
@@ -2472,11 +2500,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const id = Number(req.params.id);
     const company = await storage.getCompany(id);
     if (!company) return res.status(404).json({ error: "Virksomheden blev ikke fundet." });
-    const data = validate(insertCompanySchema.partial(), req.body);
-    delete data.documentInboxToken;
-    delete data.documentAutoPost;
-    delete data.documentPayablesAccountId;
-    delete data.documentInputVatAccountId;
+    // Platformen må kun vedligeholde kontakt- og administrationsmetadata.
+    // Bogførings-, bank-, faktura- og dokumentindstillinger tilhører kunden.
+    const candidate = {
+      name: req.body?.name,
+      cvr: req.body?.cvr,
+      address: req.body?.address,
+      phone: req.body?.phone,
+      email: req.body?.email,
+      website: req.body?.website,
+      notes: req.body?.notes,
+    };
+    const data = validate(insertCompanySchema.partial(), Object.fromEntries(
+      Object.entries(candidate).filter(([, value]) => value !== undefined),
+    ));
     const updated = await storage.updateCompany(id, data);
     await audit(req, "opdater_virksomhed", "company", id, company.name);
     res.json(updated);
