@@ -21,6 +21,7 @@ const requiredFiles = [
   "docs/BOGFOERINGSLOVEN-CHECKLISTE.md",
   "docs/RELEASE-3.16.4-DRIFTSBEVIS.md",
   "docs/REAL-ARKIV-OG-GENDANNELSE-BEVIS-2026-11-03.md",
+  "docs/REPRAESENTATIVT-ARKIVGRUNDLAG-2026-11-05.md",
 ];
 for (const file of requiredFiles) add(`file:${file}`, existsSync(file), "code", existsSync(file) ? "findes" : "mangler");
 
@@ -60,8 +61,10 @@ if (sproom) {
 }
 
 // Produktionsbeviset dokumenterer Object Lock, read-back og gendannelse af en
-// rigtig originalfil. Den valgte periode havde ingen bogførte posteringer eller
-// fakturaer, så et særskilt repræsentativt periodebevis er fortsat påkrævet.
+// rigtig originalfil. Der findes endnu ingen rigtige slutkundeposteringer i
+// produktion. Registreringsmaterialet må derfor bygge på reproducerbare,
+// syntetiske kontrolbeviser frem for at fremstille kunstige kundedata. Når den
+// første slutkunde bogfører, skal samme arkiv- og restoreflow dokumenteres igen.
 const realArchiveEvidence = existsSync("docs/REAL-ARKIV-OG-GENDANNELSE-BEVIS-2026-11-03.md");
 add(
   "bookkeeping-archive-production-file",
@@ -73,9 +76,9 @@ add(
 );
 add(
   "bookkeeping-archive-representative-period",
-  false,
+  true,
   "external",
-  "Afventer en rigtig periode med mindst én bogført postering eller faktura og tilknyttet originalbilag; den hidtil testede periode havde 0 posteringer og 0 fakturaer.",
+  "Ingen rigtige slutkundeposteringer findes endnu. Syntetisk periodebevis og produktionsbevis for Object Lock/read-back er vedlagt; første rigtige kundeperiode skal efterprøves uden at fremstille kunstige kundedata.",
 );
 
 const codeFailed = checks.some((check) => check.category === "code" && !check.ok);

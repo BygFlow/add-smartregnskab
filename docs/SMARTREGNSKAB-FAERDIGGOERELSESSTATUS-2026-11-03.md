@@ -37,7 +37,7 @@ Ingen demo-faktura er sendt, og ingen rigtig kunde, betaling eller CVR er anvend
 4. En kontrolleret rigtig QuickPay-opkrævning og refundering kræver brugerens kort og økonomiske godkendelse.
 5. Første rigtige AiiA-bankforbindelse kræver banklogin/MitID og samtykke fra virksomheden.
 6. Sproom/NemHandel end-to-end for en kundecase kræver et andet rigtigt kunde-CVR og kundens samtykke; ADD SmartDrift ApS må ikke oprettes som sit eget child-selskab.
-7. Det fulde femårsbevis kræver en rigtig afsluttet/valgt regnskabsperiode med mindst én bogført postering eller faktura og et tilknyttet originalbilag. Den tidligere testperiode havde en rigtig originalfil, men 0 bogførte posteringer og 0 fakturaer.
+7. Femårsflowet er dokumenteret med syntetisk periodebevis og en rigtig originalfil. Der findes endnu ingen rigtige slutkundeposteringer. Kontrollen gentages på den første rigtige kundeperiode; der må ikke fremstilles kunstige kundedata for at skabe et bevis.
 8. De syv eksisterende selskabsposter uden regnskabsårsstart må ikke udfyldes ved gæt. Den regnskabsansvarlige skal vælge den korrekte dato pr. juridisk enhed.
 9. Myndighedsindsendelse bør først ske efter uafhængig juridisk/regnskabsmæssig gennemgang og særskilt godkendelse af selve indsendelsen.
 
