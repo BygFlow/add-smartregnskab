@@ -25,6 +25,9 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(routes, /parentCompanyId != null && !parent/);
   assert.match(routes, /ownershipPercent: parentCompanyId == null \? null : ownershipPercent/);
   assert.match(routes, /SE-nummeret er allerede registreret/);
+  assert.match(routes, /digits8\(existingCompany\.cvr\) !== digits8\(company\.cvr\)/);
+  assert.match(routes, /genknyt_se_enhed/);
+  assert.match(routes, /db\.update\(companyUnits\)/);
   assert.match(domain, /organizationPostingUsage/);
   assert.match(domain, /organizationCompanies\.map/);
   assert.match(shell, /Selskaber & SE-enheder/);

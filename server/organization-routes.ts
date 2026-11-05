@@ -163,8 +163,45 @@ export function registerOrganizationRoutes(app: Express) {
     const seNumber = unitType === "se_unit" ? digits8(req.body?.seNumber) : null;
     if (!name) return res.status(400).json({ error: "Angiv enhedens navn." });
     if (unitType === "se_unit" && seNumber?.length !== 8) return res.status(400).json({ error: "Et SE-nummer skal bestå af 8 cifre." });
-    if (seNumber && (await db.select().from(companyUnits).all()).some((unit) => unit.seNumber === seNumber)) {
-      return res.status(409).json({ error: "SE-nummeret er allerede registreret." });
+    const existingUnit = seNumber
+      ? (await db.select().from(companyUnits).all()).find((unit) => unit.seNumber === seNumber)
+      : undefined;
+
+    if (existingUnit) {
+      if (existingUnit.companyId === companyId) {
+        return res.status(200).json(existingUnit);
+      }
+
+      // Tidligere versioner kunne efterlade en SE-enhed under en gammel kopi af
+      // samme juridiske virksomhed. Genknyt kun automatisk, når CVR-numrene er
+      // identiske. Dermed kan et SE-nummer aldrig flyttes mellem to forskellige
+      // juridiske virksomheder af en almindelig leder.
+      const existingCompany = await storage.getCompany(existingUnit.companyId);
+      if (!existingCompany?.cvr || digits8(existingCompany.cvr) !== digits8(company.cvr)) {
+        return res.status(409).json({ error: "SE-nummeret er allerede registreret under en anden juridisk virksomhed." });
+      }
+
+      let definition = await db.select().from(dimensionDefinitions).where(and(
+        eq(dimensionDefinitions.companyId, companyId), eq(dimensionDefinitions.code, "AFD"),
+      )).get();
+      if (!definition) {
+        definition = await db.insert(dimensionDefinitions).values({
+          companyId, name: "afdeling", code: "AFD", description: "Afdelinger og SE-enheder", isActive: true, createdAt: new Date().toISOString(),
+        }).returning().get();
+      }
+      let dimensionValue = await db.select().from(dimensionValues).where(and(
+        eq(dimensionValues.companyId, companyId), eq(dimensionValues.code, seNumber),
+      )).get();
+      if (!dimensionValue) {
+        dimensionValue = await db.insert(dimensionValues).values({
+          companyId, dimensionId: definition.id, code: seNumber, name, parentId: null, isActive: true,
+        }).returning().get();
+      }
+      const restoredUnit = await db.update(companyUnits).set({
+        companyId, name, unitType: "se_unit", dimensionValueId: dimensionValue.id, active: 1,
+      }).where(eq(companyUnits.id, existingUnit.id)).returning().get();
+      await audit(req, "genknyt_se_enhed", "company_unit", `${name} (${seNumber})`);
+      return res.status(200).json(restoredUnit);
     }
 
     let definition = await db.select().from(dimensionDefinitions).where(and(
