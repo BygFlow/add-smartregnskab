@@ -48,6 +48,23 @@ import { eq, desc, and, lte, gte, isNull, lt, sql } from "drizzle-orm";
 import { mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { decryptField, encryptField } from "./crypto";
+
+function encryptIntegrationCredentials(data: Partial<InsertIntegration>): Partial<InsertIntegration> {
+  const secured = { ...data };
+  if (typeof secured.apiKey === "string" && secured.apiKey) secured.apiKey = encryptField(secured.apiKey);
+  if (typeof secured.apiSecret === "string" && secured.apiSecret) secured.apiSecret = encryptField(secured.apiSecret);
+  return secured;
+}
+
+function decryptIntegrationCredentials(integration: Integration | undefined): Integration | undefined {
+  if (!integration) return undefined;
+  const reveal = (value: string | null) => {
+    if (!value) return null;
+    return value.startsWith("gcm$") ? decryptField(value) : value;
+  };
+  return { ...integration, apiKey: reveal(integration.apiKey), apiSecret: reveal(integration.apiSecret) };
+}
 
 // ── Persistent database path ──
 // I produktion (Render/VPS) sættes DATABASE_PATH til en persistent disk.
@@ -220,6 +237,55 @@ if (!hasApplicationSchema) {
         used_at text,
         created_at text NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS economic_import_runs (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        company_id integer NOT NULL,
+        integration_id integer NOT NULL,
+        accounting_year text NOT NULL,
+        run_type text DEFAULT 'preflight' NOT NULL,
+        status text DEFAULT 'afventer' NOT NULL,
+        source_agreement_number text,
+        source_company_name text,
+        record_count integer DEFAULT 0 NOT NULL,
+        file_count integer DEFAULT 0 NOT NULL,
+        warning_count integer DEFAULT 0 NOT NULL,
+        manifest_json text DEFAULT '{}' NOT NULL,
+        error_message text,
+        started_at text NOT NULL,
+        finished_at text,
+        approved_at text,
+        approved_by integer
+      );
+      CREATE TABLE IF NOT EXISTS economic_import_records (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        company_id integer NOT NULL,
+        run_id integer NOT NULL,
+        accounting_year text NOT NULL,
+        resource_type text NOT NULL,
+        external_id text NOT NULL,
+        payload_json text NOT NULL,
+        checksum text NOT NULL,
+        fetched_at text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS economic_import_files (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        company_id integer NOT NULL,
+        run_id integer NOT NULL,
+        accounting_year text NOT NULL,
+        resource_type text NOT NULL,
+        external_id text NOT NULL,
+        voucher_number text,
+        file_name text NOT NULL,
+        mime_type text NOT NULL,
+        size_bytes integer DEFAULT 0 NOT NULL,
+        checksum text NOT NULL,
+        archive_bucket text NOT NULL,
+        archive_object_key text NOT NULL,
+        archive_version_id text NOT NULL,
+        retain_until text NOT NULL,
+        verified integer DEFAULT 0 NOT NULL,
+        fetched_at text NOT NULL
+      );
     `);
 
     addColumn("dimension_values", "company_id", "integer");
@@ -315,6 +381,10 @@ if (!hasApplicationSchema) {
     "CREATE INDEX IF NOT EXISTS company_identity_verification_company_created_idx ON company_identity_verifications (company_id, created_at)",
     "CREATE UNIQUE INDEX IF NOT EXISTS mitid_oidc_states_state_hash_unique ON mitid_oidc_states (state_hash)",
     "CREATE UNIQUE INDEX IF NOT EXISTS bank_transactions_company_external_unique ON bank_transactions (company_id, external_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS economic_import_runs_company_year_started_unique ON economic_import_runs (company_id, accounting_year, started_at)",
+    "CREATE INDEX IF NOT EXISTS economic_import_runs_company_year_idx ON economic_import_runs (company_id, accounting_year)",
+    "CREATE INDEX IF NOT EXISTS economic_import_records_run_resource_idx ON economic_import_records (run_id, resource_type)",
+    "CREATE INDEX IF NOT EXISTS economic_import_files_run_idx ON economic_import_files (run_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS companies_document_inbox_token_unique ON companies (document_inbox_token)",
     "CREATE UNIQUE INDEX IF NOT EXISTS document_inbox_company_message_unique ON document_inbox (company_id, external_message_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS sproom_child_company_company_unique ON sproom_child_companies (company_id)",
@@ -663,16 +733,23 @@ export class DatabaseStorage implements IStorage {
 
   // ── Integrations ──
   async getIntegrations(companyId: number): Promise<Integration[]> {
-    return db.select().from(integrations).where(byCompany(integrations, companyId)).all();
+    return db.select().from(integrations).where(byCompany(integrations, companyId)).all()
+      .map((item) => decryptIntegrationCredentials(item)!);
   }
   async getIntegration(id: number, companyId?: number): Promise<Integration | undefined> {
-    return db.select().from(integrations).where(byIdInCompany(integrations, id, companyId)).get();
+    return decryptIntegrationCredentials(
+      db.select().from(integrations).where(byIdInCompany(integrations, id, companyId)).get(),
+    );
   }
   async createIntegration(data: InsertIntegration): Promise<Integration> {
-    return db.insert(integrations).values(data).returning().get();
+    return decryptIntegrationCredentials(
+      db.insert(integrations).values(encryptIntegrationCredentials(data) as InsertIntegration).returning().get(),
+    )!;
   }
   async updateIntegration(id: number, data: Partial<InsertIntegration>): Promise<Integration | undefined> {
-    return db.update(integrations).set(data).where(eq(integrations.id, id)).returning().get();
+    return decryptIntegrationCredentials(
+      db.update(integrations).set(encryptIntegrationCredentials(data)).where(eq(integrations.id, id)).returning().get(),
+    );
   }
   async deleteIntegration(id: number): Promise<boolean> {
     return db.delete(integrations).where(eq(integrations.id, id)).run().changes > 0;

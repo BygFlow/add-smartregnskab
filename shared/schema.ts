@@ -2799,6 +2799,77 @@ export const insertMigrationJobSchema = createInsertSchema(migrationJobs).omit({
 export type InsertMigrationJob = z.infer<typeof insertMigrationJobSchema>;
 export type MigrationJob = typeof migrationJobs.$inferSelect;
 
+// Skrivebeskyttet e-conomic-kopi. Data lander her, før noget må bogføres i
+// SmartRegnskab, så hvert regnskabsår kan afstemmes og godkendes separat.
+export const economicImportRuns = sqliteTable("economic_import_runs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  integrationId: integer("integration_id").notNull(),
+  accountingYear: text("accounting_year").notNull(),
+  runType: text("run_type").notNull().default("preflight"), // preflight, snapshot
+  status: text("status").notNull().default("afventer"), // afventer, koerer, faerdig, delvis, fejlet
+  sourceAgreementNumber: text("source_agreement_number"),
+  sourceCompanyName: text("source_company_name"),
+  recordCount: integer("record_count").notNull().default(0),
+  fileCount: integer("file_count").notNull().default(0),
+  warningCount: integer("warning_count").notNull().default(0),
+  manifestJson: text("manifest_json").notNull().default("{}"),
+  errorMessage: text("error_message"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+  approvedAt: text("approved_at"),
+  approvedBy: integer("approved_by"),
+}, (table) => ({
+  companyYearStartedUnique: uniqueIndex("economic_import_runs_company_year_started_unique")
+    .on(table.companyId, table.accountingYear, table.startedAt),
+  companyYearIndex: index("economic_import_runs_company_year_idx").on(table.companyId, table.accountingYear),
+}));
+export const insertEconomicImportRunSchema = createInsertSchema(economicImportRuns).omit({ id: true });
+export type InsertEconomicImportRun = z.infer<typeof insertEconomicImportRunSchema>;
+export type EconomicImportRun = typeof economicImportRuns.$inferSelect;
+
+export const economicImportRecords = sqliteTable("economic_import_records", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  runId: integer("run_id").notNull(),
+  accountingYear: text("accounting_year").notNull(),
+  resourceType: text("resource_type").notNull(),
+  externalId: text("external_id").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  checksum: text("checksum").notNull(),
+  fetchedAt: text("fetched_at").notNull(),
+}, (table) => ({
+  runResourceIndex: index("economic_import_records_run_resource_idx").on(table.runId, table.resourceType),
+}));
+export const insertEconomicImportRecordSchema = createInsertSchema(economicImportRecords).omit({ id: true });
+export type InsertEconomicImportRecord = z.infer<typeof insertEconomicImportRecordSchema>;
+export type EconomicImportRecord = typeof economicImportRecords.$inferSelect;
+
+export const economicImportFiles = sqliteTable("economic_import_files", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull(),
+  runId: integer("run_id").notNull(),
+  accountingYear: text("accounting_year").notNull(),
+  resourceType: text("resource_type").notNull(), // resource_json, voucher_document, booked_invoice_pdf
+  externalId: text("external_id").notNull(),
+  voucherNumber: text("voucher_number"),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  checksum: text("checksum").notNull(),
+  archiveBucket: text("archive_bucket").notNull(),
+  archiveObjectKey: text("archive_object_key").notNull(),
+  archiveVersionId: text("archive_version_id").notNull(),
+  retainUntil: text("retain_until").notNull(),
+  verified: integer("verified", { mode: "boolean" }).notNull().default(false),
+  fetchedAt: text("fetched_at").notNull(),
+}, (table) => ({
+  runFileIndex: index("economic_import_files_run_idx").on(table.runId),
+}));
+export const insertEconomicImportFileSchema = createInsertSchema(economicImportFiles).omit({ id: true });
+export type InsertEconomicImportFile = z.infer<typeof insertEconomicImportFileSchema>;
+export type EconomicImportFile = typeof economicImportFiles.$inferSelect;
+
 // ═════════════════════════════════════════════════════════════════
 // BATCH 3 — Branche-uafhængighed, sammenkobling, hardening, portal
 // ═════════════════════════════════════════════════════════════════

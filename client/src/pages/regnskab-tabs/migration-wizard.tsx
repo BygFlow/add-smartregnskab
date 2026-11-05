@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CheckCircle2, Database, FileSpreadsheet, Plus, RotateCcw, XCircle } from "lucide-react";
+import EconomicReadonlyImport from "./economic-readonly-import";
 
 type MigrationJob = { id: number; source?: string | null; fileName?: string | null; totalRows?: number | null; importedRows?: number | null; errorRows?: number | null; status?: string | null; rollbackAvailable?: boolean | null; validationErrors?: string | null };
 type ImportPreview = { token: string; totalRows: number; validRows: number; errors: string[]; matchedFields: string[]; sample: Record<string, unknown>[] };
@@ -48,6 +49,7 @@ export default function MigrationWizard({ companyId }: { companyId: number }) {
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Migreringsguide</h2><p className="text-sm text-muted-foreground">Sikker import fra e-conomic, Dinero, Billy, Excel eller CSV med forhåndsvisning og rollback.</p></div><Button data-testid="start-migration-btn" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" /> Start import</Button></div>
     <div className="rounded-md border border-blue-300/60 bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/20 dark:text-blue-300">Eksportér data som CSV fra kildesystemet. Intet skrives, før du har set og godkendt valideringen.</div>
+    <EconomicReadonlyImport companyId={companyId} />
     {jobsQuery.isLoading ? <Skeleton className="h-48 w-full" /> : (jobsQuery.data || []).length === 0 ? <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">Ingen migreringer endnu.</div> : <div className="grid gap-4 md:grid-cols-2">{(jobsQuery.data || []).map((job) => {
       const total = Number(job.totalRows || 0); const imported = Number(job.importedRows || 0); const errors = parseErrors(job.validationErrors);
       return <div key={job.id} className="kpi-card space-y-3" data-testid={`job-card-${job.id}`}>

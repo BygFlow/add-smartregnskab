@@ -134,6 +134,13 @@
       "when": 1793750400000,
       "tag": "0018_mitid_company_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1793906877175,
+      "tag": "0019_closed_newton_destine",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ import { registerExtendedRoutes8 } from "./extended-routes-8";
 import { registerExtendedRoutes9 } from "./extended-routes-9";
 import { registerComplianceRoutes } from "./compliance-routes";
 import { registerMigrationRoutes } from "./migration-routes";
+import { registerEconomicImportRoutes } from "./economic-import-routes";
 import { registerReadinessRoutes } from "./readiness-routes";
 import { registerEInvoiceRoutes, registerPublicEInvoiceRoutes } from "./einvoice-routes";
 import { registerProfessionalRoutes } from "./professional-routes";
@@ -621,9 +622,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/credit-notes", "/currency-transactions", "/customer-portal-settings", "/customers",
     "/delivery-logs", "/dimension-definitions", "/dimension-values", "/document-inbox", "/document-receiving",
     "/einvoice-queue", "/file-objects", "/file-versions", "/fixed-assets", "/import-jobs2",
-    "/industry-account-templates", "/integration-configs", "/integration-retry-queue",
+    "/industry-account-templates", "/integrations", "/integration-configs", "/integration-retry-queue",
     "/integration-runs", "/inventory-accounts", "/invoices", "/journal-entries",
-    "/integration-adapters", "/migration", "/migration-jobs", "/onboarding", "/operations", "/payment", "/payment-runs", "/billing", "/payroll-engine", "/payroll-entries",
+    "/integration-adapters", "/economic-import", "/migration", "/migration-jobs", "/onboarding", "/operations", "/payment", "/payment-runs", "/billing", "/payroll-engine", "/payroll-entries",
     "/payroll-reports", "/period-closes",
     "/portal-documents", "/products", "/purchase-orders", "/receipts",
     "/reconciliation-center", "/recurring-invoices", "/regnskabssystem", "/regulatory-monitor",
@@ -1859,7 +1860,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Nøgler forlader ikke serveren — kun om de er sat
     res.json(list.map((i) => ({
       ...i, apiKey: i.apiKey ? "••••••••" : null, apiSecret: i.apiSecret ? "••••••••" : null,
-      hasCredentials: Boolean(i.apiKey),
+      hasCredentials: Boolean(i.apiKey && i.apiSecret),
     })));
   }));
   app.post("/api/integrations", requireRole("leder", "platform_admin"), h(async (req, res) => {
@@ -1867,7 +1868,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const limit = await checkAccountingLimit(cid, "integrations");
     if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
     const data = validate(insertIntegrationSchema, { ...req.body, companyId: cid });
-    res.status(201).json(await storage.createIntegration(data));
+    const item = await storage.createIntegration(data);
+    await audit(req, "opret", "integration", item.id, item.provider);
+    res.status(201).json({ ...item, apiKey: item.apiKey ? "••••••••" : null,
+      apiSecret: item.apiSecret ? "••••••••" : null, hasCredentials: Boolean(item.apiKey && item.apiSecret) });
   }));
   app.patch("/api/integrations/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const existing = await storage.getIntegration(Number(req.params.id), tenantId(req));
@@ -6336,6 +6340,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerExtendedRoutes9(app);
   registerComplianceRoutes(app);
   registerMigrationRoutes(app);
+  registerEconomicImportRoutes(app);
   registerReadinessRoutes(app);
   registerEInvoiceRoutes(app);
   registerVatApiRoutes(app);
