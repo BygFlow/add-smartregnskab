@@ -624,6 +624,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const operations = await operationsResponse.json();
     assert.equal(operations.version, packageVersion);
     assert.ok(operations.services.some((item) => item.id === "database" && item.status === "ok"));
+    assert.ok(operations.services.some((item) => item.id === "security" && item.status === "ok"));
     const backupProtectionResponse = await fetch(`${base}/api/backup-protection/status`, { headers: { Authorization: `Bearer ${leaderToken}` } });
     assert.equal(backupProtectionResponse.status, 200);
     const backupProtection = await backupProtectionResponse.json();
