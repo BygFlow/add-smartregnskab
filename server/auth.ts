@@ -34,7 +34,12 @@ export function verifyPassword(plain: string, stored: string): boolean {
 
 // ── Sessioner ──
 
-const SESSION_DAYS = 7;
+const configuredIdleMinutes = Number(process.env.SESSION_IDLE_MINUTES ?? 30);
+export const SESSION_IDLE_MINUTES = Number.isFinite(configuredIdleMinutes)
+  ? Math.min(240, Math.max(5, Math.floor(configuredIdleMinutes)))
+  : 30;
+export const SESSION_IDLE_MS = SESSION_IDLE_MINUTES * 60_000;
+const SESSION_REFRESH_AFTER_MS = Math.min(5 * 60_000, Math.floor(SESSION_IDLE_MS / 2));
 
 export function sessionStorageKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -43,7 +48,7 @@ export function sessionStorageKey(token: string): string {
 export async function createSession(userId: number): Promise<string> {
   const token = `${randomUUID()}${randomBytes(16).toString("hex")}`;
   const now = new Date();
-  const expires = new Date(now.getTime() + SESSION_DAYS * 86400_000);
+  const expires = new Date(now.getTime() + SESSION_IDLE_MS);
   const user = await storage.getUser(userId);
   await storage.createSession({
     token: sessionStorageKey(token),
@@ -126,9 +131,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const storedToken = sessionStorageKey(token);
   const session = await storage.getSession(storedToken);
   if (!session) return res.status(401).json({ error: "Sessionen er ugyldig. Log ind igen." });
-  if (new Date(session.expiresAt) < new Date()) {
+  const now = new Date();
+  const expiresAt = new Date(session.expiresAt);
+  if (expiresAt <= now) {
     await storage.deleteSession(storedToken);
-    return res.status(401).json({ error: "Sessionen er udløbet. Log ind igen." });
+    return res.status(401).json({
+      error: "Du blev logget ud efter inaktivitet. Log ind igen for at fortsætte.",
+      code: "session_inaktiv",
+    });
+  }
+  const nextExpiry = new Date(now.getTime() + SESSION_IDLE_MS);
+  if (expiresAt > nextExpiry || expiresAt.getTime() <= nextExpiry.getTime() - SESSION_REFRESH_AFTER_MS) {
+    await storage.updateSessionExpiry(storedToken, nextExpiry.toISOString());
   }
 
   const user = await storage.getUser(session.userId);

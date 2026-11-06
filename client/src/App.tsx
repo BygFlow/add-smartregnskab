@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { useIdleSession } from "@/lib/use-idle-session";
 import { queryClient } from "@/lib/queryClient";
 import { isNative } from "@/lib/native-bridge";
 import { lazyWithReload as lazy } from "@/lib/lazy-with-reload";
@@ -13,10 +14,54 @@ import RegnskabLogin from "@/pages/regnskab-login";
 import { RegnskabsPlatformShell } from "@/pages/regnskabs-shell";
 import { Bekraeft, Glemt, Invitation, Nulstil, Tilmeld } from "@/pages/offentlig";
 import { Marketing } from "@/pages/marketing";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Fagportal = lazy(() => import("@/pages/regnskab-tabs/fagportal"));
 const CustomerPortal = lazy(() => import("@/pages/customer-portal"));
 const MobileReceipts = lazy(() => import("@/pages/mobile-receipts"));
+
+function SessionIdleGuard() {
+  const { user, logout, refresh } = useAuth();
+  const { warningSeconds, continueSession } = useIdleSession({
+    userId: user?.id ?? null,
+    logout,
+    keepAlive: refresh,
+  });
+
+  if (!user || warningSeconds == null) return null;
+  const minutes = Math.floor(warningSeconds / 60);
+  const seconds = warningSeconds % 60;
+  const remaining = minutes > 0
+    ? `${minutes}:${String(seconds).padStart(2, "0")} minutter`
+    : `${seconds} sekunder`;
+
+  return (
+    <AlertDialog open>
+      <AlertDialogContent data-testid="idle-session-warning">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Du bliver snart logget ud</AlertDialogTitle>
+          <AlertDialogDescription>
+            Af hensyn til sikkerheden afsluttes sessionen efter 30 minutter uden aktivitet.
+            Du bliver logget ud om {remaining}.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => void logout()}>Log ud nu</AlertDialogCancel>
+          <AlertDialogAction onClick={continueSession}>Fortsæt sessionen</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 function useRouteLocation(): [string, (to: string, options?: { replace?: boolean }) => void] {
   const [location, navigate] = useHashLocation();
@@ -167,6 +212,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <Router hook={useRouteLocation}>
+              <SessionIdleGuard />
               <Root />
             </Router>
           </TooltipProvider>

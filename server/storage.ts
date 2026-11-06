@@ -424,6 +424,7 @@ export interface IStorage {
   createSession(data: { token: string; userId: number; activeCompanyId?: number | null; createdAt: string; expiresAt: string }): Promise<Session>;
   getSession(token: string): Promise<Session | undefined>;
   updateSessionCompany(token: string, companyId: number): Promise<Session | undefined>;
+  updateSessionExpiry(token: string, expiresAt: string): Promise<Session | undefined>;
   deleteSession(token: string): Promise<boolean>;
   deleteUserSessions(userId: number): Promise<boolean>;
 
@@ -572,6 +573,9 @@ export class DatabaseStorage implements IStorage {
   }
   async updateSessionCompany(token: string, companyId: number): Promise<Session | undefined> {
     return db.update(sessions).set({ activeCompanyId: companyId }).where(eq(sessions.token, token)).returning().get();
+  }
+  async updateSessionExpiry(token: string, expiresAt: string): Promise<Session | undefined> {
+    return db.update(sessions).set({ expiresAt }).where(eq(sessions.token, token)).returning().get();
   }
   async deleteSession(token: string): Promise<boolean> {
     return db.delete(sessions).where(eq(sessions.token, token)).run().changes > 0;
