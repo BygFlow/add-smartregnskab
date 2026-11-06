@@ -53,6 +53,21 @@ export function parseHistoricalAttachmentTarget(input: {
   return { fileName, entryNumber, voucherNumber };
 }
 
+export function historicalEntryMatchesTarget(entry: {
+  entryNumber: string;
+  reference?: string | null;
+  sourceType?: string | null;
+  status: string;
+}, target: ReturnType<typeof parseHistoricalAttachmentTarget>) {
+  const reference = String(entry.reference ?? "").trim();
+  return entry.entryNumber === target.entryNumber
+    && entry.sourceType === "saft_import"
+    && entry.status === "bogført"
+    // Imports made before voucher references were preserved have no reference.
+    // The deterministic entry number still carries the exact date and voucher.
+    && (!reference || reference === target.voucherNumber);
+}
+
 export function emailAddress(companyId: number): string | null {
   const domain = inboundDomain();
   if (!domain || (!inboundReady() && !inboundPilot(companyId))) return null;
@@ -366,8 +381,7 @@ export function registerDocumentIntakeRoutes(app: Express) {
     const entry = db.select().from(journalEntries).where(and(
       eq(journalEntries.companyId, companyId), eq(journalEntries.entryNumber, target.entryNumber),
     )).get();
-    if (!entry || entry.sourceType !== "saft_import" || entry.status !== "bogført"
-        || String(entry.reference ?? "").trim() !== target.voucherNumber) {
+    if (!entry || !historicalEntryMatchesTarget(entry, target)) {
       return void res.status(422).json({ error: `Den importerede postering ${target.entryNumber} findes ikke eller passer ikke til bilag ${target.voucherNumber}.` });
     }
     try {

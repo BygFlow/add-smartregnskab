@@ -16,7 +16,7 @@ after(() => {
   delete process.env.FILE_STORAGE_DIR;
 });
 const { validExtraction, verifiedWebhook, bookDocument, registerPublicDocumentIntakeRoutes, emailAddress, provisionEmailAddress,
-  parseHistoricalAttachmentTarget } = await import("../server/document-intake");
+  parseHistoricalAttachmentTarget, historicalEntryMatchesTarget } = await import("../server/document-intake");
 const { storage, db } = await import("../server/storage");
 const { accounts, documentInbox, journalEntries, journalLines, vouchers } = await import("../shared/schema");
 const { eq } = await import("drizzle-orm");
@@ -148,6 +148,21 @@ test("historical attachments require an exact entry and voucher match in the fil
     entryNumber: "ECON-2024-20240830-1",
     voucherNumber: "1",
   }), /passer ikke/);
+});
+
+test("historical attachments accept legacy SAF-T entries without a reference but reject a wrong one", () => {
+  const target = parseHistoricalAttachmentTarget({
+    fileName: "ECON-2024-20240516-50032__bilag-50032.pdf",
+    entryNumber: "ECON-2024-20240516-50032",
+    voucherNumber: "50032",
+  });
+  const imported = { entryNumber: target.entryNumber, sourceType: "saft_import", status: "bogført" };
+  assert.equal(historicalEntryMatchesTarget({ ...imported, reference: null }, target), true);
+  assert.equal(historicalEntryMatchesTarget({ ...imported, reference: "" }, target), true);
+  assert.equal(historicalEntryMatchesTarget({ ...imported, reference: "50032" }, target), true);
+  assert.equal(historicalEntryMatchesTarget({ ...imported, reference: "50033" }, target), false);
+  assert.equal(historicalEntryMatchesTarget({ ...imported, entryNumber: "ECON-2024-20240517-50032" }, target), false);
+  assert.equal(historicalEntryMatchesTarget({ ...imported, sourceType: "manual" }, target), false);
 });
 
 test("inbound document webhook requires a fresh signature over raw bytes", () => {
