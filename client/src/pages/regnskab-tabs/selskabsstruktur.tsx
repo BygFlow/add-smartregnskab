@@ -115,8 +115,21 @@ export default function Selskabsstruktur() {
             </div>
             {!active && <Button size="sm" variant="outline" onClick={async () => { await switchCompany(company.id); window.location.hash = "#/smartregnskab/app/dashboard"; }}>Åbn regnskab</Button>}
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {units.length === 0 ? <span className="text-xs text-muted-foreground">Ingen afdelinger eller SE-enheder.</span> : units.map((unit) => <span key={unit.id} className="rounded-md bg-muted px-2.5 py-1 text-xs">{unit.name}{unit.seNumber ? ` · SE ${unit.seNumber}` : " · afdeling"}</span>)}
+          <div className="mt-3 space-y-2">
+            {units.length === 0 ? <span className="text-xs text-muted-foreground">Ingen afdelinger eller SE-enheder.</span> : units.map((unit) => (
+              <div key={unit.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">{unit.name}{unit.seNumber ? ` · SE ${unit.seNumber}` : " · afdeling"}</p>
+                  <p className="text-xs text-muted-foreground">Bogføres og indberettes i {company.name}s juridiske regnskab.</p>
+                </div>
+                <Button size="sm" variant="ghost" onClick={async () => {
+                  if (!active) await switchCompany(company.id);
+                  window.location.hash = "#/smartregnskab/app/dashboard";
+                }}>
+                  {active ? "Gå til regnskab" : "Åbn hovedregnskab"}
+                </Button>
+              </div>
+            ))}
           </div>
         </div>;
       })}
