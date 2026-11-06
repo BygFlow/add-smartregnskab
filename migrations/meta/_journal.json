@@ -155,6 +155,13 @@
       "when": 1793966400000,
       "tag": "0021_move_misimported_multiservice_bank",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1793970000000,
+      "tag": "0022_remove_unused_multiclean_bank_import",
+      "breakpoints": true
     }
   ]
 }
