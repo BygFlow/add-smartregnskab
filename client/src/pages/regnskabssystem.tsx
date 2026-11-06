@@ -441,6 +441,7 @@ type DocumentInboxItem = {
   fileName?: string | null;
   storageKey?: string | null;
   source?: string | null;
+  senderEmail?: string | null;
   supplier?: string | null;
   amount?: number | null;
   vatAmount?: number | null;
@@ -451,6 +452,14 @@ type DocumentInboxItem = {
   status?: string | null;
   postedJournalEntryId?: number | null;
   matchedVoucherId?: number | null;
+  bankMatch?: {
+    transactionId: number;
+    date: string;
+    description?: string | null;
+    amount: number;
+    daysAfterInvoice: number;
+    confidence: "hoej" | "middel" | "lav";
+  } | null;
 };
 
 type PayrollEntry = {
@@ -4374,7 +4383,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   {documentReceivingQuery.data?.emailPilot && (
                     <p className="text-xs font-medium text-amber-700">Kun test: Send ikke rigtige leverandørfakturaer til denne adresse endnu.</p>
                   )}
-                  <p className="text-xs text-muted-foreground">Videresend leverandørfakturaer hertil, når mailmodtagelse er aktiveret. Bilag modtaget via e-mail kræver altid menneskelig godkendelse før bogføring.</p>
+                  <p className="text-xs text-muted-foreground">Videresend leverandørfakturaer hertil, når mailmodtagelse er aktiveret. Vedhæftningen lander direkte i bilagsindbakken, hvor originalfilen og mailens afsender kan ses. Bilag modtaget via e-mail kræver altid menneskelig godkendelse før bogføring.</p>
                 </div>
                 <div className="rounded-md border p-3 text-sm space-y-3">
                   <div className="font-medium">AI-forslag med menneskelig godkendelse</div>
@@ -4416,6 +4425,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   }
                   noPadding
                 >
+                  <div className="border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Bilag sorteres automatisk efter fakturadato med ældste først. Når beløb og dato passer med en umatchet bankpost, vises et bankforslag til kontrol.
+                  </div>
                   {documentInboxQuery.isLoading ? (
                     <div className="p-2 space-y-2">
                       <Skeleton className="h-10 w-full" />
@@ -4431,10 +4443,12 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         <thead>
                           <tr className="text-left text-muted-foreground border-b border-border">
                             <th className="font-medium px-3 py-1.5">Filnavn</th>
+                            <th className="font-medium px-3 py-1.5">Kilde</th>
                             <th className="font-medium px-3 py-1.5">Leverandør</th>
                             <th className="font-medium px-3 py-1.5 text-right">Beløb</th>
                             <th className="font-medium px-3 py-1.5 text-right">Moms</th>
-                            <th className="font-medium px-3 py-1.5">Fakturadato</th>
+                            <th className="font-medium px-3 py-1.5">Fakturadato ↑</th>
+                            <th className="font-medium px-3 py-1.5">Bankforslag</th>
                             <th className="font-medium px-3 py-1.5">Konto</th>
                             <th className="font-medium px-3 py-1.5">OCR</th>
                             <th className="font-medium px-3 py-1.5">Status</th>
@@ -4447,10 +4461,20 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                             return (
                               <tr key={item.id} className="border-b border-border/50 last:border-0">
                                 <td className="px-3 py-1.5 font-medium">{item.storageKey ? <button type="button" className="underline" onClick={() => openAuthedFile(`/api/document-receiving/${item.id}/file`)}>{item.fileName}</button> : item.fileName ?? "—"}</td>
+                                <td className="px-3 py-1.5">
+                                  {item.source === "email" ? <div><span className="font-medium">E-mail</span><div className="max-w-44 truncate text-[11px] text-muted-foreground" title={item.senderEmail ?? undefined}>{item.senderEmail || "Afsender ukendt"}</div></div> : <span>Upload</span>}
+                                </td>
                                 <td className="px-3 py-1.5">{item.supplier ?? "—"}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{money(item.amount)}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{money(item.vatAmount)}</td>
                                 <td className="px-3 py-1.5 whitespace-nowrap">{dk(item.invoiceDate)}</td>
+                                <td className="px-3 py-1.5 min-w-48">
+                                  {item.bankMatch ? <div className="space-y-1">
+                                    <div className="font-medium text-emerald-700">Samme beløb · {dk(item.bankMatch.date)}</div>
+                                    <div className="max-w-48 truncate text-[11px] text-muted-foreground" title={item.bankMatch.description ?? undefined}>{item.bankMatch.description || money(item.bankMatch.amount)}</div>
+                                    <Button size="sm" variant="ghost" className="h-6 px-1 text-[11px]" onClick={() => { window.location.hash = "#/smartregnskab/app/bank"; }}>Kontrollér i bank</Button>
+                                  </div> : <span className="text-muted-foreground">Intet sikkert forslag</span>}
+                                </td>
                                 <td className="px-3 py-1.5 font-mono">{item.suggestedAccount ?? "—"}</td>
                                 <td className="px-3 py-1.5">
                                   {item.ocrStatus ? (

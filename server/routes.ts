@@ -24,6 +24,7 @@ import { registerAiiaRoutes, registerPublicAiiaRoutes } from "./aiia";
 import { registerPublicAddConnectRoutes } from "./add-connect";
 import { registerExternalAccountingApi } from "./external-accounting-api";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
+import { prepareDocumentInbox } from "./document-inbox-order";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
@@ -5806,9 +5807,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Bilagsindbakke (OCR) ──
   app.get("/api/document-inbox", h(async (req, res) => {
-    const documents = await storage.all("document_inbox", tenantId(req));
+    const companyId = tenantId(req);
+    const documents = await storage.all("document_inbox", companyId);
+    const transactions = await storage.all("bank_transactions", companyId);
     const trash = req.query.scope === "trash";
-    res.json(documents.filter((document: any) => trash ? document.status === "papirkurv" : document.status !== "papirkurv"));
+    const visible = documents.filter((document: any) => trash ? document.status === "papirkurv" : document.status !== "papirkurv");
+    res.json(prepareDocumentInbox(visible, transactions));
   }));
   app.post("/api/document-inbox", h(async (req, res) => {
     res.status(410).json({ error: "Brug filupload i bilagsindbakken. Filnavn alene opretter ikke et gyldigt bilag." });
