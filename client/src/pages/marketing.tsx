@@ -291,10 +291,10 @@ function Pricing() {
           <div className="my-5 h-px bg-slate-100" />
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Det får du</p>
           <ul className="mt-3 flex-1 space-y-3 text-sm">
-            {["Ingen særskilt kvote for bilagsopbevaring (PDF og billeder, filstørrelsesgrænser gælder)", "1.000 posteringer pr. regnskabsår inkluderet", "Ubegrænsede integrationer", `${plan.includedCompanies || 1} juridisk CVR inkluderet`, "Ubegrænsede brugere, kunder og leverandører"].map((item) => <li className="flex gap-2" key={item}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><span>{item}</span></li>)}
+            {["Ingen særskilt kvote for bilagsopbevaring (PDF og billeder, filstørrelsesgrænser gælder)", "1.000 posteringer pr. regnskabsår inkluderet", "Ubegrænsede integrationer", `${plan.includedCompanies || 1} regnskabsprofil inkluderet (CVR eller særskilt SE-regnskab)`, "Ubegrænsede brugere, kunder og leverandører"].map((item) => <li className="flex gap-2" key={item}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><span>{item}</span></li>)}
           </ul>
           <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-950"><Sparkles className="mr-1 inline h-4 w-4" /><strong>AI:</strong> {aiSummary(plan)}</div>
-          {plan.additionalCompanyPrice > 0 && <p className="mt-3 text-xs leading-5 text-slate-600"><strong>Flere selskaber:</strong> +{money(plan.additionalCompanyPrice)} pr. ekstra CVR. Hvert ekstra CVR giver {limit(plan.aiCreditsPerAdditionalCompany)} ekstra AI-handlinger.</p>}
+          {plan.additionalCompanyPrice > 0 && <p className="mt-3 text-xs leading-5 text-slate-600"><strong>Flere regnskaber:</strong> +{money(plan.additionalCompanyPrice)} pr. ekstra regnskabsprofil. Hver ekstra profil giver {limit(plan.aiCreditsPerAdditionalCompany)} ekstra AI-handlinger.</p>}
           <Button asChild className="mt-6 w-full" variant={recommended ? "default" : "outline"}><Link href={`/tilmeld?pakke=${encodeURIComponent(plan.slug)}`}>Prøv {plan.name} gratis</Link></Button>
         </article>;
       })}</div>}

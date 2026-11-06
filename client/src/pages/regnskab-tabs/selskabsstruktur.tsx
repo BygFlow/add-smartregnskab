@@ -17,11 +17,11 @@ type LegalCompany = {
 };
 type CompanyUnit = {
   id: number; companyId: number; name: string; seNumber?: string | null;
-  unitType: "department" | "se_unit"; active: number;
+  unitType: "department" | "se_unit"; active: number; accountingCompanyId?: number | null;
 };
 type Organization = {
   ownerCompanyId: number; activeCompanyId: number; companies: LegalCompany[];
-  units: CompanyUnit[]; limits: { companies: number; maxCompanies: number };
+  accountingScopes: LegalCompany[]; units: CompanyUnit[]; limits: { companies: number; maxCompanies: number };
 };
 
 const roleLabel: Record<string, string> = {
@@ -67,9 +67,20 @@ export default function Selskabsstruktur() {
       await qc.invalidateQueries({ queryKey: ["/api/organization"] });
       setUnitOpen(false);
       setUnitForm({ companyId: "", name: "", unitType: "department", seNumber: "" });
-      toast({ title: "Enheden er oprettet", description: "Enheden er også oprettet som en regnskabsdimension." });
+      toast({ title: "Enheden er oprettet", description: unitForm.unitType === "se_unit" ? "Opret derefter det særskilte SE-regnskab fra oversigten." : "Afdelingen er oprettet som en regnskabsdimension." });
     },
     onError: (error: Error) => toast({ title: "Enheden kunne ikke oprettes", description: error.message, variant: "destructive" }),
+  });
+
+  const createAccountingScope = useMutation({
+    mutationFn: async (unitId: number) => (await apiRequest("POST", `/api/organization/units/${unitId}/accounting-scope`)).json(),
+    onSuccess: async (result) => {
+      await qc.invalidateQueries({ queryKey: ["/api/organization"] });
+      await switchCompany(result.accountingCompany.id);
+      window.location.hash = "#/smartregnskab/app/dashboard";
+      toast({ title: "SE-regnskabet er klar", description: "Moms, udgifter, bilag, bank og løn holdes nu særskilt." });
+    },
+    onError: (error: Error) => toast({ title: "SE-regnskabet kunne ikke oprettes", description: error.message, variant: "destructive" }),
   });
 
   if (organization.isLoading) return <Skeleton className="h-72 w-full" />;
@@ -80,11 +91,15 @@ export default function Selskabsstruktur() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Selskaber & SE-enheder</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Ét ApS eller A/S er ét juridisk regnskab. Afdelinger og SE-numre hører under det valgte CVR og får ikke deres eget selskabsregnskab.
+          Ét ApS eller A/S er én juridisk virksomhed. En særskilt momsregistreret SE-enhed kan få sit eget regnskabsområde til moms, udgifter, bilag, bank og løn, mens årsregnskabet fortsat hører under den juridiske virksomhed.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => { setUnitForm((f) => ({ ...f, companyId: String(data.activeCompanyId) })); setUnitOpen(true); }}>
+        <Button variant="outline" onClick={() => {
+          const activeScope = data.accountingScopes.find((scope) => scope.id === data.activeCompanyId);
+          setUnitForm((f) => ({ ...f, companyId: String(activeScope?.parentCompanyId || data.activeCompanyId || data.ownerCompanyId) }));
+          setUnitOpen(true);
+        }}>
           <Plus className="mr-2 h-4 w-4" /> Tilføj afdeling/SE
         </Button>
         <Button disabled={!canAddCompany} onClick={() => { setCompanyForm((f) => ({ ...f, parentCompanyId: String(data.ownerCompanyId) })); setCompanyOpen(true); }}>
@@ -96,40 +111,45 @@ export default function Selskabsstruktur() {
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="rounded-lg border bg-card p-4"><Building2 className="mb-2 h-5 w-5 text-primary"/><p className="text-2xl font-semibold">{data.companies.length}</p><p className="text-xs text-muted-foreground">Juridiske selskaber</p></div>
       <div className="rounded-lg border bg-card p-4"><Store className="mb-2 h-5 w-5 text-primary"/><p className="text-2xl font-semibold">{data.units.length}</p><p className="text-xs text-muted-foreground">Afdelinger og SE-enheder</p></div>
-      <div className="rounded-lg border bg-card p-4"><Network className="mb-2 h-5 w-5 text-primary"/><p className="text-2xl font-semibold">{data.limits.companies}/{data.limits.maxCompanies === -1 ? "∞" : data.limits.maxCompanies}</p><p className="text-xs text-muted-foreground">Selskaber i abonnementet</p></div>
+      <div className="rounded-lg border bg-card p-4"><Network className="mb-2 h-5 w-5 text-primary"/><p className="text-2xl font-semibold">{data.limits.companies}/{data.limits.maxCompanies === -1 ? "∞" : data.limits.maxCompanies}</p><p className="text-xs text-muted-foreground">Regnskabsprofiler i abonnementet</p></div>
     </div>
 
-    {!canAddCompany && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Jeres pakke har nået grænsen for juridiske selskaber. Afdelinger og SE-enheder kan stadig oprettes under et eksisterende CVR.</div>}
+    {!canAddCompany && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Jeres pakke har nået grænsen for regnskabsprofiler. Almindelige afdelinger kan stadig oprettes, men et nyt selskab eller særskilt SE-regnskab kræver en større pakke.</div>}
 
     <div className="space-y-3">
       {data.companies.map((company) => {
         const parent = data.companies.find((item) => item.id === company.parentCompanyId);
         const units = data.units.filter((unit) => unit.companyId === company.id);
         const active = company.id === data.activeCompanyId;
-        return <div key={company.id} className={`rounded-xl border bg-card p-4 ${active ? "border-primary/50 ring-1 ring-primary/20" : ""}`}>
+        const activeUnit = units.find((unit) => unit.accountingCompanyId === data.activeCompanyId);
+        return <div key={company.id} className={`rounded-xl border bg-card p-4 ${active || activeUnit ? "border-primary/50 ring-1 ring-primary/20" : ""}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{company.name}</h3>{active && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Check className="h-3 w-3"/>Aktivt regnskab</span>}</div>
               <p className="mt-1 text-sm text-muted-foreground">CVR {company.cvr || "ikke angivet"} · {roleLabel[company.groupRole || "standalone"] || company.groupRole}</p>
               {parent && <p className="text-xs text-muted-foreground">Ejet under {parent.name}{company.ownershipPercent != null ? ` · ${company.ownershipPercent}%` : ""}</p>}
             </div>
-            {!active && <Button size="sm" variant="outline" onClick={async () => { await switchCompany(company.id); window.location.hash = "#/smartregnskab/app/dashboard"; }}>Åbn regnskab</Button>}
+            {!active && <Button size="sm" variant="outline" onClick={async () => { await switchCompany(company.id); window.location.hash = "#/smartregnskab/app/dashboard"; }}>Åbn hovedregnskab</Button>}
           </div>
           <div className="mt-3 space-y-2">
-            {units.length === 0 ? <span className="text-xs text-muted-foreground">Ingen afdelinger eller SE-enheder.</span> : units.map((unit) => (
-              <div key={unit.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2">
+            {units.length === 0 ? <span className="text-xs text-muted-foreground">Ingen afdelinger eller SE-enheder.</span> : units.map((unit) => {
+              const scope = data.accountingScopes.find((item) => item.id === unit.accountingCompanyId);
+              const unitActive = scope?.id === data.activeCompanyId;
+              return (
+              <div key={unit.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ${unitActive ? "bg-primary/10" : "bg-muted/60"}`}>
                 <div>
-                  <p className="text-sm font-medium">{unit.name}{unit.seNumber ? ` · SE ${unit.seNumber}` : " · afdeling"}</p>
-                  <p className="text-xs text-muted-foreground">Bogføres og indberettes i det juridiske regnskab for {company.name}.</p>
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium">{unit.name}{unit.seNumber ? ` · SE ${unit.seNumber}` : " · afdeling"}{unitActive && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Aktivt SE-regnskab</span>}</p>
+                  <p className="text-xs text-muted-foreground">{scope ? `Særskilt moms, udgifter, bilag, bank og løn · juridisk under ${company.name}.` : unit.unitType === "se_unit" ? "SE-enheden mangler endnu sit særskilte moms- og lønregnskab." : `Bogføres i hovedregnskabet for ${company.name}.`}</p>
                 </div>
-                <Button size="sm" variant="ghost" onClick={async () => {
+                {unit.unitType === "se_unit" ? scope ? <Button size="sm" variant="outline" disabled={unitActive} onClick={async () => {
+                  await switchCompany(scope.id);
+                  window.location.hash = "#/smartregnskab/app/dashboard";
+                }}>{unitActive ? "SE-regnskab åbent" : "Åbn SE-regnskab"}</Button> : <Button size="sm" onClick={() => createAccountingScope.mutate(unit.id)} disabled={createAccountingScope.isPending}>Opret særskilt SE-regnskab</Button> : <Button size="sm" variant="ghost" onClick={async () => {
                   if (!active) await switchCompany(company.id);
                   window.location.hash = "#/smartregnskab/app/dashboard";
-                }}>
-                  {active ? "Gå til regnskab" : "Åbn hovedregnskab"}
-                </Button>
+                }}>Gå til hovedregnskab</Button>}
               </div>
-            ))}
+            )})}
           </div>
         </div>;
       })}

@@ -16,8 +16,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type LegalCompany = { id: number; name: string; cvr?: string | null };
-type Organization = { activeCompanyId: number; companies: LegalCompany[] };
+type LegalCompany = { id: number; name: string; cvr?: string | null; groupRole?: string | null };
+type Organization = { activeCompanyId: number; companies: LegalCompany[]; accountingScopes: LegalCompany[] };
 type DocumentSettings = {
   address: string | null;
   emailReady: boolean;
@@ -109,6 +109,10 @@ export default function MobileReceipts() {
 
   const documents = useMemo(() => [...(inbox.data ?? [])]
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 30), [inbox.data]);
+  const accountingChoices = useMemo(() => [
+    ...(organization.data?.companies ?? []),
+    ...(organization.data?.accountingScopes ?? []),
+  ], [organization.data]);
   // Matcher backendens rollekrav præcist; andre roller kan uploade og kontrollere,
   // men kan ikke få vist en handling som serveren efterfølgende vil afvise.
   const canApprove = user?.role === "leder";
@@ -231,12 +235,12 @@ export default function MobileReceipts() {
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-emerald-700"/>Vælg virksomhed</CardTitle>
-            <CardDescription>Bilaget gemmes kun i det valgte selskabs regnskab.</CardDescription>
+            <CardDescription>Bilaget gemmes kun i det valgte hoved- eller SE-regnskab.</CardDescription>
           </CardHeader>
           <CardContent>
             <Select value={String(organization.data?.activeCompanyId ?? company?.id ?? "")} onValueChange={changeCompany} disabled={organization.isLoading || upload.isPending}>
               <SelectTrigger className="h-12 bg-white dark:bg-slate-900" aria-label="Aktiv virksomhed"><SelectValue placeholder="Indlæser virksomheder…"/></SelectTrigger>
-              <SelectContent>{organization.data?.companies.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}{item.cvr ? ` · CVR ${item.cvr}` : ""}</SelectItem>)}</SelectContent>
+              <SelectContent>{accountingChoices.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}{item.cvr ? ` · ${item.groupRole === "se_registration" ? "SE" : "CVR"} ${item.cvr}` : ""}</SelectItem>)}</SelectContent>
             </Select>
           </CardContent>
         </Card>

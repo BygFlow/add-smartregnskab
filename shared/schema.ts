@@ -13,7 +13,7 @@ export const companies = sqliteTable("companies", {
   // Selskabsstruktur. Null betyder en almindelig, selvstændig kundevirksomhed.
   parentCompanyId: integer("parent_company_id"),
   subscriptionOwnerId: integer("subscription_owner_id"),
-  groupRole: text("group_role").notNull().default("standalone"), // standalone, holding, parent, subsidiary
+  groupRole: text("group_role").notNull().default("standalone"), // standalone, holding, parent, subsidiary, se_registration
   ownershipPercent: real("ownership_percent"),
   // Platformstyring
   status: text("status").notNull().default("proeve"), // proeve, aktiv, i_restance, spaerret, opsagt
@@ -119,9 +119,9 @@ export const companyAccessMemberships = sqliteTable("company_access_memberships"
 export const insertCompanyAccessMembershipSchema = createInsertSchema(companyAccessMemberships).omit({ id: true });
 export type CompanyAccessMembership = typeof companyAccessMemberships.$inferSelect;
 
-// SE-numre er administrative enheder under en juridisk virksomhed og får
-// derfor ikke et selvstændigt selskabsregnskab. De kobles i stedet til en
-// afdeling/dimension i den juridiske virksomheds bogføring.
+// SE-numre er administrative enheder under en juridisk virksomhed. En SE-enhed
+// kan få sit eget afgrænsede regnskabsområde (moms, løn, bilag, bank osv.) uden
+// dermed at blive behandlet som et selvstændigt juridisk selskab.
 export const companyUnits = sqliteTable("company_units", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull(),
@@ -129,10 +129,12 @@ export const companyUnits = sqliteTable("company_units", {
   seNumber: text("se_number"),
   unitType: text("unit_type").notNull().default("department"), // department, se_unit
   dimensionValueId: integer("dimension_value_id"),
+  accountingCompanyId: integer("accounting_company_id"),
   active: integer("active").notNull().default(1),
   createdAt: text("created_at").notNull(),
 }, (table) => ({
   companySeUnique: uniqueIndex("company_units_company_se_unique").on(table.companyId, table.seNumber),
+  accountingCompanyUnique: uniqueIndex("company_units_accounting_company_unique").on(table.accountingCompanyId),
 }));
 
 export const insertCompanyUnitSchema = createInsertSchema(companyUnits).omit({ id: true });
@@ -494,7 +496,7 @@ export const plans = sqliteTable("plans", {
   maxCustomers: integer("max_customers").notNull().default(25),
   maxDocuments: integer("max_documents").notNull().default(-1), // bilag er ubegrænsede
   maxEntries: integer("max_entries").notNull().default(1000), // inkluderede posteringer pr. regnskabsår
-  maxCompanies: integer("max_companies").notNull().default(1), // selskaber i samme abonnement
+  maxCompanies: integer("max_companies").notNull().default(1), // regnskabsprofiler (CVR eller særskilt SE-regnskab)
   maxIntegrations: integer("max_integrations").notNull().default(-1), // integrationer er ubegrænsede
   includedCompanies: integer("included_companies").notNull().default(1),
   additionalCompanyPrice: real("additional_company_price").notNull().default(0),

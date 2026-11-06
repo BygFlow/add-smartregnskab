@@ -75,7 +75,7 @@ async function consolidationContext(req: any) {
   if (!activeCompany) throw { status: 404, message: "Virksomheden findes ikke." };
   const ownerId = activeCompany.subscriptionOwnerId || activeCompany.id;
   const companies = (await storage.getCompanies()).filter((company: any) =>
-    (company.subscriptionOwnerId || company.id) === ownerId,
+    (company.subscriptionOwnerId || company.id) === ownerId && company.groupRole !== "se_registration",
   );
   return { ownerId, companies };
 }

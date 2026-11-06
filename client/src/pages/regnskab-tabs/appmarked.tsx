@@ -241,7 +241,7 @@ export default function Appmarked({ companyId }: { companyId: number }) {
             <div className="flex items-start justify-between gap-2"><p className="text-2xl font-bold">{money(plan.monthlyPrice)}<span className="text-xs font-normal text-muted-foreground"> / md. ekskl. moms</span></p>{selected && <StatusChip status="valgt" />}</div>
             <p className="mt-2 min-h-10 text-xs text-muted-foreground">{plan.description}</p>
             <ul className="my-4 flex-1 space-y-1.5 text-xs">{included.slice(0, 7).map((feature) => <li key={feature} className="flex gap-2"><Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" /><span>{featureLabels[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>
-            <p className="mb-3 text-[11px] text-muted-foreground">{plan.includedCompanies} CVR inkluderet{plan.additionalCompanyPrice > 0 ? ` · ${money(plan.additionalCompanyPrice)} pr. ekstra CVR` : ""}. SE-numre er inkluderet.</p>
+            <p className="mb-3 text-[11px] text-muted-foreground">{plan.includedCompanies} regnskabsprofil inkluderet{plan.additionalCompanyPrice > 0 ? ` · ${money(plan.additionalCompanyPrice)} pr. ekstra profil` : ""}. Et særskilt SE-regnskab tæller som én profil.</p>
             <Button variant={selected ? "outline" : "default"} disabled={selected || user?.role !== "leder" || !packageTermsAccepted || changePlan.isPending} onClick={() => {
               if (window.confirm(`Skift abonnement til ${plan.name} for ${money(plan.monthlyPrice)} pr. måned ekskl. moms?`)) changePlan.mutate(plan.id);
             }}>{changePlan.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{selected ? "Aktuel pakke" : "Vælg pakke"}</Button>

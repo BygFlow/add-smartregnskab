@@ -269,7 +269,7 @@ export function Tilmeld() {
                         {index === 0 && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Første pakke</span>}
                       </div>
                       <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{money(plan.monthlyPrice)} <span className="font-normal text-xs text-muted-foreground">/ md. ekskl. moms</span></p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{plan.includedCompanies || 1} CVR inkluderet · SE-numre gratis</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{plan.includedCompanies || 1} regnskabsprofil inkluderet · CVR eller særskilt SE-regnskab</p>
                       <p className="text-xs leading-5 text-muted-foreground">{plan.includedAiCredits > 0 ? `${new Intl.NumberFormat("da-DK").format(plan.includedAiCredits)} AI-handlinger inkluderet` : `AI er valgfrit tilkøb: ${money(plan.aiAddonPrice)}/md.`}</p>
                       {plan.additionalCompanyPrice > 0 && <p className="text-xs leading-5 text-muted-foreground">Ekstra CVR: +{money(plan.additionalCompanyPrice)}/md.</p>}
                     </button>

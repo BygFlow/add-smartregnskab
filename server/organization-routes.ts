@@ -1,7 +1,7 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import {
-  auditLogs, companyAccessMemberships, companyUnits, dimensionDefinitions, dimensionValues,
+  auditLogs, companyAccessMemberships, companyUnits, dimensionDefinitions, dimensionValues, users,
 } from "@shared/schema";
 import { db, storage } from "./storage";
 import { requireRole, tenantId } from "./auth";
@@ -42,8 +42,27 @@ async function context(req: Request) {
   if (!home) throw new Error("Den aktive virksomhed findes ikke.");
   const ownerId = home.subscriptionOwnerId || home.id;
   const all = await storage.getCompanies();
-  const companies = all.filter((company) => (company.subscriptionOwnerId || company.id) === ownerId);
-  return { home, ownerId, companies };
+  const organizationCompanies = all.filter((company) => (company.subscriptionOwnerId || company.id) === ownerId);
+  const companies = organizationCompanies.filter((company) => company.groupRole !== "se_registration");
+  const accountingScopes = organizationCompanies.filter((company) => company.groupRole === "se_registration");
+  return { home, ownerId, companies, accountingScopes, organizationCompanies };
+}
+
+async function grantSeScopeAccess(parentCompanyId: number, accountingCompanyId: number, currentUserId: number, currentRole: string) {
+  const directUsers = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.companyId, parentCompanyId)).all();
+  const parentMemberships = await db.select().from(companyAccessMemberships).where(and(
+    eq(companyAccessMemberships.companyId, parentCompanyId),
+    eq(companyAccessMemberships.status, "active"),
+  )).all();
+  const roles = new Map<number, string>([[currentUserId, currentRole]]);
+  for (const user of directUsers) roles.set(user.id, roles.get(user.id) || user.role);
+  for (const membership of parentMemberships) roles.set(membership.userId, membership.role || "leder");
+  const createdAt = new Date().toISOString();
+  for (const [userId, role] of Array.from(roles.entries())) {
+    await db.insert(companyAccessMemberships).values({
+      userId, companyId: accountingCompanyId, role, status: "active", createdAt,
+    }).onConflictDoNothing({ target: [companyAccessMemberships.userId, companyAccessMemberships.companyId] });
+  }
 }
 
 async function audit(req: Request, action: string, target: string, detail?: string) {
@@ -55,7 +74,7 @@ async function audit(req: Request, action: string, target: string, detail?: stri
 
 export function registerOrganizationRoutes(app: Express) {
   app.get("/api/organization", requireRole("leder", "holdleder", "bogholder", "revisor", "revisor_admin", "platform_admin"), h(async (req, res) => {
-    const { ownerId, companies } = await context(req);
+    const { ownerId, companies, accountingScopes, organizationCompanies } = await context(req);
     const companyIds = companies.map((company) => company.id);
     const units = companyIds.length
       ? await db.select().from(companyUnits).where(inArray(companyUnits.companyId, companyIds)).all()
@@ -65,8 +84,9 @@ export function registerOrganizationRoutes(app: Express) {
       ownerCompanyId: ownerId,
       activeCompanyId: req.auth!.companyId,
       companies,
+      accountingScopes,
       units,
-      limits: { companies: companies.length, maxCompanies: plan?.maxCompanies ?? 1 },
+      limits: { companies: organizationCompanies.length, legalCompanies: companies.length, maxCompanies: plan?.maxCompanies ?? 1 },
     });
   }));
 
@@ -74,11 +94,11 @@ export function registerOrganizationRoutes(app: Express) {
     if (!req.auth!.isPlatformAdmin && req.auth!.user.role !== "leder" && req.auth!.companyMembership?.role !== "leder") {
       return res.status(403).json({ error: "Kun virksomhedens leder kan oprette et juridisk selskab." });
     }
-    const { home, ownerId, companies } = await context(req);
+    const { home, ownerId, companies, organizationCompanies } = await context(req);
     const plan = await storage.getCompanyPlan(ownerId);
     const maxCompanies = plan?.maxCompanies ?? 1;
-    if (maxCompanies !== -1 && companies.length >= maxCompanies) {
-      return res.status(409).json({ error: `Pakken tillader ${maxCompanies} virksomhed${maxCompanies === 1 ? "" : "er"}. Opgradér pakken for at tilføje flere juridiske selskaber.` });
+    if (maxCompanies !== -1 && organizationCompanies.length >= maxCompanies) {
+      return res.status(409).json({ error: `Pakken tillader ${maxCompanies} regnskabsprofil${maxCompanies === 1 ? "" : "er"}. Opgradér pakken for at tilføje et selskab eller særskilt SE-regnskab.` });
     }
     const name = String(req.body?.name ?? "").trim();
     const cvr = digits8(req.body?.cvr);
@@ -221,5 +241,64 @@ export function registerOrganizationRoutes(app: Express) {
     }).returning().get();
     await audit(req, "opret_se_enhed", "company_unit", `${name}${seNumber ? ` (${seNumber})` : ""}`);
     res.status(201).json(unit);
+  }));
+
+  app.post("/api/organization/units/:id/accounting-scope", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    if (!req.auth!.isPlatformAdmin && req.auth!.user.role !== "leder" && req.auth!.companyMembership?.role !== "leder") {
+      return res.status(403).json({ error: "Kun virksomhedens leder kan oprette et særskilt SE-regnskab." });
+    }
+    const { ownerId, companies, accountingScopes, organizationCompanies } = await context(req);
+    const unitId = Number(req.params.id);
+    const unit = await db.select().from(companyUnits).where(eq(companyUnits.id, unitId)).get();
+    const parent = unit ? companies.find((company) => company.id === unit.companyId) : undefined;
+    if (!unit || !parent) return res.status(404).json({ error: "SE-enheden findes ikke i denne kundeorganisation." });
+    if (unit.unitType !== "se_unit" || !unit.seNumber) {
+      return res.status(409).json({ error: "Kun en SE-enhed kan få et særskilt moms- og lønregnskab." });
+    }
+
+    let accountingCompany = unit.accountingCompanyId
+      ? accountingScopes.find((company) => company.id === unit.accountingCompanyId)
+      : undefined;
+    if (!accountingCompany) {
+      accountingCompany = accountingScopes.find((company) =>
+        company.parentCompanyId === parent.id && digits8(company.cvr) === digits8(unit.seNumber),
+      );
+    }
+    if (!accountingCompany) {
+      const plan = await storage.getCompanyPlan(ownerId);
+      const maxProfiles = plan?.maxCompanies ?? 1;
+      if (maxProfiles !== -1 && organizationCompanies.length >= maxProfiles) {
+        return res.status(409).json({ error: `Pakken tillader ${maxProfiles} regnskabsprofil${maxProfiles === 1 ? "" : "er"}. Opgradér pakken for at oprette det særskilte SE-regnskab.` });
+      }
+      accountingCompany = await storage.createCompany({
+        name: unit.name,
+        cvr: unit.seNumber,
+        address: parent.address,
+        phone: parent.phone,
+        email: parent.email,
+        website: parent.website,
+        status: parent.status,
+        kind: "kunde",
+        createdAt: new Date().toISOString(),
+        parentCompanyId: parent.id,
+        subscriptionOwnerId: ownerId,
+        groupRole: "se_registration",
+        ownershipPercent: null,
+        vatRate: parent.vatRate,
+        vatMode: parent.vatMode,
+        currency: parent.currency,
+        retentionTimeEntries: parent.retentionTimeEntries,
+        retentionGps: parent.retentionGps,
+        retentionAbsences: parent.retentionAbsences,
+        retentionPhotos: parent.retentionPhotos,
+        paymentTerms: parent.paymentTerms,
+      } as any);
+    }
+    await grantSeScopeAccess(parent.id, accountingCompany.id, req.auth!.userId, req.auth!.role);
+    const updatedUnit = await db.update(companyUnits).set({
+      accountingCompanyId: accountingCompany.id,
+    }).where(eq(companyUnits.id, unit.id)).returning().get();
+    await audit(req, "opret_se_regnskab", "company_unit", `${unit.name} (SE ${unit.seNumber})`);
+    res.status(unit.accountingCompanyId ? 200 : 201).json({ unit: updatedUnit, accountingCompany });
   }));
 }

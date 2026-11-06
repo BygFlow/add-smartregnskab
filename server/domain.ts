@@ -282,6 +282,7 @@ export interface BillingPreview {
   perEmployee: number;
   employeeCharge: number;
   legalCompanyCount: number;
+  accountingProfileCount: number;
   includedCompanies: number;
   additionalCompanyCount: number;
   pricePerAdditionalCompany: number;
@@ -343,8 +344,8 @@ export async function organizationPostingUsage(companyId: number) {
 }
 
 /**
- * Beregner organisationens pris. SE-enheder er dimensioner under et CVR og
- * tælles derfor ikke som juridiske selskaber eller ekstra abonnementer.
+ * Beregner organisationens pris. Et særskilt SE-regnskabsområde er ikke et
+ * juridisk selskab, men tæller som en regnskabsprofil i pakkens kapacitet.
  */
 export async function previewBilling(companyId: number): Promise<BillingPreview | null> {
   const sub = await storage.getSubscriptionByCompany(companyId);
@@ -360,9 +361,10 @@ export async function previewBilling(companyId: number): Promise<BillingPreview 
   const employeeCount = (await Promise.all(
     organizationCompanies.map((company) => storage.getEmployees(company.id)),
   )).flat().length;
-  const legalCompanyCount = organizationCompanies.length;
+  const legalCompanyCount = organizationCompanies.filter((company) => company.groupRole !== "se_registration").length;
+  const accountingProfileCount = organizationCompanies.length;
   const includedCompanies = Math.max(1, plan.includedCompanies);
-  const additionalCompanyCount = Math.max(0, legalCompanyCount - includedCompanies);
+  const additionalCompanyCount = Math.max(0, accountingProfileCount - includedCompanies);
   const additionalCompanyCharge = round2(additionalCompanyCount * plan.additionalCompanyPrice);
   const employeeCharge = round2(employeeCount * plan.pricePerEmployee);
   const aiAddonEnabled = Boolean(sub.aiAddonEnabled && plan.aiAddonCredits > 0);
@@ -394,6 +396,7 @@ export async function previewBilling(companyId: number): Promise<BillingPreview 
     perEmployee: plan.pricePerEmployee,
     employeeCharge,
     legalCompanyCount,
+    accountingProfileCount,
     includedCompanies,
     additionalCompanyCount,
     pricePerAdditionalCompany: plan.additionalCompanyPrice,

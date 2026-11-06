@@ -165,7 +165,8 @@ if (!hasApplicationSchema) {
       CREATE TABLE IF NOT EXISTS company_units (
         id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
         name text NOT NULL, se_number text, unit_type text DEFAULT 'department' NOT NULL,
-        dimension_value_id integer, active integer DEFAULT 1 NOT NULL, created_at text NOT NULL
+        dimension_value_id integer, accounting_company_id integer,
+        active integer DEFAULT 1 NOT NULL, created_at text NOT NULL
       );
       CREATE TABLE IF NOT EXISTS ai_usage_events (
         id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer NOT NULL,
@@ -328,6 +329,7 @@ if (!hasApplicationSchema) {
     addColumn("companies", "subscription_owner_id", "integer");
     addColumn("companies", "group_role", "text DEFAULT 'standalone' NOT NULL");
     addColumn("companies", "ownership_percent", "real");
+    addColumn("company_units", "accounting_company_id", "integer");
     addColumn("companies", "document_inbox_token", "text");
     addColumn("companies", "document_auto_post", "integer DEFAULT 0 NOT NULL");
     addColumn("companies", "document_payables_account_id", "integer");
@@ -371,6 +373,7 @@ if (!hasApplicationSchema) {
     "CREATE UNIQUE INDEX IF NOT EXISTS professional_membership_user_company_unique ON professional_memberships (user_id, company_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS company_access_user_company_unique ON company_access_memberships (user_id, company_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS company_units_company_se_unique ON company_units (company_id, se_number)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS company_units_accounting_company_unique ON company_units (accounting_company_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_settings_owner_unique ON ai_usage_settings (subscription_owner_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_external_request_unique ON ai_usage_events (external_request_id)",
     "CREATE INDEX IF NOT EXISTS ai_usage_owner_created_idx ON ai_usage_events (subscription_owner_id, created_at)",

@@ -175,6 +175,7 @@ type PlatformCompanySummary = {
   currentPeriodEnd?: string | null;
   monthlyValue?: number | null;
   legalCompanyCount?: number | null;
+  accountingProfileCount?: number | null;
   legalCompanies?: Array<{
     id: number;
     name: string;
@@ -6525,7 +6526,7 @@ function PlatformRegnskabssystemPage() {
             : companies.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Ingen kundevirksomheder er oprettet.</p>
             : <div className="divide-y">{companies.slice(0, 8).map((company) => <button type="button" key={company.id} onClick={() => setSelectedPlatformCompanyId(company.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Building2 className="h-4 w-4" /></div>
-              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{company.name}</p><p className="text-xs text-muted-foreground">{company.planName ?? "Ingen pakke"} · {num(company.legalCompanyCount ?? 1)} juridiske virksomheder</p></div>
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{company.name}</p><p className="text-xs text-muted-foreground">{company.planName ?? "Ingen pakke"} · {num(company.legalCompanyCount ?? 1)} juridiske · {num(company.accountingProfileCount ?? company.legalCompanyCount ?? 1)} regnskabsprofiler</p></div>
               <StatusChip status={company.status ?? "ukendt"} />
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </button>)}</div>}
@@ -6584,10 +6585,10 @@ function PlatformRegnskabssystemPage() {
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-lg bg-muted p-2">Bilag<br/><strong>Ingen antalgrænse</strong><span className="block text-[10px]">Filstørrelsesgrænser gælder</span></div>
             <div className="rounded-lg bg-muted p-2">Posteringer / år<br/><strong>1.000 inkl.</strong></div>
-            <div className="rounded-lg bg-muted p-2">Virksomheder<br/><strong>{plan.maxCompanies === -1 ? "Ubegrænset" : num(plan.maxCompanies)}</strong></div>
+            <div className="rounded-lg bg-muted p-2">Regnskabsprofiler<br/><strong>{plan.maxCompanies === -1 ? "Ubegrænset" : num(plan.maxCompanies)}</strong></div>
             <div className="rounded-lg bg-muted p-2">Integrationer<br/><strong>{plan.maxIntegrations === -1 ? "Ubegrænset" : num(plan.maxIntegrations)}</strong></div>
           </div>
-          <div className="mt-2 rounded-lg border bg-primary/5 p-2 text-xs"><strong>{plan.includedAiCredits > 0 ? `${num(plan.includedAiCredits)} AI inkluderet` : `AI-tilkøb ${money(plan.aiAddonPrice)}`}</strong><span className="block text-muted-foreground">{plan.includedCompanies} CVR inkluderet{plan.additionalCompanyPrice > 0 ? ` · +${money(plan.additionalCompanyPrice)} pr. ekstra` : ""}</span></div>
+          <div className="mt-2 rounded-lg border bg-primary/5 p-2 text-xs"><strong>{plan.includedAiCredits > 0 ? `${num(plan.includedAiCredits)} AI inkluderet` : `AI-tilkøb ${money(plan.aiAddonPrice)}`}</strong><span className="block text-muted-foreground">{plan.includedCompanies} regnskabsprofil inkluderet{plan.additionalCompanyPrice > 0 ? ` · +${money(plan.additionalCompanyPrice)} pr. ekstra` : ""}</span></div>
           <p className="mt-3 min-h-12 text-xs text-muted-foreground">{plan.description || "Ingen beskrivelse"}</p>
           <div className="mt-3 flex-1 border-t pt-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{features.length} funktioner inkluderet</p><ul className="space-y-1.5">{features.map((feature) => <li key={feature} className="flex gap-2 text-xs"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{PLAN_FEATURE_LABELS[feature] ?? feature.replaceAll("_", " ")}</span></li>)}</ul>{features.length === 0 && <p className="text-xs text-amber-700">Pakken mangler funktioner.</p>}</div>
           <Button className="mt-4 w-full" size="sm" variant="outline" onClick={() => openPlanEditor(plan)}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger pakke</Button>
@@ -6717,16 +6718,16 @@ function PlatformRegnskabssystemPage() {
           <div className="space-y-2"><Label htmlFor="plan-price">Pris pr. måned, kr.</Label><Input id="plan-price" type="number" min="0" step="0.01" value={planForm.monthlyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, monthlyPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label htmlFor="plan-employee-price">Pris pr. ansat, kr.</Label><Input id="plan-employee-price" type="number" min="0" step="0.01" value={planForm.pricePerEmployee} onChange={(event) => setPlanForm((form) => ({ ...form, pricePerEmployee: event.target.value }))}/></div>
           <div className="space-y-2 sm:col-span-2"><Label>Forbrugsmodel</Label><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm"><strong>Ubegrænsede bilag · 1.000 posteringer pr. regnskabsår inkluderet</strong><span className="mt-1 block text-xs text-muted-foreground">Posteringstillæg reguleres automatisk efter den fælles pristabel og ændres ikke pr. grundpakke.</span></div></div>
-          <div className="space-y-2"><Label htmlFor="plan-companies">Virksomheder (-1 = fri)</Label><Input id="plan-companies" type="number" min="-1" value={planForm.maxCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, maxCompanies: event.target.value }))}/></div>
+          <div className="space-y-2"><Label htmlFor="plan-companies">Regnskabsprofiler (-1 = fri)</Label><Input id="plan-companies" type="number" min="-1" value={planForm.maxCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, maxCompanies: event.target.value }))}/></div>
           <div className="space-y-2"><Label>Integrationer</Label><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm"><strong>Ubegrænset</strong><span className="ml-2 text-xs text-muted-foreground">Integrationer begrænses ikke af pakken.</span></div></div>
-          <div className="space-y-2"><Label>Inkluderede CVR-numre</Label><Input type="number" min="1" value={planForm.includedCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, includedCompanies: event.target.value }))}/></div>
-          <div className="space-y-2"><Label>Pris pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.additionalCompanyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, additionalCompanyPrice: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Inkluderede regnskabsprofiler</Label><Input type="number" min="1" value={planForm.includedCompanies} onChange={(event) => setPlanForm((form) => ({ ...form, includedCompanies: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Pris pr. ekstra regnskabsprofil</Label><Input type="number" min="0" value={planForm.additionalCompanyPrice} onChange={(event) => setPlanForm((form) => ({ ...form, additionalCompanyPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label>Inkluderede AI-handlinger</Label><Input type="number" min="0" value={planForm.includedAiCredits} onChange={(event) => setPlanForm((form) => ({ ...form, includedAiCredits: event.target.value }))}/></div>
-          <div className="space-y-2"><Label>AI-handlinger pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.aiCreditsPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCreditsPerAdditionalCompany: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>AI-handlinger pr. ekstra regnskabsprofil</Label><Input type="number" min="0" value={planForm.aiCreditsPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCreditsPerAdditionalCompany: event.target.value }))}/></div>
           <div className="space-y-2"><Label>AI-tilkøbspris</Label><Input type="number" min="0" value={planForm.aiAddonPrice} onChange={(event) => setPlanForm((form) => ({ ...form, aiAddonPrice: event.target.value }))}/></div>
           <div className="space-y-2"><Label>AI-handlinger i tilkøb</Label><Input type="number" min="0" value={planForm.aiAddonCredits} onChange={(event) => setPlanForm((form) => ({ ...form, aiAddonCredits: event.target.value }))}/></div>
           <div className="space-y-2"><Label>Internt AI-omkostningsloft</Label><Input type="number" min="0" value={planForm.aiCostCap} onChange={(event) => setPlanForm((form) => ({ ...form, aiCostCap: event.target.value }))}/></div>
-          <div className="space-y-2"><Label>Ekstra AI-loft pr. ekstra CVR</Label><Input type="number" min="0" value={planForm.aiCostCapPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCostCapPerAdditionalCompany: event.target.value }))}/></div>
+          <div className="space-y-2"><Label>Ekstra AI-loft pr. ekstra regnskabsprofil</Label><Input type="number" min="0" value={planForm.aiCostCapPerAdditionalCompany} onChange={(event) => setPlanForm((form) => ({ ...form, aiCostCapPerAdditionalCompany: event.target.value }))}/></div>
           <div className="rounded-lg border bg-muted/30 p-3 text-xs sm:col-span-2"><strong>Brugere, kunder og leverandører begrænses ikke.</strong><p className="mt-1 text-muted-foreground">Pakkerne skelnes i stedet på regnskabsvolumen, virksomheder, integrationer og funktioner.</p></div>
           <div className="space-y-2"><Label htmlFor="plan-order">Placering</Label><Input id="plan-order" type="number" min="1" value={planForm.sortOrder} onChange={(event) => setPlanForm((form) => ({ ...form, sortOrder: event.target.value }))}/></div>
           <div className="rounded-lg border bg-muted/30 p-3 text-xs"><span className="text-muted-foreground">Fakturering</span><strong className="mt-1 block text-base">Månedlig</strong><span className="text-muted-foreground">Prisen opkræves én måned ad gangen.</span></div>

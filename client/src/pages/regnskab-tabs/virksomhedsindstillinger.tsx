@@ -62,11 +62,12 @@ export default function Virksomhedsindstillinger() {
     queryKey: ["/api/company"],
     queryFn: async () => (await apiRequest("GET", "/api/company")).json(),
   });
+  const isSeAccountingScope = company.data?.groupRole === "se_registration";
 
   const mitid = useQuery<MitidStatus>({
     queryKey: ["/api/mitid/status"],
     queryFn: async () => (await apiRequest("GET", "/api/mitid/status")).json(),
-    enabled: user?.role === "leder",
+    enabled: user?.role === "leder" && company.isSuccess && !isSeAccountingScope,
   });
 
   useEffect(() => {
@@ -121,7 +122,9 @@ export default function Virksomhedsindstillinger() {
     mutationFn: async () => {
       const cvr = form.cvr.replace(/\s/g, "");
       if (!form.name.trim()) throw new Error("Virksomhedsnavnet skal udfyldes.");
-      if (cvr && !/^\d{8}$/.test(cvr)) throw new Error("CVR-nummeret skal bestå af 8 cifre.");
+      if (cvr && !/^\d{8}$/.test(cvr)) throw new Error(isSeAccountingScope
+        ? "SE-nummeret skal bestå af 8 cifre."
+        : "CVR-nummeret skal bestå af 8 cifre.");
       const response = await apiRequest("PATCH", "/api/company", {
         ...form,
         name: form.name.trim(),
@@ -159,7 +162,7 @@ export default function Virksomhedsindstillinger() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">Virksomhedsoplysninger</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Stamdata, moms, valuta og bankoplysninger for den valgte juridiske virksomhed.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{isSeAccountingScope ? "Stamdata, moms, valuta og bankoplysninger for det valgte SE-regnskab." : "Stamdata, moms, valuta og bankoplysninger for den valgte juridiske virksomhed."}</p>
         </div>
         <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="save-company-settings">
           <Save className="mr-2 h-4 w-4" />{save.isPending ? "Gemmer…" : "Gem ændringer"}
@@ -170,7 +173,7 @@ export default function Virksomhedsindstillinger() {
         <div className="mb-5 flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" /><h3 className="font-semibold">Stamdata</h3></div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2"><Label htmlFor="company-name">Virksomhedsnavn</Label><Input id="company-name" value={form.name} onChange={(event) => set("name", event.target.value)} /></div>
-          <div className="space-y-2"><Label htmlFor="company-cvr">CVR-nummer</Label><Input id="company-cvr" inputMode="numeric" maxLength={8} value={form.cvr} onChange={(event) => set("cvr", event.target.value.replace(/\D/g, ""))} /></div>
+          <div className="space-y-2"><Label htmlFor="company-cvr">{isSeAccountingScope ? "SE-nummer" : "CVR-nummer"}</Label><Input id="company-cvr" inputMode="numeric" maxLength={8} disabled={isSeAccountingScope} value={form.cvr} onChange={(event) => set("cvr", event.target.value.replace(/\D/g, ""))} />{isSeAccountingScope && <p className="text-xs text-muted-foreground">SE-nummeret styres fra Selskaber & SE-enheder.</p>}</div>
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="company-address">Adresse</Label><Input id="company-address" value={form.address} onChange={(event) => set("address", event.target.value)} /></div>
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="company-invoice-address">Fakturaadresse, hvis den er anderledes</Label><Input id="company-invoice-address" value={form.invoiceAddress} onChange={(event) => set("invoiceAddress", event.target.value)} placeholder="Bruges kun, hvis fakturaadressen afviger" /></div>
           <div className="space-y-2"><Label htmlFor="company-email">E-mail</Label><Input id="company-email" type="email" value={form.email} onChange={(event) => set("email", event.target.value)} /></div>
@@ -179,7 +182,7 @@ export default function Virksomhedsindstillinger() {
         </div>
       </section>
 
-      {user?.role === "leder" && <section className="rounded-xl border bg-card p-5 shadow-sm" data-testid="mitid-company-verification">
+      {user?.role === "leder" && !isSeAccountingScope && <section className="rounded-xl border bg-card p-5 shadow-sm" data-testid="mitid-company-verification">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="rounded-lg bg-primary/10 p-2 text-primary"><ShieldCheck className="h-5 w-5" /></div>

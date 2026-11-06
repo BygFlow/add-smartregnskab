@@ -108,10 +108,12 @@ export const companyUnits = pgTable("company_units", {
   seNumber: text("se_number"),
   unitType: text("unit_type").notNull().default("department"),
   dimensionValueId: integer("dimension_value_id"),
+  accountingCompanyId: integer("accounting_company_id"),
   active: boolean("active").notNull().default(true),
   createdAt: text("created_at").notNull(),
 }, (table) => ({
   companySeUnique: uniqueIndex("company_units_company_se_unique").on(table.companyId, table.seNumber),
+  accountingCompanyUnique: uniqueIndex("company_units_accounting_company_unique").on(table.accountingCompanyId),
 }));
 
 export const insertCompanyUnitSchema = createInsertSchema(companyUnits).omit({ id: true });

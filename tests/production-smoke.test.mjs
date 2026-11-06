@@ -323,7 +323,39 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
       body: JSON.stringify({ companyId: subsidiary.id, name: "Smoke driftsenhed", unitType: "se_unit", seNumber: "11223344" }),
     });
     assert.equal(unitResponse.status, 201);
-    assert.equal((await unitResponse.json()).seNumber, "11223344");
+    const unit = await unitResponse.json();
+    assert.equal(unit.seNumber, "11223344");
+
+    const scopeResponse = await fetch(`${base}/api/organization/units/${unit.id}/accounting-scope`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+    });
+    assert.equal(scopeResponse.status, 201, await scopeResponse.clone().text());
+    const scopeResult = await scopeResponse.json();
+    assert.equal(scopeResult.accountingCompany.groupRole, "se_registration");
+    assert.equal(scopeResult.accountingCompany.cvr, "11223344");
+    assert.equal(scopeResult.accountingCompany.parentCompanyId, subsidiary.id);
+
+    const organizationWithScopeResponse = await fetch(`${base}/api/organization`, {
+      headers: { Authorization: `Bearer ${leaderToken}` },
+    });
+    assert.equal(organizationWithScopeResponse.status, 200);
+    const organizationWithScope = await organizationWithScopeResponse.json();
+    assert.equal(organizationWithScope.companies.length, 2, "an SE accounting scope is not a legal company");
+    assert.equal(organizationWithScope.accountingScopes.length, 1);
+    assert.equal(organizationWithScope.units.find((item) => item.id === unit.id).accountingCompanyId, scopeResult.accountingCompany.id);
+
+    const switchToSeScope = await fetch(`${base}/api/professional/switch-company`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId: scopeResult.accountingCompany.id }),
+    });
+    assert.equal(switchToSeScope.status, 200);
+    const seSession = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${leaderToken}` } });
+    const seSessionData = await seSession.json();
+    assert.equal(seSessionData.company.id, scopeResult.accountingCompany.id);
+    assert.equal(seSessionData.company.groupRole, "se_registration");
+    assert.equal(seSessionData.plan.id, professionalPlan.id, "an SE scope inherits the organization subscription");
 
     const switchToChild = await fetch(`${base}/api/professional/switch-company`, {
       method: "POST",
@@ -349,6 +381,7 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     const groupedCustomers = await groupedPlatformList.json();
     assert.equal(groupedCustomers.length, 1, "a subsidiary must not be billed as a separate platform customer");
     assert.equal(groupedCustomers[0].legalCompanyCount, 2);
+    assert.equal(groupedCustomers[0].accountingProfileCount, 3, "the SE scope counts as an accounting profile");
     assert.equal(groupedCustomers[0].legalCompanies.length, 2, "the platform must still list every legal company in the subscription group");
     assert.ok(groupedCustomers[0].legalCompanies.some((company) => company.id === subsidiary.id && company.name === "Smoke Child ApS"));
 
@@ -378,24 +411,24 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     });
     assert.equal(groupedSubscription.status, 200);
     const groupedSubscriptionData = await groupedSubscription.json();
-    assert.equal(groupedSubscriptionData.nextCharge.netAmount, 1048, "professional plus one extra CVR must be billed as 549 + 499");
-    assert.equal(groupedSubscriptionData.nextCharge.aiCreditsIncluded, 4500, "an extra CVR adds 1,500 AI actions");
+    assert.equal(groupedSubscriptionData.nextCharge.netAmount, 1547, "professional plus two extra accounting profiles must be billed as 549 + 2 × 499");
+    assert.equal(groupedSubscriptionData.nextCharge.aiCreditsIncluded, 6000, "each extra accounting profile adds 1,500 AI actions");
 
     const aiUsageResponse = await fetch(`${base}/api/ai-usage`, {
       headers: { Authorization: `Bearer ${leaderToken}` },
     });
     assert.equal(aiUsageResponse.status, 200);
     const aiUsage = await aiUsageResponse.json();
-    assert.equal(aiUsage.includedCredits, 4500);
+    assert.equal(aiUsage.includedCredits, 6000);
     assert.equal(aiUsage.usedCredits, 0);
-    assert.equal(aiUsage.costCapDkk, 250);
+    assert.equal(aiUsage.costCapDkk, 350);
 
     const blockedDowngrade = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/plan`, {
       method: "POST",
       headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ planId: businessPlan.id }),
     });
-    assert.equal(blockedDowngrade.status, 409, "a group cannot downgrade below its legal-company count");
+    assert.equal(blockedDowngrade.status, 409, "a group cannot downgrade below its accounting-profile count");
 
     const suspendOrganization = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/suspend`, {
       method: "POST",

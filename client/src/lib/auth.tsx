@@ -157,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Platformadmins har adgang til alt.
     hasFeature: (f: string) => isPlatformAdmin || features.includes(f),
     isPlatformAdmin,
-    companyId: (isPlatformAdmin ? viewCompanyId : null) ?? state.user?.companyId ?? 0,
+    companyId: (isPlatformAdmin ? viewCompanyId : null) ?? state.company?.id ?? state.user?.companyId ?? 0,
     switchCompany,
     login,
     logout,

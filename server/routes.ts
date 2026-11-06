@@ -717,6 +717,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     delete (data as any).status;
     const companyId = tenantId(req);
     const existing = await storage.getCompany(companyId);
+    if (existing?.groupRole === "se_registration"
+      && Object.prototype.hasOwnProperty.call(data, "cvr")
+      && String(existing.cvr ?? "") !== String(data.cvr ?? "")) {
+      return res.status(409).json({ error: "SE-nummeret ændres fra Selskaber & SE-enheder, så regnskabsprofilen og registreringen forbliver synkroniseret." });
+    }
     if (Object.prototype.hasOwnProperty.call(data, "cvr") && data.cvr != null && !/^\d{8}$/.test(String(data.cvr))) {
       return res.status(400).json({ error: "CVR-nummeret skal bestå af præcis 8 cifre." });
     }
@@ -2102,7 +2107,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .map((company) => company.id);
     const companyCount = organizationIds.length;
     if (plan.maxCompanies !== -1 && companyCount > plan.maxCompanies) {
-      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og I har allerede ${companyCount}. Vælg en større pakke.` });
+      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} regnskabsprofiler, og I har allerede ${companyCount}. Vælg en større pakke.` });
     }
     const updated = await storage.updateSubscription(sub.id, { planId: plan.id, billingCycle: "maanedlig" });
     await audit(req, "skift_pakke", "subscription", sub.id, `${plan.name}; abonnementsbetingelser accepteret, version ${req.body.termsVersion}`);
@@ -2133,7 +2138,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const organizationCompanies = allCompanies.filter((company) => (company.subscriptionOwnerId || company.id) === c.id);
       const organizationIds = organizationCompanies.map((company) => company.id);
       const employees = (await Promise.all(organizationIds.map((id) => storage.getEmployees(id)))).flat().length;
-      const legalCompanies = await Promise.all(organizationCompanies.map(async (company) => ({
+      const legalCompanies = await Promise.all(organizationCompanies.filter((company) => company.groupRole !== "se_registration").map(async (company) => ({
         id: company.id,
         name: company.name,
         cvr: company.cvr,
@@ -2154,7 +2159,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdAt: c.createdAt,
         employeeCount: employees,
         userCount: (await storage.getUsers(c.id)).length,
-        legalCompanyCount: organizationIds.length,
+        legalCompanyCount: legalCompanies.length,
+        accountingProfileCount: organizationCompanies.length,
         legalCompanies,
         planName: plan?.name ?? "Ingen pakke",
         planId: plan?.id ?? null,
@@ -2604,7 +2610,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .filter((item) => (item.subscriptionOwnerId || item.id) === ownerId)
       .map((item) => item.id);
     if (plan.maxCompanies !== -1 && organizationIds.length > plan.maxCompanies) {
-      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} juridiske selskaber, og kundeorganisationen har allerede ${organizationIds.length}.` });
+      return res.status(409).json({ error: `${plan.name} tillader ${plan.maxCompanies} regnskabsprofiler, og kundeorganisationen har allerede ${organizationIds.length}.` });
     }
     const updated = await storage.updateSubscription(sub.id, { planId: plan.id, billingCycle: "maanedlig" });
     await audit(req, "skift_pakke", "subscription", sub.id, plan.name);
