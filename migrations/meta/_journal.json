@@ -148,6 +148,13 @@
       "when": 1793952000000,
       "tag": "0020_se_accounting_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793966400000,
+      "tag": "0021_move_misimported_multiservice_bank",
+      "breakpoints": true
     }
   ]
 }
