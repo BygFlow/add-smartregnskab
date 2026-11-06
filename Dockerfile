@@ -36,5 +36,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "const port=process.env.PORT||5000;fetch('http://127.0.0.1:'+port+'/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Render monterer den vedvarende disk efter image-buildet. Ret derfor ejerskabet
-# ved hver containerstart og skift derefter til den uprivilegerede node-bruger.
-CMD ["sh", "-c", "chown -R node:node /var/data && exec su -s /bin/sh node -c 'exec node dist/index.cjs'"]
+# ved hver containerstart, skift til den uprivilegerede node-bruger, tag backup
+# og kør de versionsstyrede migrationer, før serveren bindes til sin port.
+CMD ["sh", "-c", "chown -R node:node /var/data && exec su -s /bin/sh node -c 'node scripts/migrate-sqlite-prod.mjs && exec node dist/index.cjs'"]

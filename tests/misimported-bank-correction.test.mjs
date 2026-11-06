@@ -11,12 +11,20 @@ const removalMigration = readFileSync(
   new URL("../migrations/0022_remove_unused_multiclean_bank_import.sql", import.meta.url),
   "utf8",
 );
+const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 
 function applyMigration(db, sql = migration) {
   for (const statement of sql.split("--> statement-breakpoint")) {
     if (statement.trim()) db.exec(statement);
   }
 }
+
+test("production container backs up and migrates the persistent database before startup", () => {
+  assert.match(
+    dockerfile,
+    /node scripts\/migrate-sqlite-prod\.mjs && exec node dist\/index\.cjs/,
+  );
+});
 
 test("only the approved fresh 2024 bank imports move from SmartDrift to Multi Service", () => {
   const db = new Database(":memory:");
