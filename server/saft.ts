@@ -11,8 +11,8 @@ const NS = "urn:StandardAuditFile-Taxation-Financial:DK";
 type Row = Record<string, any>;
 type ImportPreview = {
   version: string;
-  accounts: Array<{ accountNumber: string; name: string; standardAccountNumber?: string; type: string }>;
-  entries: Array<{ entryNumber: string; date: string; description: string; createdBy?: string; lines: Array<{ accountNumber: string; description: string; debit: number; credit: number }> }>;
+  accounts: Array<{ accountNumber: string; name: string; standardAccountNumber?: string; type: string; vatCode?: string }>;
+  entries: Array<{ entryNumber: string; date: string; description: string; reference?: string; createdBy?: string; lines: Array<{ accountNumber: string; description: string; debit: number; credit: number; vatCode?: string }> }>;
   totalDebit: number;
   totalCredit: number;
   errors: string[];
@@ -94,8 +94,8 @@ export async function generateSaft(companyId: number, startDate: string, endDate
     return `<Account><AccountID>${esc(account.accountNumber)}</AccountID><AccountDescription>${esc(account.name)}</AccountDescription>${account.standardAccountNumber ? `<StandardAccountID>${esc(account.standardAccountNumber)}</StandardAccountID>` : ""}<AccountType>${accountType(account.type)}</AccountType>${isoDate(account.createdAt) ? `<AccountCreationDate>${isoDate(account.createdAt)}</AccountCreationDate>` : ""}${balanceXml("Opening", opening)}${balanceXml("Closing", closing)}</Account>`;
   }).join("");
 
-  const configuredTaxCodes = Array.from(new Set(accountRows
-    .map((account) => String(account.vatCode || "").trim().slice(0, 9))
+  const configuredTaxCodes = Array.from(new Set([...accountRows, ...selectedLines]
+    .map((row) => String(row.vatCode || "").trim().slice(0, 9))
     .filter(Boolean)));
   const taxCodes = configuredTaxCodes.length ? configuredTaxCodes : ["NONE"];
   const taxCodeXml = taxCodes.map((code) => {
@@ -115,7 +115,9 @@ export async function generateSaft(companyId: number, startDate: string, endDate
       const credit = Number(line.credit || 0);
       totalDebit += debit;
       totalCredit += credit;
-      return `<Line><RecordID>${esc(`${entry.id}-${index + 1}`)}</RecordID><AccountID>${esc(account.accountNumber)}</AccountID>${entry.reference ? `<SourceDocumentID>${esc(entry.reference)}</SourceDocumentID>` : ""}<Description>${esc(line.description || entry.description)}</Description>${debit > 0 ? amountXml("DebitAmount", debit, currency) : amountXml("CreditAmount", credit, currency)}</Line>`;
+      const vatCode = String(line.vatCode || "").trim().slice(0, 9);
+      const taxInformation = vatCode ? `<TaxInformation><TaxType>VAT</TaxType><TaxCode>${esc(vatCode)}</TaxCode><TaxAmount><Amount>0.00</Amount><CurrencyCode>${esc(currency)}</CurrencyCode><CurrencyAmount>0.00</CurrencyAmount><ExchangeRate>1.000000</ExchangeRate></TaxAmount></TaxInformation>` : "";
+      return `<Line><RecordID>${esc(`${entry.id}-${index + 1}`)}</RecordID><AccountID>${esc(account.accountNumber)}</AccountID>${entry.reference ? `<SourceDocumentID>${esc(entry.reference)}</SourceDocumentID>` : ""}<Description>${esc(line.description || entry.description)}</Description>${debit > 0 ? amountXml("DebitAmount", debit, currency) : amountXml("CreditAmount", credit, currency)}${taxInformation}</Line>`;
     }).join("");
     const date = isoDate(entry.date);
     const created = isoDate(entry.createdAt) || date;
@@ -137,7 +139,7 @@ export function parseSaft(xml: string): ImportPreview {
   const version = String(root.Header.AuditFileVersion ?? "");
   if (!["2.0", "2.1"].includes(version)) errors.push(`SAF-T-version ${version || "mangler"} understøttes ikke. Brug 2.0 eller 2.1.`);
   const accountNodes = arr(root.MasterFiles?.GeneralLedgerAccounts).flatMap((ledger: any) => arr(ledger?.Account));
-  const importedAccounts = accountNodes.map((account: any) => ({
+  const baseAccounts = accountNodes.map((account: any) => ({
     accountNumber: String(account.AccountID ?? "").trim(), name: String(account.AccountDescription ?? "").trim(),
     standardAccountNumber: account.StandardAccountID ? String(account.StandardAccountID) : undefined,
     type: internalAccountType(String(account.AccountType ?? "Other")),
@@ -146,8 +148,18 @@ export function parseSaft(xml: string): ImportPreview {
     const lines = arr(transaction.Line).map((line: any) => ({
       accountNumber: String(line.AccountID ?? "").trim(), description: String(line.Description ?? transaction.Description ?? "SAF-T-import"),
       debit: Number(line.DebitAmount?.Amount ?? 0), credit: Number(line.CreditAmount?.Amount ?? 0),
+      vatCode: arr(line.TaxInformation).map((tax: any) => String(tax?.TaxCode ?? "").trim()).find(Boolean) || undefined,
     }));
-    return { entryNumber: String(transaction.TransactionID ?? "").trim(), date: isoDate(transaction.TransactionDate), description: String(transaction.Description ?? "SAF-T-import"), createdBy: transaction.SourceID ? String(transaction.SourceID) : undefined, lines };
+    const reference = lines.map((_: any, index: number) => arr(transaction.Line)[index]?.SourceDocumentID).find(Boolean);
+    return { entryNumber: String(transaction.TransactionID ?? "").trim(), date: isoDate(transaction.TransactionDate), description: String(transaction.Description ?? "SAF-T-import"), reference: reference ? String(reference) : undefined, createdBy: transaction.SourceID ? String(transaction.SourceID) : undefined, lines };
+  });
+  const importedAccounts = baseAccounts.map((account) => {
+    const counts = new Map<string, number>();
+    for (const line of entries.flatMap((entry) => entry.lines).filter((line) => line.accountNumber === account.accountNumber && line.vatCode)) {
+      counts.set(line.vatCode!, (counts.get(line.vatCode!) || 0) + 1);
+    }
+    const vatCode = Array.from(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+    return { ...account, vatCode };
   });
   for (const entry of entries) {
     if (!entry.entryNumber || !entry.date || !entry.lines.length) errors.push("En transaktion mangler nummer, dato eller linjer.");
@@ -179,8 +191,8 @@ export function commitSaftImport(companyId: number, preview: ImportPreview) {
     for (const entry of preview.entries) {
       const exists = tx.select().from(journalEntries).where(and(eq(journalEntries.companyId, companyId), eq(journalEntries.entryNumber, entry.entryNumber))).get();
       if (exists) continue;
-      const created = tx.insert(journalEntries).values({ companyId, entryNumber: entry.entryNumber, date: entry.date, description: entry.description, sourceType: "saft_import", status: "bogført", createdBy: entry.createdBy || "SAF-T", createdAt: new Date().toISOString() }).returning().get();
-      for (const line of entry.lines) tx.insert(journalLines).values({ companyId, journalEntryId: created.id, accountId: byNumber.get(line.accountNumber)!.id, description: line.description, debit: line.debit, credit: line.credit }).run();
+      const created = tx.insert(journalEntries).values({ companyId, entryNumber: entry.entryNumber, date: entry.date, description: entry.description, reference: entry.reference, sourceType: "saft_import", status: "bogført", createdBy: entry.createdBy || "SAF-T", createdAt: new Date().toISOString() }).returning().get();
+      for (const line of entry.lines) tx.insert(journalLines).values({ companyId, journalEntryId: created.id, accountId: byNumber.get(line.accountNumber)!.id, description: line.description, debit: line.debit, credit: line.credit, vatCode: line.vatCode }).run();
       entriesCreated++;
     }
   });
