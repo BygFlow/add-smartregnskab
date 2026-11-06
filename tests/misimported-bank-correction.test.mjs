@@ -150,7 +150,9 @@ test("partially journalled legacy production database runs approved corrections 
       hash TEXT NOT NULL,
       created_at NUMERIC
     );
-    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('0000-applied', 1788808682459);
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES
+      ('0000-applied', 1788808682459),
+      ('0000-duplicate-legacy-record', 1788808682459);
     CREATE TABLE ai_decision_logs (id INTEGER PRIMARY KEY);
     CREATE TABLE bank_transactions (
       id INTEGER PRIMARY KEY,

@@ -77,8 +77,8 @@ try {
     const migrationsFolder = process.env.MIGRATIONS_DIR || "migrations";
     const hasApplicationSchema = tableExists(sqlite, "companies");
     const hasDrizzleJournal = tableExists(sqlite, "__drizzle_migrations");
-    const drizzleMigrationCount = hasDrizzleJournal
-      ? Number(sqlite.prepare("SELECT COUNT(*) AS count FROM __drizzle_migrations").get()?.count || 0)
+    const lastDrizzleMigrationAt = hasDrizzleJournal
+      ? Number(sqlite.prepare("SELECT MAX(created_at) AS createdAt FROM __drizzle_migrations").get()?.createdAt || 0)
       : 0;
     // Den oprindelige produktionsdatabase nåede at journalføre 0000, hvorefter
     // de additive tabeller blev oprettet af den idempotente legacy-opstart.
@@ -86,7 +86,7 @@ try {
     // "table already exists". Genkend denne konkrete mellemtilstand som legacy.
     const hasPartiallyJournalledLegacySchema = hasApplicationSchema
       && hasDrizzleJournal
-      && drizzleMigrationCount === 1
+      && lastDrizzleMigrationAt < 1788850178183
       && tableExists(sqlite, "ai_decision_logs");
 
     if (!hasApplicationSchema || (hasDrizzleJournal && !hasPartiallyJournalledLegacySchema)) {
