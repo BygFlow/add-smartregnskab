@@ -5343,12 +5343,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const { rows } = req.body || {};
     if (!Array.isArray(rows)) return res.status(400).json({ error: "Mangler rækker." });
+    if (rows.length > 20_000) return res.status(413).json({ error: "Bankfilen indeholder for mange rækker. Del den op i mindre filer." });
+    const existing = await storage.all("bank_transactions", cid);
+    const externalIds = new Set(existing.map((row: any) => String(row.externalId ?? "")).filter(Boolean));
+    const compositeKeys = new Set(existing.map((row: any) => [
+      row.accountRef ?? "", row.date, Number(row.amount).toFixed(2), Number(row.balance ?? 0).toFixed(2), row.description ?? "",
+    ].join("|")));
     let imported = 0;
-    for (const row of rows) {
-      await storage.insert("bank_transactions", { ...row, companyId: cid, importedAt: nowIso(), status: "afventer" });
+    let skippedDuplicates = 0;
+    for (const rawRow of rows) {
+      const row = validate(insertBankTransactionSchema, { ...rawRow, companyId: cid, status: "afventer" });
+      const externalId = String(row.externalId ?? "");
+      const compositeKey = [
+        row.accountRef ?? "", row.date, Number(row.amount).toFixed(2), Number(row.balance ?? 0).toFixed(2), row.description ?? "",
+      ].join("|");
+      if ((externalId && externalIds.has(externalId)) || compositeKeys.has(compositeKey)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      await storage.insert("bank_transactions", { ...row, importedAt: nowIso() });
+      if (externalId) externalIds.add(externalId);
+      compositeKeys.add(compositeKey);
       imported++;
     }
-    res.json({ imported });
+    res.json({ imported, skippedDuplicates });
   }));
 
   app.post("/api/bank-transactions/:id/match", h(async (req, res) => {

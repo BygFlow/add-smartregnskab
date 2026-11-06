@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, openAuthedFile, queryClient } from "@//lib/queryClient";
 import { useAuth } from "@//lib/auth";
 import { getSmartRegnskabAddonForRoute, isSmartRegnskabAddonIncluded } from "@/lib/smartregnskab-addons";
+import { parseBankCsv, readBankCsvFile } from "@/lib/bank-csv";
 import { lazyWithReload as lazy } from "@/lib/lazy-with-reload";
 import { useToast } from "@//hooks/use-toast";
 import { auditActionLabel, auditChangeLabels, auditEntityLabel, auditModuleLabel } from "@shared/audit-display";
@@ -1120,18 +1121,30 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   /* ---------- mutationer: Bankafstemning ---------- */
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [csvText, setCsvText] = useState("");
+  const [bankCsvFileName, setBankCsvFileName] = useState("");
+  const [bankImportYear, setBankImportYear] = useState("");
+  const parsedBankRows = parseBankCsv(csvText, bankCsvFileName);
+  const bankImportYears = Array.from(new Set(parsedBankRows.map((row) => row.date.slice(0, 4)))).sort();
 
   const importBankMut = useMutation({
     mutationFn: async () => {
-      const rows = parseBankCsv(csvText);
+      const rows = bankImportYear
+        ? parsedBankRows.filter((row) => row.date.startsWith(`${bankImportYear}-`))
+        : parsedBankRows;
+      if (!rows.length) throw new Error("Filen indeholder ingen gennemførte bankposteringer.");
       const res = await apiRequest("POST", "/api/bank-transactions/import", { rows });
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: { imported?: number; skippedDuplicates?: number }) => {
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
-      toast({ title: "Banktransaktioner importeret" });
+      toast({
+        title: `${result.imported ?? 0} bankposteringer importeret`,
+        description: result.skippedDuplicates ? `${result.skippedDuplicates} dubletter blev sprunget over.` : undefined,
+      });
       setImportDialogOpen(false);
       setCsvText("");
+      setBankCsvFileName("");
+      setBankImportYear("");
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
@@ -3034,8 +3047,58 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </DialogHeader>
                     <div className="space-y-2">
                       <p className="text-xs text-muted-foreground">
-                        Indsæt CSV-data adskilt med semikolon. Første linje springes over hvis det er en
-                        overskrift. Format: <code className="font-mono">dato;beskrivelse;beløb;saldo</code>
+                        Vælg bankens CSV-fil. Danske Bank-format og danske tegn læses automatisk. Kun
+                        gennemførte poster importeres, og dubletter springes over.
+                      </p>
+                      <Input
+                        data-testid="input-bank-csv-file"
+                        type="file"
+                        accept=".csv,text/csv"
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const content = await readBankCsvFile(file);
+                            const years = Array.from(new Set(parseBankCsv(content, file.name).map((row) => row.date.slice(0, 4)))).sort();
+                            setCsvText(content);
+                            setBankCsvFileName(file.name);
+                            setBankImportYear(years[0] ?? "");
+                          } catch (error) {
+                            toast({
+                              title: "Kunne ikke læse bankfilen",
+                              description: error instanceof Error ? error.message : "Ukendt fejl",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                      />
+                      {bankCsvFileName && (
+                        <p className="text-xs font-medium text-emerald-700">
+                          {bankCsvFileName}: {parsedBankRows.length} gennemførte poster fundet
+                        </p>
+                      )}
+                      {bankImportYears.length > 1 && (
+                        <div className="space-y-1">
+                          <Label htmlFor="bank-import-year">Regnskabsår, der skal importeres</Label>
+                          <Select value={bankImportYear} onValueChange={setBankImportYear}>
+                            <SelectTrigger id="bank-import-year" data-testid="select-bank-import-year">
+                              <SelectValue placeholder="Vælg år" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {bankImportYears.map((year) => (
+                                <SelectItem key={year} value={year}>{year}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      {bankImportYear && (
+                        <p className="text-xs text-muted-foreground">
+                          {parsedBankRows.filter((row) => row.date.startsWith(`${bankImportYear}-`)).length} poster fra {bankImportYear} bliver importeret.
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Du kan også indsætte CSV-data manuelt i formatet <code className="font-mono">dato;beskrivelse;beløb;saldo</code>.
                       </p>
                       <Textarea
                         data-testid="input-csv-bank"
@@ -6450,40 +6513,6 @@ function YearControlView({ data, testId }: { data: ReportData; testId: string })
       })}
     </div>
   );
-}
-
-/* ---------- hjælpere: CSV-parsing ---------- */
-
-function parseBankCsv(
-  text: string,
-): { date: string; description: string; amount: number; balance: number }[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  // Spring overskriftslinje over hvis den ikke kan parses som dato/beløb
-  const firstCols = lines[0].split(";");
-  const looksLikeHeader =
-    /dato|date|tekst|beskrivelse|beløb|amount|saldo|balance/i.test(firstCols.join(" "));
-  const rows = looksLikeHeader ? lines.slice(1) : lines;
-
-  const toNum = (s: string | undefined): number => {
-    if (!s) return 0;
-    const normalized = s.replace(/\./g, "").replace(",", ".").replace(/[^0-9\-]/g, "");
-    return Number(normalized) || 0;
-  };
-
-  return rows.map((line) => {
-    const cols = line.split(";");
-    return {
-      date: (cols[0] ?? "").trim(),
-      description: (cols[1] ?? "").trim(),
-      amount: toNum(cols[2]),
-      balance: toNum(cols[3]),
-    };
-  });
 }
 
 const PLAN_FEATURES = [
