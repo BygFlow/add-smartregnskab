@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
 
@@ -87,7 +90,6 @@ test("customer-approved removal deletes only the fresh unused MultiClean import"
   const db = new Database(":memory:");
   db.exec(`
     CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
-    CREATE TABLE company_units (id INTEGER PRIMARY KEY, se_number TEXT, accounting_company_id INTEGER);
     CREATE TABLE bank_transactions (
       id INTEGER PRIMARY KEY,
       company_id INTEGER NOT NULL,
@@ -110,17 +112,13 @@ test("customer-approved removal deletes only the fresh unused MultiClean import"
     INSERT INTO companies (id, name, cvr) VALUES
       (1, 'ADD SmartDrift ApS', '11111111'),
       (2, 'ADD Multi Service ApS', '44822539'),
-      (3, 'ADD MultiClean Service', NULL),
-      (4, 'Anden virksomhed', '22222222');
-    INSERT INTO company_units (id, se_number, accounting_company_id) VALUES
-      (1, '45 14 75 92', 3);
+      (3, 'Anden virksomhed', '22222222');
     INSERT INTO bank_transactions (id, company_id, date, provider, account_ref, external_id, imported_at) VALUES
       (20, 1, '2024-07-22', 'danske-bank', '13424713', 'delete-smartdrift', '2026-11-06T12:00:00.000Z'),
       (21, 2, '2024-07-23', 'danske-bank', '13424713', 'delete-service', '2026-11-06T12:00:00.000Z'),
-      (22, 3, '2024-07-24', 'danske-bank', '13424713', 'delete-clean', '2026-11-06T12:00:00.000Z'),
       (23, 2, '2024-12-02', 'danske-bank', '13800707', 'keep-multiservice', '2026-11-06T12:00:00.000Z'),
       (24, 2, '2024-07-25', 'danske-bank', '13424713', 'keep-old-import', '2026-11-05T12:00:00.000Z'),
-      (25, 4, '2024-07-22', 'danske-bank', '13424713', 'keep-other-tenant', '2026-11-06T12:00:00.000Z');
+      (25, 3, '2024-07-22', 'danske-bank', '13424713', 'keep-other-tenant', '2026-11-06T12:00:00.000Z');
   `);
 
   applyMigration(db, removalMigration);
@@ -130,7 +128,7 @@ test("customer-approved removal deletes only the fresh unused MultiClean import"
     [
       { id: 23, company_id: 2, account_ref: "13800707" },
       { id: 24, company_id: 2, account_ref: "13424713" },
-      { id: 25, company_id: 4, account_ref: "13424713" },
+      { id: 25, company_id: 3, account_ref: "13424713" },
     ],
   );
   assert.equal(
@@ -138,4 +136,65 @@ test("customer-approved removal deletes only the fresh unused MultiClean import"
     1,
   );
   db.close();
+});
+
+test("legacy production database runs the approved corrections exactly once", () => {
+  const directory = mkdtempSync(join(tmpdir(), "smartregnskab-legacy-bank-fix-"));
+  const databasePath = join(directory, "data.db");
+  const backupDir = join(directory, "backups");
+  const db = new Database(databasePath);
+  db.exec(`
+    CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
+    CREATE TABLE bank_transactions (
+      id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      provider TEXT,
+      account_ref TEXT,
+      external_id TEXT,
+      imported_at TEXT NOT NULL
+    );
+    CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER,
+      user_id INTEGER,
+      user_email TEXT,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO companies (id, name, cvr) VALUES
+      (1, 'ADD SmartDrift ApS', '46761898'),
+      (2, 'ADD Multi Service ApS', '44822539');
+    INSERT INTO bank_transactions (id, company_id, date, provider, account_ref, external_id, imported_at) VALUES
+      (1, 1, '2024-07-22', 'danske-bank', '13424713', 'remove-old-clean', '2026-11-06T12:00:00.000Z'),
+      (2, 1, '2024-12-02', 'danske-bank', '13800707', 'keep-service', '2026-11-06T12:00:00.000Z');
+  `);
+  db.close();
+
+  const run = () => execFileSync(process.execPath, ["scripts/migrate-sqlite-prod.mjs"], {
+    cwd: process.cwd(),
+    env: { ...process.env, DATABASE_PATH: databasePath, BACKUP_DIR: backupDir },
+    encoding: "utf8",
+  });
+
+  try {
+    assert.match(run(), /Ældre produktionsdatabase fundet/);
+    assert.match(run(), /Migrering fuldført/);
+
+    const checked = new Database(databasePath, { readonly: true });
+    try {
+      assert.deepEqual(
+        checked.prepare("SELECT id, company_id, account_ref FROM bank_transactions ORDER BY id").all(),
+        [{ id: 2, company_id: 2, account_ref: "13800707" }],
+      );
+      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 2);
+      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 2);
+    } finally {
+      checked.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

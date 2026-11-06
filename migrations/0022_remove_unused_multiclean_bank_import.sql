@@ -26,13 +26,6 @@ AND EXISTS (
     WHERE LOWER(REPLACE(REPLACE(TRIM(company.`name`), ' ', ''), '.', '')) = 'addsmartdriftaps'
        OR REPLACE(COALESCE(company.`cvr`, ''), ' ', '') = '44822539'
        OR LOWER(REPLACE(REPLACE(TRIM(company.`name`), ' ', ''), '.', '')) = 'addmultiserviceaps'
-       OR LOWER(REPLACE(REPLACE(TRIM(company.`name`), ' ', ''), '.', '')) LIKE 'addmulticleanservice%'
-       OR company.`id` IN (
-         SELECT unit.`accounting_company_id`
-         FROM `company_units` AS unit
-         WHERE REPLACE(REPLACE(COALESCE(unit.`se_number`, ''), ' ', ''), '-', '') = '45147592'
-           AND unit.`accounting_company_id` IS NOT NULL
-       )
   )
     AND tx.`provider` = 'danske-bank'
     AND tx.`account_ref` = '13424713'
@@ -48,13 +41,6 @@ WHERE `company_id` IN (
   WHERE LOWER(REPLACE(REPLACE(TRIM(company.`name`), ' ', ''), '.', '')) = 'addsmartdriftaps'
      OR REPLACE(COALESCE(company.`cvr`, ''), ' ', '') = '44822539'
      OR LOWER(REPLACE(REPLACE(TRIM(company.`name`), ' ', ''), '.', '')) = 'addmultiserviceaps'
-     OR LOWER(REPLACE(REPLACE(TRIM(company.`name`), ' ', ''), '.', '')) LIKE 'addmulticleanservice%'
-     OR company.`id` IN (
-       SELECT unit.`accounting_company_id`
-       FROM `company_units` AS unit
-       WHERE REPLACE(REPLACE(COALESCE(unit.`se_number`, ''), ' ', ''), '-', '') = '45147592'
-         AND unit.`accounting_company_id` IS NOT NULL
-     )
 )
 AND `provider` = 'danske-bank'
 AND `account_ref` = '13424713'

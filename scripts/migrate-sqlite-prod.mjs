@@ -8,8 +8,47 @@ import { execFileSync } from "node:child_process";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+const LEGACY_DATA_MIGRATIONS = [
+  "0021_move_misimported_multiservice_bank",
+  "0022_remove_unused_multiclean_bank_import",
+];
+
+function tableExists(sqlite, table) {
+  return Boolean(
+    sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+  );
+}
+
+function runLegacyDataMigrations(sqlite, migrationsFolder) {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS add_legacy_migrations (
+      tag text PRIMARY KEY NOT NULL,
+      applied_at text NOT NULL
+    )
+  `);
+
+  for (const tag of LEGACY_DATA_MIGRATIONS) {
+    const applied = sqlite.prepare("SELECT 1 FROM add_legacy_migrations WHERE tag = ?").get(tag);
+    if (applied) continue;
+
+    const sql = readFileSync(join(migrationsFolder, `${tag}.sql`), "utf8");
+    const statements = sql
+      .split("--> statement-breakpoint")
+      .map((statement) => statement.trim())
+      .filter(Boolean);
+
+    sqlite.transaction(() => {
+      for (const statement of statements) sqlite.exec(statement);
+      sqlite.prepare(
+        "INSERT INTO add_legacy_migrations (tag, applied_at) VALUES (?, ?)",
+      ).run(tag, new Date().toISOString());
+    })();
+    console.log(`   Anvendt ældre-database-migrering: ${tag}`);
+  }
+}
 
 console.log("=== ADD SmartRegnskab — produktionsmigrering ===\n");
 
@@ -35,7 +74,16 @@ try {
   try {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("foreign_keys = ON");
-    migrate(drizzle(sqlite), { migrationsFolder: process.env.MIGRATIONS_DIR || "migrations" });
+    const migrationsFolder = process.env.MIGRATIONS_DIR || "migrations";
+    const hasApplicationSchema = tableExists(sqlite, "companies");
+    const hasDrizzleJournal = tableExists(sqlite, "__drizzle_migrations");
+
+    if (!hasApplicationSchema || hasDrizzleJournal) {
+      migrate(drizzle(sqlite), { migrationsFolder });
+    } else {
+      console.log("   Ældre produktionsdatabase fundet — kører kun registrerede datamigreringer.");
+      runLegacyDataMigrations(sqlite, migrationsFolder);
+    }
   } finally {
     sqlite.close();
   }
@@ -43,5 +91,6 @@ try {
 } catch (err) {
   console.error("\nMigrering fejlede! Backup er tilgængelig i BACKUP_DIR.");
   console.error("Gendan med: cp <backup-fil> " + (process.env.DATABASE_PATH || "data.db"));
+  console.error(err instanceof Error ? (err.stack || err.message) : err);
   process.exit(1);
 }
