@@ -330,13 +330,25 @@ type TaxDeadline = {
 
 type ReportLine = { label?: string | null; amount?: number | null };
 type ReportSection = { title?: string | null; lines?: ReportLine[]; total?: number | null };
+type ReportMetric = { label?: string | null; value?: number | string | null; format?: "money" | "number" | "text" };
+type ReportControl = {
+  key?: string | null;
+  title?: string | null;
+  status?: "ok" | "warning" | "error" | null;
+  summary?: string | null;
+  metrics?: ReportMetric[];
+};
 type ReportData = {
   type?: string | null;
   generatedAt?: string | null;
   companyName?: string | null;
   period?: string | null;
+  year?: number | null;
+  availableYears?: number[];
+  notice?: string | null;
   lines?: ReportLine[];
   sections?: ReportSection[];
+  controls?: ReportControl[];
   [key: string]: unknown;
 };
 
@@ -766,6 +778,7 @@ const INTEGRATION_STATUS_VARIANT: Record<string, "blue" | "amber" | "green" | "r
 };
 
 const REPORT_TYPES: { value: string; label: string }[] = [
+  { value: "aarskontrol", label: "Årskontrol" },
   { value: "resultatopgoerelse", label: "Resultatopgørelse" },
   { value: "balance", label: "Balance" },
   { value: "momsrapport", label: "Momsrapport" },
@@ -977,14 +990,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const aiTasks = aiTasksQuery.data ?? [];
 
   /* Rapporter */
-  const [reportType, setReportType] = useState<string | null>(null);
+  const [reportType, setReportType] = useState<string | null>("aarskontrol");
+  const [reportYear, setReportYear] = useState<string | null>(null);
   const reportQuery = useQuery<ReportData>({
-    queryKey: ["/api/regnskabssystem/report", effectiveCompanyId, reportType],
+    queryKey: ["/api/regnskabssystem/report", effectiveCompanyId, reportType, reportYear],
     enabled: !!effectiveCompanyId && !!reportType,
     queryFn: async () => {
+      const yearQuery = reportYear ? `?year=${encodeURIComponent(reportYear)}` : "";
       const res = await apiRequest(
         "GET",
-        `/api/regnskabssystem/report/${effectiveCompanyId}/${reportType}`,
+        `/api/regnskabssystem/report/${effectiveCompanyId}/${reportType}${yearQuery}`,
       );
       return (await res.json()) as ReportData;
     },
@@ -3240,19 +3255,38 @@ function CompanyRegnskabssystemPage(props: any = {}) {
               {/* ---------- RAPPORTER ---------- */}
               <TabsContent value="rapporter" className="space-y-4">
                 <SectionCard title="Rapporter" icon={<FileBarChart className="size-4" />}>
-                  <div className="flex flex-wrap gap-2" data-testid="report-buttons">
-                    {REPORT_TYPES.map((r) => (
-                      <Button
-                        key={r.value}
-                        size="sm"
-                        variant={reportType === r.value ? "default" : "outline"}
-                        data-testid={`btn-report-${r.value}`}
-                        onClick={() => setReportType(r.value)}
+                  <div className="space-y-3">
+                    <div className="w-full sm:w-52">
+                      <Label className="text-xs">Regnskabsår</Label>
+                      <Select
+                        value={reportYear ?? (reportQuery.data?.year ? String(reportQuery.data.year) : "latest")}
+                        onValueChange={(value) => setReportYear(value === "latest" ? null : value)}
                       >
-                        <FileBarChart className="size-4" />
-                        {r.label}
-                      </Button>
-                    ))}
+                        <SelectTrigger data-testid="select-report-year">
+                          <SelectValue placeholder="Seneste bogføringsår" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="latest">Seneste bogføringsår</SelectItem>
+                          {(reportQuery.data?.availableYears ?? []).map((year) => (
+                            <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-wrap gap-2" data-testid="report-buttons">
+                      {REPORT_TYPES.map((r) => (
+                        <Button
+                          key={r.value}
+                          size="sm"
+                          variant={reportType === r.value ? "default" : "outline"}
+                          data-testid={`btn-report-${r.value}`}
+                          onClick={() => setReportType(r.value)}
+                        >
+                          <FileBarChart className="size-4" />
+                          {r.label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 </SectionCard>
 
@@ -3271,7 +3305,11 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     ) : reportQuery.isError ? (
                       <p className="text-xs text-destructive p-3">Kunne ikke hente rapport.</p>
                     ) : reportQuery.data ? (
-                      <ReportView data={reportQuery.data} testId="report-result" />
+                      reportQuery.data.controls?.length ? (
+                        <YearControlView data={reportQuery.data} testId="report-result" />
+                      ) : (
+                        <ReportView data={reportQuery.data} testId="report-result" />
+                      )
                     ) : null}
                   </SectionCard>
                 )}
@@ -6324,6 +6362,11 @@ function ReportView({ data, testId }: { data: ReportData; testId: string }) {
           )}
         </div>
       )}
+      {data.notice && (
+        <div className="px-3 py-2 text-xs text-amber-900 bg-amber-50 border-y border-amber-200">
+          {data.notice}
+        </div>
+      )}
       {sections.length === 0 ? (
         <p className="text-xs text-muted-foreground px-3 py-3">
           Rapporten indeholder ingen data.
@@ -6355,6 +6398,56 @@ function ReportView({ data, testId }: { data: ReportData; testId: string }) {
           </div>
         ))
       )}
+    </div>
+  );
+}
+
+function YearControlView({ data, testId }: { data: ReportData; testId: string }) {
+  const styles = {
+    ok: { label: "Klar", border: "border-emerald-200", bg: "bg-emerald-50", badge: "bg-emerald-100 text-emerald-800" },
+    warning: { label: "Mangler kontrol", border: "border-amber-200", bg: "bg-amber-50", badge: "bg-amber-100 text-amber-900" },
+    error: { label: "Skal rettes", border: "border-red-200", bg: "bg-red-50", badge: "bg-red-100 text-red-800" },
+  } as const;
+  const formatMetric = (metric: ReportMetric) => {
+    if (metric.format === "money") return money(typeof metric.value === "number" ? metric.value : Number(metric.value || 0));
+    if (metric.format === "number") return num(typeof metric.value === "number" ? metric.value : Number(metric.value || 0));
+    return String(metric.value ?? "—");
+  };
+
+  return (
+    <div data-testid={testId} className="p-3 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-sm font-semibold">{data.companyName ?? "Virksomhed"}</p>
+          <p className="text-xs text-muted-foreground">Kontrol af regnskabsåret {data.period ?? "—"}</p>
+        </div>
+        <span className="text-[11px] text-muted-foreground">Beregnet direkte fra bogførte posteringer</span>
+      </div>
+      {(data.controls ?? []).map((control) => {
+        const status = control.status ?? "warning";
+        const style = styles[status];
+        return (
+          <div key={control.key ?? control.title} className={`rounded-lg border ${style.border} ${style.bg} p-3`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">{control.title ?? "Kontrol"}</p>
+                <p className="text-xs text-muted-foreground mt-1">{control.summary}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${style.badge}`}>
+                {style.label}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">
+              {(control.metrics ?? []).map((metric, index) => (
+                <div key={`${metric.label}-${index}`} className="rounded-md border border-black/5 bg-white/70 px-2.5 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{metric.label ?? "Værdi"}</p>
+                  <p className="text-sm font-semibold tabular-nums mt-0.5">{formatMetric(metric)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

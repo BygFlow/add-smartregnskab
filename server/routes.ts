@@ -25,6 +25,7 @@ import { registerPublicAddConnectRoutes } from "./add-connect";
 import { registerExternalAccountingApi } from "./external-accounting-api";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
 import { prepareDocumentInbox } from "./document-inbox-order";
+import { buildAccountingReport } from "./accounting-reports";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
@@ -5441,27 +5442,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/regnskabssystem/report/:companyId/:type", h(async (req, res) => {
     const cid = Number(req.params.companyId);
     if (!req.auth!.isPlatformAdmin && cid !== tenantId(req)) return res.status(403).json({ error: "Ingen adgang." });
-    const { type } = req.params;
-    const [invoices, entries, lines, accounts, vouchers, vatPeriods] = await Promise.all([
-      storage.all("invoices", cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
-      storage.all("accounts", cid), storage.all("vouchers", cid), storage.all("vat_periods", cid),
-    ]);
-    if (type === "resultatopgoerelse") {
-      const revenue = invoices.filter((i: any) => i.status === "betalt").reduce((s: number, i: any) => s + (i.totalAmount || 0), 0);
-      const expenses = vouchers.filter((v: any) => v.status === "bogfoert").reduce((s: number, v: any) => s + (v.amount || 0), 0);
-      const vatExpenses = vouchers.filter((v: any) => v.status === "bogfoert").reduce((s: number, v: any) => s + (v.vatAmount || 0), 0);
-      res.json({ omsaetning: revenue, udgifter: expenses, momsUdgifter: vatExpenses, resultat: revenue - expenses - vatExpenses });
-    } else if (type === "balance") {
-      const assets = accounts.filter((a: any) => a.type === "aktiv").reduce((s: number, a: any) => s + (a.balance || 0), 0);
-      const liabilities = accounts.filter((a: any) => a.type === "passiv").reduce((s: number, a: any) => s + (a.balance || 0), 0);
-      res.json({ aktiver: assets, passiver: liabilities, egenkapital: assets - liabilities });
-    } else if (type === "momsrapport") {
-      res.json(vatPeriods.map((vp: any) => ({ periode: vp.period, udgaaendeMoms: vp.outputVat || 0, indgaaendeMoms: vp.inputVat || 0, netMoms: (vp.outputVat || 0) - (vp.inputVat || 0), status: vp.status })));
-    } else if (type === "revisorpakke") {
-      res.json({ invoices, entries, lines, accounts, vouchers, vatPeriods, generatedAt: nowIso() });
-    } else {
-      res.status(400).json({ error: "Ukendt rapporttype." });
+    const type = (Array.isArray(req.params.type) ? req.params.type[0] : req.params.type) ?? "";
+    const supportedTypes = new Set(["aarskontrol", "resultatopgoerelse", "balance", "momsrapport", "revisorpakke"]);
+    if (!supportedTypes.has(type)) return res.status(400).json({ error: "Ukendt rapporttype." });
+    const requestedYear = req.query.year == null ? null : Number(req.query.year);
+    if (requestedYear != null && (!Number.isInteger(requestedYear) || requestedYear < 1900 || requestedYear > 2200)) {
+      return res.status(400).json({ error: "Ugyldigt regnskabsår." });
     }
+    const [company, entries, lines, accounts, bankTransactions, vatPeriods] = await Promise.all([
+      storage.getCompany(cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
+      storage.all("accounts", cid), storage.all("bank_transactions", cid), storage.all("vat_periods", cid),
+    ]);
+    const report = buildAccountingReport({
+      type: type === "revisorpakke" ? "aarskontrol" : type,
+      requestedYear,
+      companyName: company?.name,
+      accounts: accounts as any[],
+      entries: entries as any[],
+      lines: lines as any[],
+      bankTransactions: bankTransactions as any[],
+      vatPeriods: vatPeriods as any[],
+    });
+    res.json(type === "revisorpakke" ? { ...report, type, raw: { entries, lines, accounts, bankTransactions, vatPeriods } } : report);
   }));
 
   // ═══════════════════════════════════════════════════════════════

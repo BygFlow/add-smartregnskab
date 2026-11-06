@@ -1,0 +1,86 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { buildAccountingReport } from "../server/accounting-reports";
+
+const accounts = [
+  { id: 1, accountNumber: "1010", name: "Salg", type: "indtaegt" },
+  { id: 2, accountNumber: "3410", name: "Husleje", type: "udgift" },
+  { id: 3, accountNumber: "5820", name: "Bankkonto", type: "aktiv" },
+  { id: 4, accountNumber: "6902", name: "Udgående moms", type: "passiv", vatCode: "U25" },
+];
+
+const entries = [
+  { id: 10, entryNumber: "1", date: "2024-01-05", status: "bogført" },
+  { id: 11, entryNumber: "2", date: "2025-01-05", status: "bogført" },
+];
+
+const lines = [
+  { journalEntryId: 10, accountId: 1, debit: 0, credit: 1_000 },
+  { journalEntryId: 10, accountId: 3, debit: 1_000, credit: 0 },
+  { journalEntryId: 11, accountId: 2, debit: 100, credit: 0 },
+  { journalEntryId: 11, accountId: 3, debit: 0, credit: 100 },
+];
+
+test("årskontrol bruger bogførte linjer og vælger seneste bogføringsår", () => {
+  const report = buildAccountingReport({
+    type: "aarskontrol",
+    companyName: "Test ApS",
+    accounts,
+    entries,
+    lines,
+    bankTransactions: [],
+    vatPeriods: [],
+  });
+
+  assert.equal(report.year, 2025);
+  assert.deepEqual(report.availableYears, [2025, 2024]);
+  assert.equal(report.controls?.[0]?.status, "ok");
+  assert.equal(report.controls?.[0]?.metrics.find((metric) => metric.label === "Debet i alt")?.value, 100);
+  assert.equal(report.controls?.[1]?.status, "warning");
+  assert.match(report.controls?.[1]?.summary ?? "", /kontoudtog/i);
+  assert.equal(report.controls?.[2]?.status, "warning");
+  assert.match(report.controls?.[2]?.summary ?? "", /momsperioder/i);
+});
+
+test("resultat og balance beregnes fra det valgte års posteringer", () => {
+  const result = buildAccountingReport({
+    type: "resultatopgoerelse",
+    requestedYear: 2024,
+    accounts,
+    entries,
+    lines,
+    bankTransactions: [],
+    vatPeriods: [],
+  });
+  const balance = buildAccountingReport({
+    type: "balance",
+    requestedYear: 2024,
+    accounts,
+    entries,
+    lines,
+    bankTransactions: [],
+    vatPeriods: [],
+  });
+
+  assert.equal(result.sections?.[0]?.total, 1_000);
+  assert.equal(result.sections?.[1]?.total, 0);
+  assert.equal(result.sections?.[2]?.total, 1_000);
+  assert.equal(balance.sections?.[0]?.total, 1_000);
+  assert.equal(balance.sections?.[2]?.total, 1_000);
+  assert.equal(balance.sections?.[3]?.lines[0]?.amount, 0);
+});
+
+test("en ubalanceret postering markeres som fejl", () => {
+  const report = buildAccountingReport({
+    type: "aarskontrol",
+    requestedYear: 2024,
+    accounts,
+    entries,
+    lines: lines.filter((line) => !(line.journalEntryId === 10 && line.accountId === 3)),
+    bankTransactions: [],
+    vatPeriods: [],
+  });
+
+  assert.equal(report.controls?.[0]?.status, "error");
+  assert.equal(report.controls?.[0]?.metrics.find((metric) => metric.label === "Forskel")?.value, -1_000);
+});
