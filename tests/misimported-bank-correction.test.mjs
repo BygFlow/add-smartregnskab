@@ -138,13 +138,20 @@ test("customer-approved removal deletes only the fresh unused MultiClean import"
   db.close();
 });
 
-test("legacy production database runs the approved corrections exactly once", () => {
+test("partially journalled legacy production database runs approved corrections exactly once", () => {
   const directory = mkdtempSync(join(tmpdir(), "smartregnskab-legacy-bank-fix-"));
   const databasePath = join(directory, "data.db");
   const backupDir = join(directory, "backups");
   const db = new Database(databasePath);
   db.exec(`
     CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
+    CREATE TABLE __drizzle_migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash TEXT NOT NULL,
+      created_at NUMERIC
+    );
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('0000-applied', 1788808682459);
+    CREATE TABLE ai_decision_logs (id INTEGER PRIMARY KEY);
     CREATE TABLE bank_transactions (
       id INTEGER PRIMARY KEY,
       company_id INTEGER NOT NULL,
