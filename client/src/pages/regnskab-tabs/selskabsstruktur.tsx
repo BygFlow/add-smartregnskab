@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Check, Network, Plus, Store } from "lucide-react";
+import { Building2, Check, Network, Pencil, Plus, Store } from "lucide-react";
 import { apiRequest, ApiError } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +35,9 @@ export default function Selskabsstruktur() {
   const { switchCompany } = useAuth();
   const [companyOpen, setCompanyOpen] = useState(false);
   const [existingCompanyConflict, setExistingCompanyConflict] = useState(false);
+  const [editCompanyOpen, setEditCompanyOpen] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<LegalCompany | null>(null);
+  const [structureForm, setStructureForm] = useState({ parentCompanyId: "none", groupRole: "standalone", ownershipPercent: "100" });
   const [unitOpen, setUnitOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: "", cvr: "", parentCompanyId: "", groupRole: "subsidiary", ownershipPercent: "100" });
   const [unitForm, setUnitForm] = useState({ companyId: "", name: "", unitType: "department", seNumber: "" });
@@ -85,6 +88,25 @@ export default function Selskabsstruktur() {
       toast({ title: "Holdingselskabet er tilknyttet", description: "ADD SmartDrift ApS er nu placeret som 100 % ejet datterselskab, mens det nuværende abonnement fortsætter uændret." });
     },
     onError: (error: Error) => toast({ title: "Holdingselskabet kunne ikke tilknyttes", description: error.message, variant: "destructive" }),
+  });
+
+  const updateCompanyStructure = useMutation({
+    mutationFn: async () => {
+      if (!editingCompany) throw new Error("Vælg et selskab.");
+      return (await apiRequest("PATCH", `/api/organization/companies/${editingCompany.id}`, {
+        parentCompanyId: structureForm.parentCompanyId === "none" ? null : Number(structureForm.parentCompanyId),
+        groupRole: structureForm.groupRole,
+        ownershipPercent: structureForm.parentCompanyId === "none" ? null : Number(structureForm.ownershipPercent || 0),
+      })).json();
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["/api/organization"] });
+      await qc.invalidateQueries({ queryKey: ["/api/regnskabssystem/companies"] });
+      setEditCompanyOpen(false);
+      setEditingCompany(null);
+      toast({ title: "Ejerforholdet er opdateret", description: "Selskabsstrukturen er gemt uden at flytte eller sammenblande regnskabsdata." });
+    },
+    onError: (error: Error) => toast({ title: "Ejerforholdet kunne ikke opdateres", description: error.message, variant: "destructive" }),
   });
 
   const createUnit = useMutation({
@@ -155,7 +177,18 @@ export default function Selskabsstruktur() {
               <p className="mt-1 text-sm text-muted-foreground">CVR {company.cvr || "ikke angivet"} · {roleLabel[company.groupRole || "standalone"] || company.groupRole}</p>
               {parent && <p className="text-xs text-muted-foreground">Ejet under {parent.name}{company.ownershipPercent != null ? ` · ${company.ownershipPercent}%` : ""}</p>}
             </div>
-            {!active && <Button size="sm" variant="outline" onClick={async () => { await switchCompany(company.id); window.location.hash = "#/smartregnskab/app/dashboard"; }}>Åbn hovedregnskab</Button>}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="ghost" onClick={() => {
+                setEditingCompany(company);
+                setStructureForm({
+                  parentCompanyId: company.parentCompanyId == null ? "none" : String(company.parentCompanyId),
+                  groupRole: company.groupRole || (company.parentCompanyId == null ? "standalone" : "subsidiary"),
+                  ownershipPercent: company.ownershipPercent == null ? "100" : String(company.ownershipPercent),
+                });
+                setEditCompanyOpen(true);
+              }}><Pencil className="mr-2 h-3.5 w-3.5"/>Rediger ejerforhold</Button>
+              {!active && <Button size="sm" variant="outline" onClick={async () => { await switchCompany(company.id); window.location.hash = "#/smartregnskab/app/dashboard"; }}>Åbn hovedregnskab</Button>}
+            </div>
           </div>
           <div className="mt-3 space-y-2">
             {units.length === 0 ? <span className="text-xs text-muted-foreground">Ingen afdelinger eller SE-enheder.</span> : units.map((unit) => {
@@ -191,6 +224,16 @@ export default function Selskabsstruktur() {
         {companyForm.parentCompanyId !== "none" && <div><Label htmlFor="ownership">Ejerandel i procent</Label><Input id="ownership" type="number" min="0" max="100" value={companyForm.ownershipPercent} onChange={(e) => setCompanyForm({ ...companyForm, ownershipPercent: e.target.value })}/></div>}
         {existingCompanyConflict && <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">CVR-nummeret findes som en tidligere holding-profil. Tilknytning gennemføres kun, hvis profilen er tom og enten allerede tilhører din bruger eller kan genkendes sikkert via en identisk, eksisterende juridisk virksomhed. Gamle adgangsrelationer til den tomme holding afsluttes.</div>}
       </div><DialogFooter><Button variant="outline" onClick={() => { setCompanyOpen(false); setExistingCompanyConflict(false); }}>Annuller</Button>{existingCompanyConflict ? <Button disabled={attachExistingHolding.isPending} onClick={() => attachExistingHolding.mutate()}>{attachExistingHolding.isPending ? "Tilknytning…" : "Tilknyt eksisterende holding"}</Button> : <Button disabled={!companyForm.name || companyForm.cvr.length !== 8 || createCompany.isPending} onClick={() => createCompany.mutate()}>Opret selskab</Button>}</DialogFooter>
+    </DialogContent></Dialog>
+
+    <Dialog open={editCompanyOpen} onOpenChange={(open) => { setEditCompanyOpen(open); if (!open) setEditingCompany(null); }}><DialogContent><DialogHeader><DialogTitle>Rediger ejerforhold</DialogTitle></DialogHeader>
+      <div className="grid gap-4 py-2">
+        <div className="rounded-lg border bg-muted/40 p-3"><p className="font-medium">{editingCompany?.name}</p><p className="text-sm text-muted-foreground">CVR {editingCompany?.cvr || "ikke angivet"}</p></div>
+        <div><Label>Moderselskab i denne konto</Label><Select value={structureForm.parentCompanyId} onValueChange={(value) => setStructureForm({ ...structureForm, parentCompanyId: value, groupRole: value === "none" ? (structureForm.groupRole === "holding" ? "holding" : "standalone") : "subsidiary", ownershipPercent: value === "none" ? "" : structureForm.ownershipPercent || "100" })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="none">Ingen intern ejerrelation</SelectItem>{data.companies.filter((company) => company.id !== editingCompany?.id).map((company) => <SelectItem key={company.id} value={String(company.id)}>{company.name}</SelectItem>)}</SelectContent></Select></div>
+        <div><Label>Type</Label><Select value={structureForm.groupRole} onValueChange={(value) => setStructureForm({ ...structureForm, groupRole: value })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{structureForm.parentCompanyId === "none" ? <><SelectItem value="standalone">Selvstændigt juridisk selskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></> : <><SelectItem value="subsidiary">Datterselskab</SelectItem><SelectItem value="parent">Moderselskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></>}</SelectContent></Select></div>
+        {structureForm.parentCompanyId !== "none" && <div><Label htmlFor="edit-ownership">Ejerandel i procent</Label><Input id="edit-ownership" type="number" min="0" max="100" value={structureForm.ownershipPercent} onChange={(e) => setStructureForm({ ...structureForm, ownershipPercent: e.target.value })}/></div>}
+        <p className="text-sm text-muted-foreground">Ændringen opdaterer kun den juridiske koncernstruktur. Selskabets regnskab, bilag, moms og løn forbliver adskilt.</p>
+      </div><DialogFooter><Button variant="outline" onClick={() => setEditCompanyOpen(false)}>Annuller</Button><Button disabled={!editingCompany || updateCompanyStructure.isPending || (structureForm.parentCompanyId !== "none" && (!structureForm.ownershipPercent || Number(structureForm.ownershipPercent) < 0 || Number(structureForm.ownershipPercent) > 100))} onClick={() => updateCompanyStructure.mutate()}>{updateCompanyStructure.isPending ? "Gemmer…" : "Gem ejerforhold"}</Button></DialogFooter>
     </DialogContent></Dialog>
 
     <Dialog open={unitOpen} onOpenChange={setUnitOpen}><DialogContent><DialogHeader><DialogTitle>Tilføj afdeling eller SE-enhed</DialogTitle></DialogHeader>

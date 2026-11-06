@@ -54,6 +54,9 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(page, /Ingen intern ejerrelation/);
   assert.match(page, /Tilknyt eksisterende holding/);
   assert.match(page, /COMPANY_EXISTS/);
+  assert.match(page, /Rediger ejerforhold/);
+  assert.match(page, /Gem ejerforhold/);
+  assert.match(page, /PATCH.*\/api\/organization\/companies/);
   assert.match(page, /parentCompanyId: companyForm\.parentCompanyId === "none" \? null/);
   assert.match(migration, /CREATE TABLE `company_access_memberships`/);
   assert.match(migration, /CREATE TABLE `company_units`/);
