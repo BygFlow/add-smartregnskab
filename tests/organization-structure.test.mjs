@@ -19,6 +19,12 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(routes, /storage\.getCompany\(tenantId\(req\)\)/);
   assert.match(routes, /app\.get\("\/api\/organization", requireRole\("leder", "holdleder", "bogholder", "revisor", "revisor_admin", "platform_admin"\)/);
   assert.match(routes, /Abonnementsejeren er en faktureringsrolle, ikke nødvendigvis det juridiske/);
+  assert.match(routes, /\/api\/organization\/companies\/attach-existing-holding/);
+  assert.match(routes, /legacyDuplicateChildren/);
+  assert.match(routes, /gammel dublet frigjort/);
+  assert.match(routes, /status: "revoked"/);
+  assert.match(routes, /hasCompanyBusinessData\(holding\.id\)/);
+  assert.match(routes, /tilknyt_eksisterende_holding/);
   assert.match(routes, /wouldCreateCompanyCycle\(companies, id, parentCompanyId\)/);
   assert.doesNotMatch(routes, /parentCompanyId: id === ownerId \? null : parentCompanyId/);
   assert.match(routes, /req\.body\?\.parentCompanyId === null/);
@@ -46,6 +52,8 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(page, /Åbn SE-regnskab/);
   assert.match(page, /Åbn hovedregnskab/);
   assert.match(page, /Ingen intern ejerrelation/);
+  assert.match(page, /Tilknyt eksisterende holding/);
+  assert.match(page, /COMPANY_EXISTS/);
   assert.match(page, /parentCompanyId: companyForm\.parentCompanyId === "none" \? null/);
   assert.match(migration, /CREATE TABLE `company_access_memberships`/);
   assert.match(migration, /CREATE TABLE `company_units`/);

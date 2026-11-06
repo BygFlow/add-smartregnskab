@@ -423,6 +423,56 @@ test("SmartRegnskab production deployment migrates, starts and keeps bootstrap s
     assert.equal(aiUsage.usedCredits, 0);
     assert.equal(aiUsage.costCapDkk, 350);
 
+    // En tidligere version kunne efterlade en tom holding over en dublet af et
+    // juridisk selskab. Den aktuelle leder skal kunne genknytte netop denne
+    // dokumenterede dublet uden at slette den gamle profil eller dens data.
+    const legacyDb = new Database(databasePath);
+    let legacyDuplicateId;
+    let legacyHoldingId;
+    let legacyMembershipId;
+    try {
+      const now = new Date().toISOString();
+      legacyDuplicateId = Number(legacyDb.prepare(`INSERT INTO companies
+        (name, cvr, status, kind, created_at, parent_company_id, subscription_owner_id, group_role)
+        VALUES (?, ?, 'proeve', 'kunde', ?, NULL, NULL, 'standalone')`).run("Smoke Child ApS", "87654321", now).lastInsertRowid);
+      legacyDb.prepare("UPDATE companies SET subscription_owner_id=? WHERE id=?").run(legacyDuplicateId, legacyDuplicateId);
+      legacyHoldingId = Number(legacyDb.prepare(`INSERT INTO companies
+        (name, cvr, status, kind, created_at, parent_company_id, subscription_owner_id, group_role)
+        VALUES (?, ?, 'proeve', 'kunde', ?, NULL, ?, 'holding')`).run("Legacy Holding ApS", "99887766", now, legacyDuplicateId).lastInsertRowid);
+      legacyDb.prepare("UPDATE companies SET parent_company_id=?, group_role='subsidiary', ownership_percent=100 WHERE id=?")
+        .run(legacyHoldingId, legacyDuplicateId);
+      const legacyUserId = Number(legacyDb.prepare(`INSERT INTO users
+        (company_id, name, email, password, role, active)
+        VALUES (?, 'Gammel bruger', 'legacy-holding@example.test', 'not-used', 'leder', 1)`).run(legacyDuplicateId).lastInsertRowid);
+      legacyMembershipId = Number(legacyDb.prepare(`INSERT INTO company_access_memberships
+        (user_id, company_id, role, status, created_at) VALUES (?, ?, 'leder', 'active', ?)`)
+        .run(legacyUserId, legacyHoldingId, now).lastInsertRowid);
+    } finally {
+      legacyDb.close();
+    }
+
+    const attachLegacyHolding = await fetch(`${base}/api/organization/companies/attach-existing-holding`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${leaderToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Legacy Holding ApS", cvr: "99887766" }),
+    });
+    assert.equal(attachLegacyHolding.status, 200, await attachLegacyHolding.clone().text());
+    const attachedHolding = await attachLegacyHolding.json();
+    assert.equal(attachedHolding.holding.id, legacyHoldingId);
+    assert.equal(attachedHolding.holding.subscriptionOwnerId, companyResult.company.id);
+    assert.equal(attachedHolding.child.parentCompanyId, legacyHoldingId);
+    assert.equal(attachedHolding.child.ownershipPercent, 100);
+
+    const verifiedLegacyDb = new Database(databasePath, { readonly: true });
+    try {
+      const oldDuplicate = verifiedLegacyDb.prepare("SELECT parent_company_id AS parentCompanyId, group_role AS groupRole FROM companies WHERE id=?").get(legacyDuplicateId);
+      assert.equal(oldDuplicate.parentCompanyId, null, "the old duplicate is preserved but detached from the moved holding");
+      assert.equal(oldDuplicate.groupRole, "standalone");
+      assert.equal(verifiedLegacyDb.prepare("SELECT status FROM company_access_memberships WHERE id=?").get(legacyMembershipId).status, "revoked");
+    } finally {
+      verifiedLegacyDb.close();
+    }
+
     const blockedDowngrade = await fetch(`${base}/api/platform/companies/${companyResult.company.id}/plan`, {
       method: "POST",
       headers: { Authorization: `Bearer ${platformToken}`, "Content-Type": "application/json" },

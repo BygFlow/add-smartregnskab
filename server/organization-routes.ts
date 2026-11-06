@@ -1,7 +1,9 @@
 import type { Express, NextFunction, Request, Response } from "express";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import {
-  auditLogs, companyAccessMemberships, companyUnits, dimensionDefinitions, dimensionValues, users,
+  attachments, auditLogs, bankTransactions, companies, companyAccessMemberships, companyUnits,
+  dimensionDefinitions, dimensionValues, documentInbox, invoices, journalEntries, payrollEntries,
+  subscriptions, users,
 } from "@shared/schema";
 import { db, storage } from "./storage";
 import { requireRole, tenantId } from "./auth";
@@ -17,6 +19,15 @@ function h(fn: (req: Request, res: Response) => Promise<unknown>) {
 }
 
 const digits8 = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+const normalizedCompanyName = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("da-DK");
+
+async function hasCompanyBusinessData(companyId: number) {
+  const tables = [journalEntries, invoices, documentInbox, bankTransactions, payrollEntries, attachments] as const;
+  for (const table of tables) {
+    if (await db.select({ id: table.id }).from(table).where(eq(table.companyId, companyId)).get()) return true;
+  }
+  return false;
+}
 
 function wouldCreateCompanyCycle(
   companies: Array<{ id: number; parentCompanyId?: number | null }>,
@@ -109,7 +120,9 @@ export function registerOrganizationRoutes(app: Express) {
     const parent = parentCompanyId == null ? null : companies.find((company) => company.id === parentCompanyId);
     if (!name || cvr.length !== 8) return res.status(400).json({ error: "Angiv selskabsnavn og et gyldigt CVR-nummer på 8 cifre." });
     if (parentCompanyId != null && !parent) return res.status(400).json({ error: "Moderselskabet skal være en del af samme kundeorganisation." });
-    if ((await storage.getCompanies()).some((company) => company.cvr === cvr)) return res.status(409).json({ error: "CVR-nummeret findes allerede i ADD SmartRegnskab." });
+    if ((await storage.getCompanies()).some((company) => company.cvr === cvr)) {
+      return res.status(409).json({ error: "CVR-nummeret findes allerede i ADD SmartRegnskab.", code: "COMPANY_EXISTS" });
+    }
     const ownershipPercent = req.body?.ownershipPercent === "" || req.body?.ownershipPercent == null
       ? null : Number(req.body.ownershipPercent);
     if (ownershipPercent != null && (!Number.isFinite(ownershipPercent) || ownershipPercent < 0 || ownershipPercent > 100)) {
@@ -137,6 +150,101 @@ export function registerOrganizationRoutes(app: Express) {
     await audit(req, "opret_selskab", "company", `${company.name} (${company.cvr})`);
     await ensureNemhandelRegistrationNotice(company.id, req.auth!.userId);
     res.status(201).json(company);
+  }));
+
+  app.post("/api/organization/companies/attach-existing-holding", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    if (!req.auth!.isPlatformAdmin && req.auth!.user.role !== "leder" && req.auth!.companyMembership?.role !== "leder") {
+      return res.status(403).json({ error: "Kun virksomhedens leder kan tilknytte et holdingselskab." });
+    }
+    const { home, ownerId, organizationCompanies } = await context(req);
+    const cvr = digits8(req.body?.cvr);
+    const expectedName = normalizedCompanyName(req.body?.name);
+    if (cvr.length !== 8 || !expectedName) {
+      return res.status(400).json({ error: "Angiv holdingselskabets navn og et gyldigt CVR-nummer på 8 cifre." });
+    }
+    const allCompanies = await storage.getCompanies();
+    const holding = allCompanies.find((company) => digits8(company.cvr) === cvr);
+    if (!holding) return res.status(404).json({ error: "Holdingselskabet findes ikke i ADD SmartRegnskab." });
+    if ((holding.subscriptionOwnerId || holding.id) === ownerId) {
+      return res.status(200).json({ holding, child: await storage.getCompany(ownerId), alreadyAttached: true });
+    }
+    if (normalizedCompanyName(holding.name) !== expectedName || holding.groupRole !== "holding") {
+      return res.status(409).json({ error: "Den eksisterende virksomhed matcher ikke det angivne holdingselskab." });
+    }
+
+    const activeMemberships = await db.select().from(companyAccessMemberships).where(and(
+      eq(companyAccessMemberships.companyId, holding.id),
+      eq(companyAccessMemberships.status, "active"),
+    )).all();
+    const currentLegalCompanies = organizationCompanies.filter((company) => company.groupRole !== "se_registration");
+    const children = allCompanies.filter((company) => company.parentCompanyId === holding.id);
+    const legacyOwnerId = holding.subscriptionOwnerId || holding.id;
+    const legacyDuplicateChildren = children.length > 0 && children.every((child) =>
+      (child.subscriptionOwnerId || child.id) === legacyOwnerId
+      && currentLegalCompanies.some((current) =>
+        current.id !== child.id
+        && digits8(current.cvr) === digits8(child.cvr)
+        && normalizedCompanyName(current.name) === normalizedCompanyName(child.name),
+      ),
+    );
+    const alreadyAuthorized = activeMemberships.some((membership) => membership.userId === req.auth!.userId);
+    if (!req.auth!.isPlatformAdmin && !alreadyAuthorized && !legacyDuplicateChildren) {
+      return res.status(403).json({ error: "Din bruger har ikke adgang til det eksisterende holdingselskab, og det kan ikke genkendes som en tom ældre dublet." });
+    }
+    const directUsers = await db.select({ id: users.id }).from(users).where(eq(users.companyId, holding.id)).all();
+    const directSubscription = await db.select({ id: subscriptions.id }).from(subscriptions).where(eq(subscriptions.companyId, holding.id)).get();
+    const unit = await db.select({ id: companyUnits.id }).from(companyUnits).where(eq(companyUnits.companyId, holding.id)).get();
+    if (directUsers.length || directSubscription || (children.length && !legacyDuplicateChildren) || unit || await hasCompanyBusinessData(holding.id)) {
+      return res.status(409).json({ error: "Holdingselskabet indeholder allerede brugere, abonnement, andre selskaber eller regnskabsdata og kan derfor ikke flyttes automatisk." });
+    }
+
+    const plan = await storage.getCompanyPlan(ownerId);
+    const maxCompanies = plan?.maxCompanies ?? 1;
+    if (maxCompanies !== -1 && organizationCompanies.length >= maxCompanies) {
+      return res.status(409).json({ error: `Pakken tillader ${maxCompanies} regnskabsprofil${maxCompanies === 1 ? "" : "er"}. Opgradér pakken for at tilknytte holdingselskabet.` });
+    }
+
+    db.transaction((tx) => {
+      if (legacyDuplicateChildren) {
+        for (const child of children) {
+          // Bevar den gamle dublet og dens data, men fjern den forældede
+          // ejerrelation, så den flyttede holding ikke spænder over to konti.
+          tx.update(companies).set({
+            parentCompanyId: null,
+            groupRole: "standalone",
+            ownershipPercent: null,
+          }).where(eq(companies.id, child.id)).run();
+        }
+      }
+      tx.update(companyAccessMemberships).set({ status: "revoked" }).where(and(
+        eq(companyAccessMemberships.companyId, holding.id),
+        ne(companyAccessMemberships.userId, req.auth!.userId),
+      )).run();
+      tx.update(companies).set({
+        subscriptionOwnerId: ownerId,
+        parentCompanyId: null,
+        groupRole: "holding",
+        ownershipPercent: null,
+        status: home.status,
+      }).where(eq(companies.id, holding.id)).run();
+      tx.update(companies).set({
+        parentCompanyId: holding.id,
+        groupRole: "subsidiary",
+        ownershipPercent: 100,
+      }).where(eq(companies.id, ownerId)).run();
+      tx.insert(companyAccessMemberships).values({
+        userId: req.auth!.userId,
+        companyId: holding.id,
+        role: "leder",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      }).onConflictDoNothing({ target: [companyAccessMemberships.userId, companyAccessMemberships.companyId] }).run();
+    });
+
+    const attachedHolding = await storage.getCompany(holding.id);
+    const child = await storage.getCompany(ownerId);
+    await audit(req, "tilknyt_eksisterende_holding", "company", `${holding.name} (${holding.cvr}) -> ${child?.name || ownerId}${legacyDuplicateChildren ? "; gammel dublet frigjort" : ""}`);
+    res.json({ holding: attachedHolding, child, alreadyAttached: false });
   }));
 
   app.patch("/api/organization/companies/:id", requireRole("leder", "platform_admin"), h(async (req, res) => {

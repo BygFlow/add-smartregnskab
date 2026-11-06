@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Check, Network, Plus, Store } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, ApiError } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ export default function Selskabsstruktur() {
   const { toast } = useToast();
   const { switchCompany } = useAuth();
   const [companyOpen, setCompanyOpen] = useState(false);
+  const [existingCompanyConflict, setExistingCompanyConflict] = useState(false);
   const [unitOpen, setUnitOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: "", cvr: "", parentCompanyId: "", groupRole: "subsidiary", ownershipPercent: "100" });
   const [unitForm, setUnitForm] = useState({ companyId: "", name: "", unitType: "department", seNumber: "" });
@@ -58,7 +59,32 @@ export default function Selskabsstruktur() {
       setCompanyForm({ name: "", cvr: "", parentCompanyId: "", groupRole: "subsidiary", ownershipPercent: "100" });
       toast({ title: "Selskabet er oprettet", description: "Det har sit eget adskilte regnskab under jeres fælles abonnement." });
     },
-    onError: (error: Error) => toast({ title: "Selskabet kunne ikke oprettes", description: error.message, variant: "destructive" }),
+    onError: (error: Error) => {
+      const canAttach = error instanceof ApiError && error.code === "COMPANY_EXISTS"
+        && companyForm.parentCompanyId === "none" && companyForm.groupRole === "holding";
+      setExistingCompanyConflict(canAttach);
+      toast({
+        title: canAttach ? "Holdingselskabet findes allerede" : "Selskabet kunne ikke oprettes",
+        description: canAttach ? "Kontrollér oplysningerne, og vælg derefter Tilknyt eksisterende holding." : error.message,
+        variant: canAttach ? "default" : "destructive",
+      });
+    },
+  });
+
+  const attachExistingHolding = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/organization/companies/attach-existing-holding", {
+      name: companyForm.name,
+      cvr: companyForm.cvr,
+    })).json(),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["/api/organization"] });
+      await qc.invalidateQueries({ queryKey: ["/api/regnskabssystem/companies"] });
+      setCompanyOpen(false);
+      setExistingCompanyConflict(false);
+      setCompanyForm({ name: "", cvr: "", parentCompanyId: "", groupRole: "subsidiary", ownershipPercent: "100" });
+      toast({ title: "Holdingselskabet er tilknyttet", description: "ADD SmartDrift ApS er nu placeret som 100 % ejet datterselskab, mens det nuværende abonnement fortsætter uændret." });
+    },
+    onError: (error: Error) => toast({ title: "Holdingselskabet kunne ikke tilknyttes", description: error.message, variant: "destructive" }),
   });
 
   const createUnit = useMutation({
@@ -157,13 +183,14 @@ export default function Selskabsstruktur() {
 
     <Dialog open={companyOpen} onOpenChange={setCompanyOpen}><DialogContent><DialogHeader><DialogTitle>Tilføj juridisk selskab</DialogTitle></DialogHeader>
       <div className="grid gap-4 py-2">
-        <div><Label htmlFor="legal-name">Selskabsnavn</Label><Input id="legal-name" value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} placeholder="Eksempel ApS"/></div>
-        <div><Label htmlFor="legal-cvr">CVR-nummer</Label><Input id="legal-cvr" inputMode="numeric" maxLength={8} value={companyForm.cvr} onChange={(e) => setCompanyForm({ ...companyForm, cvr: e.target.value.replace(/\D/g, "") })} placeholder="8 cifre"/></div>
+        <div><Label htmlFor="legal-name">Selskabsnavn</Label><Input id="legal-name" value={companyForm.name} onChange={(e) => { setExistingCompanyConflict(false); setCompanyForm({ ...companyForm, name: e.target.value }); }} placeholder="Eksempel ApS"/></div>
+        <div><Label htmlFor="legal-cvr">CVR-nummer</Label><Input id="legal-cvr" inputMode="numeric" maxLength={8} value={companyForm.cvr} onChange={(e) => { setExistingCompanyConflict(false); setCompanyForm({ ...companyForm, cvr: e.target.value.replace(/\D/g, "") }); }} placeholder="8 cifre"/></div>
         <div><Label>Moderselskab i denne konto</Label><Select value={companyForm.parentCompanyId} onValueChange={(value) => setCompanyForm({ ...companyForm, parentCompanyId: value, groupRole: value === "none" ? "standalone" : companyForm.groupRole === "standalone" ? "subsidiary" : companyForm.groupRole, ownershipPercent: value === "none" ? "" : companyForm.ownershipPercent || "100" })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="none">Ingen intern ejerrelation</SelectItem>{data.companies.map((company) => <SelectItem key={company.id} value={String(company.id)}>{company.name}</SelectItem>)}</SelectContent></Select></div>
         {companyForm.parentCompanyId === "none" && <p className="text-sm text-muted-foreground">Selskabet deler abonnement, men registreres ikke som ejet af et andet selskab i denne konto. En ekstern ejer kan tilføjes til strukturen senere.</p>}
         <div><Label>Type</Label><Select value={companyForm.groupRole} onValueChange={(value) => setCompanyForm({ ...companyForm, groupRole: value })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{companyForm.parentCompanyId === "none" ? <><SelectItem value="standalone">Selvstændigt juridisk selskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></> : <><SelectItem value="subsidiary">Datterselskab</SelectItem><SelectItem value="parent">Moderselskab</SelectItem><SelectItem value="holding">Holdingselskab</SelectItem></>}</SelectContent></Select></div>
         {companyForm.parentCompanyId !== "none" && <div><Label htmlFor="ownership">Ejerandel i procent</Label><Input id="ownership" type="number" min="0" max="100" value={companyForm.ownershipPercent} onChange={(e) => setCompanyForm({ ...companyForm, ownershipPercent: e.target.value })}/></div>}
-      </div><DialogFooter><Button variant="outline" onClick={() => setCompanyOpen(false)}>Annuller</Button><Button disabled={!companyForm.name || companyForm.cvr.length !== 8 || createCompany.isPending} onClick={() => createCompany.mutate()}>Opret selskab</Button></DialogFooter>
+        {existingCompanyConflict && <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">CVR-nummeret findes som en tidligere holding-profil. Tilknytning gennemføres kun, hvis profilen er tom og enten allerede tilhører din bruger eller kan genkendes sikkert via en identisk, eksisterende juridisk virksomhed. Gamle adgangsrelationer til den tomme holding afsluttes.</div>}
+      </div><DialogFooter><Button variant="outline" onClick={() => { setCompanyOpen(false); setExistingCompanyConflict(false); }}>Annuller</Button>{existingCompanyConflict ? <Button disabled={attachExistingHolding.isPending} onClick={() => attachExistingHolding.mutate()}>{attachExistingHolding.isPending ? "Tilknytning…" : "Tilknyt eksisterende holding"}</Button> : <Button disabled={!companyForm.name || companyForm.cvr.length !== 8 || createCompany.isPending} onClick={() => createCompany.mutate()}>Opret selskab</Button>}</DialogFooter>
     </DialogContent></Dialog>
 
     <Dialog open={unitOpen} onOpenChange={setUnitOpen}><DialogContent><DialogHeader><DialogTitle>Tilføj afdeling eller SE-enhed</DialogTitle></DialogHeader>
