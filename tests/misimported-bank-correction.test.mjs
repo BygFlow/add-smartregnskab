@@ -14,6 +14,10 @@ const removalMigration = readFileSync(
   new URL("../migrations/0022_remove_unused_multiclean_bank_import.sql", import.meta.url),
   "utf8",
 );
+const nullReferenceMigration = readFileSync(
+  new URL("../migrations/0023_correct_null_account_ref_imports.sql", import.meta.url),
+  "utf8",
+);
 const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 
 function applyMigration(db, sql = migration) {
@@ -138,6 +142,59 @@ test("customer-approved removal deletes only the fresh unused MultiClean import"
   db.close();
 });
 
+test("null-reference imports are separated by their exact observed import windows", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
+    CREATE TABLE bank_transactions (
+      id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      provider TEXT,
+      account_ref TEXT,
+      external_id TEXT,
+      imported_at TEXT NOT NULL
+    );
+    CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER,
+      user_id INTEGER,
+      user_email TEXT,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO companies (id, name, cvr) VALUES
+      (1, 'ADD SmartDrift ApS', '46761898'),
+      (2, 'ADD Multi Service ApS', '44822539'),
+      (3, 'Anden virksomhed', '22222222');
+    INSERT INTO bank_transactions (id, company_id, date, provider, account_ref, external_id, imported_at) VALUES
+      (30, 1, '2024-07-22', 'danske-bank', NULL, 'danske-bank||old-clean-1', '2026-11-06T17:19:52.617Z'),
+      (31, 1, '2024-11-21', 'danske-bank', NULL, 'danske-bank||old-clean-2', '2026-11-06T17:19:53.397Z'),
+      (32, 1, '2024-12-02', 'danske-bank', NULL, 'danske-bank||service-1', '2026-11-06T17:20:13.214Z'),
+      (33, 1, '2024-12-31', 'danske-bank', NULL, 'danske-bank||service-2', '2026-11-06T17:20:13.235Z'),
+      (34, 1, '2024-12-03', 'danske-bank', NULL, 'danske-bank||other-time', '2026-11-06T17:20:14.000Z'),
+      (35, 3, '2024-07-22', 'danske-bank', NULL, 'danske-bank||other-company', '2026-11-06T17:19:52.700Z'),
+      (36, 1, '2024-07-22', 'danske-bank', 'already-labelled', 'danske-bank|labelled|row', '2026-11-06T17:19:52.800Z');
+  `);
+
+  applyMigration(db, nullReferenceMigration);
+
+  assert.deepEqual(
+    db.prepare("SELECT id, company_id, account_ref FROM bank_transactions ORDER BY id").all(),
+    [
+      { id: 32, company_id: 2, account_ref: "13800707" },
+      { id: 33, company_id: 2, account_ref: "13800707" },
+      { id: 34, company_id: 1, account_ref: null },
+      { id: 35, company_id: 3, account_ref: null },
+      { id: 36, company_id: 1, account_ref: "already-labelled" },
+    ],
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 2);
+  db.close();
+});
+
 test("partially journalled legacy production database runs approved corrections exactly once", () => {
   const directory = mkdtempSync(join(tmpdir(), "smartregnskab-legacy-bank-fix-"));
   const databasePath = join(directory, "data.db");
@@ -198,7 +255,7 @@ test("partially journalled legacy production database runs approved corrections 
         checked.prepare("SELECT id, company_id, account_ref FROM bank_transactions ORDER BY id").all(),
         [{ id: 2, company_id: 2, account_ref: "13800707" }],
       );
-      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 2);
+      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 3);
       assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 2);
     } finally {
       checked.close();

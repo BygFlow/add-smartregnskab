@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 const LEGACY_DATA_MIGRATIONS = [
   "0021_move_misimported_multiservice_bank",
   "0022_remove_unused_multiclean_bank_import",
+  "0023_correct_null_account_ref_imports",
 ];
 
 function tableExists(sqlite, table) {
