@@ -15,7 +15,9 @@ test("Importguide exposes the real validated migration flow", () => {
   );
 
   assert.match(importguide, /<MigrationWizard companyId=\{companyId\}/);
-  assert.match(importguide, /Afdelinger og SE-enheder under selskabet/);
+  assert.match(importguide, /aktive regnskabsprofil/);
+  assert.match(importguide, /SE-enheder med et særskilt regnskab importeres hver for sig/);
+  assert.doesNotMatch(importguide, /SE-enheder under selskabet indgår i det samme regnskab/);
   assert.doesNotMatch(importguide, /\/api\/import-jobs2/);
 
   assert.match(wizard, /type="file"/);

@@ -11,11 +11,10 @@ export default function Importguide({ companyId }: { companyId: number }) {
         <div className="flex items-start gap-2">
           <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <div className="font-medium">Importen tilhører det aktive juridiske selskab</div>
+            <div className="font-medium">Importen tilhører den aktive regnskabsprofil</div>
             <p className="mt-1 text-xs leading-5">
-              Afdelinger og SE-enheder under selskabet indgår i det samme regnskab og
-              åbnes derfor ikke som selvstændige regnskaber.
-              Vælg det juridiske selskab, før du starter importen.
+              Juridiske selskaber og SE-enheder med et særskilt regnskab importeres hver for sig.
+              Kontrollér regnskabsnavnet øverst på siden, før du forbinder en datakilde eller starter importen.
             </p>
           </div>
         </div>
