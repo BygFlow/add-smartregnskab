@@ -120,7 +120,7 @@ export default function Selskabsstruktur() {
               <div key={unit.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2">
                 <div>
                   <p className="text-sm font-medium">{unit.name}{unit.seNumber ? ` · SE ${unit.seNumber}` : " · afdeling"}</p>
-                  <p className="text-xs text-muted-foreground">Bogføres og indberettes i {company.name}s juridiske regnskab.</p>
+                  <p className="text-xs text-muted-foreground">Bogføres og indberettes i det juridiske regnskab for {company.name}.</p>
                 </div>
                 <Button size="sm" variant="ghost" onClick={async () => {
                   if (!active) await switchCompany(company.id);

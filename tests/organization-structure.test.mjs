@@ -33,7 +33,7 @@ test("ordinary companies and groups share one safe organization model", () => {
   assert.match(shell, /Selskaber & SE-enheder/);
   assert.match(page, /Ét ApS eller A\/S er ét juridisk regnskab/);
   assert.match(page, /Afdelinger og SE-numre hører under det valgte CVR/);
-  assert.match(page, /Bogføres og indberettes i/);
+  assert.match(page, /Bogføres og indberettes i det juridiske regnskab for/);
   assert.match(page, /Gå til regnskab/);
   assert.match(page, /Åbn hovedregnskab/);
   assert.match(page, /Ingen intern ejerrelation/);
