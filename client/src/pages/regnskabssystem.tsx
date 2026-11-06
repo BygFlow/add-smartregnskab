@@ -1603,6 +1603,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   const [inboxUploadOpen, setInboxUploadOpen] = useState(false);
   const [inboxFile, setInboxFile] = useState<File | null>(null);
+  const [historicalUploadOpen, setHistoricalUploadOpen] = useState(false);
+  const [historicalFiles, setHistoricalFiles] = useState<File[]>([]);
+  const [historicalUploadProgress, setHistoricalUploadProgress] = useState({ completed: 0, total: 0 });
 
   const uploadInboxMut = useMutation({
     mutationFn: async () => {
@@ -1628,6 +1631,61 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
       toast({ title: "Upload fejlede", description: message, variant: "destructive" });
+    },
+  });
+
+  const uploadHistoricalMut = useMutation({
+    mutationFn: async () => {
+      if (!historicalFiles.length) throw new Error("Vælg de klargjorte historiske PDF-bilag.");
+      const files = [...historicalFiles].sort((a, b) => a.name.localeCompare(b.name, "da", { numeric: true }));
+      const prepared = files.map((file) => {
+        const match = /^ECON-(\d{4})-(\d{8})-(\d+)__bilag-(\d+)\.pdf$/i.exec(file.name);
+        if (!match || match[3] !== match[4]) {
+          throw new Error(`${file.name} har ikke det sikre filnavn fra klargøringen.`);
+        }
+        if (file.type && file.type !== "application/pdf") throw new Error(`${file.name} er ikke en PDF-fil.`);
+        if (file.size > 7_000_000) throw new Error(`${file.name} er større end 7 MB.`);
+        return { file, entryNumber: `ECON-${match[1]}-${match[2]}-${match[3]}`, voucherNumber: match[4] };
+      });
+      const uniqueEntries = new Set(prepared.map((item) => item.entryNumber));
+      if (uniqueEntries.size !== prepared.length) throw new Error("Der er valgt flere filer til samme postering.");
+      setHistoricalUploadProgress({ completed: 0, total: prepared.length });
+      let linked = 0;
+      let alreadyLinked = 0;
+      for (let index = 0; index < prepared.length; index += 1) {
+        const item = prepared[index];
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error(`Kunne ikke læse ${item.file.name}.`));
+          reader.readAsDataURL(item.file);
+        });
+        const res = await apiRequest("POST", "/api/document-receiving/historical", {
+          fileName: item.file.name,
+          dataUrl,
+          entryNumber: item.entryNumber,
+          voucherNumber: item.voucherNumber,
+        });
+        const result = await res.json();
+        if (result.alreadyLinked) alreadyLinked += 1;
+        else linked += 1;
+        setHistoricalUploadProgress({ completed: index + 1, total: prepared.length });
+      }
+      return { linked, alreadyLinked, total: prepared.length };
+    },
+    onSuccess: ({ linked, alreadyLinked, total }) => {
+      qc.invalidateQueries({ queryKey: ["/api/document-inbox"] });
+      toast({
+        title: `${total} historiske bilag kontrolleret`,
+        description: `${linked} blev knyttet til de importerede posteringer${alreadyLinked ? `; ${alreadyLinked} var allerede tilknyttet` : ""}.`,
+      });
+      setHistoricalUploadOpen(false);
+      setHistoricalFiles([]);
+      setHistoricalUploadProgress({ completed: 0, total: 0 });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Historisk bilagsimport stoppede", description: message, variant: "destructive" });
     },
   });
 
@@ -4422,6 +4480,15 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         <Upload className="size-4" />
                         Upload bilag
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-upload-historical-bilag"
+                        onClick={() => setHistoricalUploadOpen(true)}
+                      >
+                        <Archive className="size-4" />
+                        Historiske bilag
+                      </Button>
                     </div>
                   }
                   noPadding
@@ -4592,6 +4659,56 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {uploadInboxMut.isPending && <Loader2 className="size-4 animate-spin" />}
                         Upload
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={historicalUploadOpen} onOpenChange={(open) => {
+                  if (!uploadHistoricalMut.isPending) setHistoricalUploadOpen(open);
+                }}>
+                  <DialogContent data-testid="dialog-upload-historical-bilag">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">Importér historiske bilag</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3 text-sm">
+                      <p className="text-muted-foreground">
+                        Vælg de klargjorte PDF-filer. Hver fil kontrolleres mod den præcise SAF-T-postering og knyttes til den uden AI og uden at bogføre igen.
+                      </p>
+                      <div className="space-y-1">
+                        <Label htmlFor="historical-inbox-files">Klargjorte PDF-bilag</Label>
+                        <Input
+                          id="historical-inbox-files"
+                          data-testid="input-historical-inbox-files"
+                          type="file"
+                          accept="application/pdf"
+                          multiple
+                          disabled={uploadHistoricalMut.isPending}
+                          onChange={(e) => setHistoricalFiles(Array.from(e.target.files ?? []))}
+                        />
+                        <p className="text-xs text-muted-foreground">{historicalFiles.length} filer valgt</p>
+                      </div>
+                      {uploadHistoricalMut.isPending && historicalUploadProgress.total > 0 && (
+                        <div className="rounded-md border bg-muted/30 p-3" data-testid="historical-upload-progress">
+                          <p className="font-medium">Tilknytter bilag {historicalUploadProgress.completed} af {historicalUploadProgress.total}</p>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full bg-primary transition-all" style={{ width: `${(historicalUploadProgress.completed / historicalUploadProgress.total) * 100}%` }} />
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs font-medium text-emerald-700">Der oprettes ingen nye posteringer.</p>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setHistoricalUploadOpen(false)} disabled={uploadHistoricalMut.isPending}>
+                        Annuller
+                      </Button>
+                      <Button
+                        data-testid="btn-historical-inbox-import"
+                        onClick={() => uploadHistoricalMut.mutate()}
+                        disabled={uploadHistoricalMut.isPending || !historicalFiles.length}
+                      >
+                        {uploadHistoricalMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Kontrollér og tilknyt
                       </Button>
                     </DialogFooter>
                   </DialogContent>

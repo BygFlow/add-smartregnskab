@@ -15,7 +15,8 @@ after(() => {
   rmSync(testUploadDir, { recursive: true, force: true });
   delete process.env.FILE_STORAGE_DIR;
 });
-const { validExtraction, verifiedWebhook, bookDocument, registerPublicDocumentIntakeRoutes, emailAddress, provisionEmailAddress } = await import("../server/document-intake");
+const { validExtraction, verifiedWebhook, bookDocument, registerPublicDocumentIntakeRoutes, emailAddress, provisionEmailAddress,
+  parseHistoricalAttachmentTarget } = await import("../server/document-intake");
 const { storage, db } = await import("../server/storage");
 const { accounts, documentInbox, journalEntries, journalLines, vouchers } = await import("../shared/schema");
 const { eq } = await import("drizzle-orm");
@@ -125,6 +126,28 @@ test("document extraction requires valid invoice amounts and date", () => {
   assert.equal(validExtraction({ ...valid, invoiceDate: "ukendt" }), false);
   assert.equal(validExtraction({ ...valid, invoiceDate: "2026-02-31" }), false);
   assert.equal(validExtraction({ ...valid, totalAmount: 0 }), false);
+});
+
+test("historical attachments require an exact entry and voucher match in the file name", () => {
+  assert.deepEqual(parseHistoricalAttachmentTarget({
+    fileName: "ECON-2024-20240830-1__bilag-1.pdf",
+    entryNumber: "ECON-2024-20240830-1",
+    voucherNumber: "1",
+  }), {
+    fileName: "ECON-2024-20240830-1__bilag-1.pdf",
+    entryNumber: "ECON-2024-20240830-1",
+    voucherNumber: "1",
+  });
+  assert.throws(() => parseHistoricalAttachmentTarget({
+    fileName: "ECON-2024-20240731-1__bilag-1.pdf",
+    entryNumber: "ECON-2024-20240830-1",
+    voucherNumber: "1",
+  }), /passer ikke/);
+  assert.throws(() => parseHistoricalAttachmentTarget({
+    fileName: "bilag-1.pdf",
+    entryNumber: "ECON-2024-20240830-1",
+    voucherNumber: "1",
+  }), /passer ikke/);
 });
 
 test("inbound document webhook requires a fresh signature over raw bytes", () => {

@@ -12,6 +12,7 @@ const actionLabels: Record<string, string> = {
   bilag_til_papirkurv: "Flyttet til papirkurv",
   bilag_gendannet: "Gendannet",
   bilag_bogført: "Bilag bogført",
+  historisk_bilag_tilknyttet: "Historisk bilag tilknyttet",
   opret_selskab: "Selskab oprettet",
   opdater_selskabsstruktur: "Selskab opdateret",
   opret_se_enhed: "SE-enhed oprettet",

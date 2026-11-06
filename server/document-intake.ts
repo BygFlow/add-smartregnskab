@@ -34,6 +34,25 @@ function safeName(name: unknown): string {
   return String(name ?? "bilag").split(/[\\/]/).pop()!.replace(/[\r\n"<>]/g, "").slice(0, 180) || "bilag";
 }
 
+export function parseHistoricalAttachmentTarget(input: {
+  fileName?: unknown;
+  entryNumber?: unknown;
+  voucherNumber?: unknown;
+}) {
+  const fileName = safeName(input.fileName);
+  const entryNumber = String(input.entryNumber ?? "").trim();
+  const voucherNumber = String(input.voucherNumber ?? "").trim();
+  const fileMatch = /^ECON-(\d{4})-(\d{8})-(\d+)__bilag-(\d+)\.pdf$/i.exec(fileName);
+  const entryMatch = /^ECON-(\d{4})-(\d{8})-(\d+)$/.exec(entryNumber);
+  if (!fileMatch || !entryMatch || !/^\d+$/.test(voucherNumber)
+      || fileMatch[1] !== entryMatch[1] || fileMatch[2] !== entryMatch[2]
+      || fileMatch[3] !== entryMatch[3] || fileMatch[4] !== voucherNumber
+      || entryMatch[3] !== voucherNumber) {
+    throw new Error("Filnavnet passer ikke til posteringens bilagsnummer.");
+  }
+  return { fileName, entryNumber, voucherNumber };
+}
+
 export function emailAddress(companyId: number): string | null {
   const domain = inboundDomain();
   if (!domain || (!inboundReady() && !inboundPilot(companyId))) return null;
@@ -330,6 +349,69 @@ export function registerDocumentIntakeRoutes(app: Express) {
       res.status(result.duplicate ? 200 : 201).json({ id: result.document.id, duplicate: result.duplicate });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Bilaget kunne ikke uploades." });
+    }
+  }));
+
+  app.post("/api/document-receiving/historical", requireRole("leder"), asyncRoute(async (req, res) => {
+    if (!String(req.body?.dataUrl ?? "").startsWith("data:application/pdf")) {
+      return void res.status(400).json({ error: "Historiske bilag skal være PDF-filer." });
+    }
+    let target: ReturnType<typeof parseHistoricalAttachmentTarget>;
+    try {
+      target = parseHistoricalAttachmentTarget(req.body ?? {});
+    } catch (error) {
+      return void res.status(400).json({ error: error instanceof Error ? error.message : "Ugyldigt historisk bilag." });
+    }
+    const companyId = tenantId(req);
+    const entry = db.select().from(journalEntries).where(and(
+      eq(journalEntries.companyId, companyId), eq(journalEntries.entryNumber, target.entryNumber),
+    )).get();
+    if (!entry || entry.sourceType !== "saft_import" || entry.status !== "bogført"
+        || String(entry.reference ?? "").trim() !== target.voucherNumber) {
+      return void res.status(422).json({ error: `Den importerede postering ${target.entryNumber} findes ikke eller passer ikke til bilag ${target.voucherNumber}.` });
+    }
+    try {
+      const received = await receiveDocument({
+        companyId, fileName: target.fileName, dataUrl: String(req.body.dataUrl), source: "upload",
+      });
+      const current = received.document;
+      if (current.status === "papirkurv") {
+        return void res.status(409).json({ error: "Filen ligger allerede i papirkurven. Gendan den derfra." });
+      }
+      if (current.postedJournalEntryId && current.postedJournalEntryId !== entry.id) {
+        return void res.status(409).json({ error: "Filen er allerede knyttet til en anden postering." });
+      }
+      if (current.matchedVoucherId) {
+        return void res.status(409).json({ error: "Filen er allerede knyttet til et andet bogført bilag." });
+      }
+      const alreadyLinked = current.postedJournalEntryId === entry.id;
+      const document = alreadyLinked ? current : db.transaction((tx) => {
+        const updated = tx.update(documentInbox).set({
+          postedJournalEntryId: entry.id,
+          invoiceDate: entry.date,
+          invoiceNumber: target.voucherNumber,
+          suggestedCategory: "historisk_bilag",
+          ocrStatus: "behandlet",
+          status: "behandlet",
+        }).where(and(eq(documentInbox.id, current.id), eq(documentInbox.companyId, companyId)))
+          .returning().get();
+        tx.insert(auditLogs).values({
+          companyId,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: "historisk_bilag_tilknyttet",
+          target: `journal_entry#${entry.id}`,
+          detail: JSON.stringify({ documentId: current.id, entryNumber: entry.entryNumber,
+            voucherNumber: target.voucherNumber, contentHash: current.contentHash }),
+          createdAt: now(),
+        }).run();
+        return updated;
+      });
+      res.status(received.duplicate || alreadyLinked ? 200 : 201).json({
+        id: document.id, entryId: entry.id, duplicate: received.duplicate, alreadyLinked,
+      });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Det historiske bilag kunne ikke uploades." });
     }
   }));
 
