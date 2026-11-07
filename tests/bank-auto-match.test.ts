@@ -46,7 +46,16 @@ test("udgiftskonti med ordet bank behandles ikke som bankkonti", () => {
   assert.equal(matchedId, null);
 });
 
-test("kun bogførte SAF-T-posteringer kan auto-matches", () => {
+test("aktiv bankkonto til løn og skat genkendes som bankkonto", () => {
+  assert.equal(isBankLedgerAccount({
+    id: 3,
+    accountNumber: "5825",
+    name: "Bank løn og skat",
+    type: "aktiv",
+  }), true);
+});
+
+test("kun bogførte importerede posteringer kan auto-matches", () => {
   const lines = [{ journalEntryId: 10, accountId: 1, debit: 0, credit: 713.55 }];
   assert.equal(findUniqueSaftJournalMatch(
     { date: "2024-12-27", amount: -713.55 },
@@ -56,6 +65,28 @@ test("kun bogførte SAF-T-posteringer kan auto-matches", () => {
     { date: "2024-12-27", amount: -713.55 },
     [{ ...entry, status: "kladde" }], lines, accounts,
   ), null);
+});
+
+test("bogført e-conomic-kladde med en præcis banklinje kan auto-matches", () => {
+  const matchedId = findUniqueSaftJournalMatch(
+    { date: "2025-07-10", description: "BYGMA FREDERIKS", amount: -15_865.07 },
+    [{
+      ...entry,
+      id: 2102,
+      date: "2025-07-10",
+      description: "BYGMA FREDERIKS",
+      sourceType: "economic_kladde",
+    }],
+    [{
+      journalEntryId: 2102,
+      accountId: 1,
+      description: "BYGMA FREDERIKS",
+      debit: 0,
+      credit: 15_865.07,
+    }],
+    accounts,
+  );
+  assert.equal(matchedId, 2102);
 });
 
 test("tvetydige beløb matches kun når beskrivelsen peger entydigt på én postering", () => {

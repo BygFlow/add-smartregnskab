@@ -49,7 +49,7 @@ export function isBankLedgerAccount(account: AccountRow) {
   if (type && !["aktiv", "asset"].includes(type)) return false;
 
   return account.accountNumber === "5820"
-    || name === "bank"
+    || /(^| )bank( |$)/.test(name)
     || name === "cash at bank"
     || /(^| )(bankkonto|driftskonto|erhvervskonto|checkkonto|likvidkonto)( |$)/.test(name);
 }
@@ -69,8 +69,9 @@ export type SaftJournalCandidate = {
 };
 
 /**
- * Returns every safe, unused SAF-T journal entry whose bank line has the same
- * date and signed amount as the imported bank row. The caller can present
+ * Returns every safe, unused imported journal entry whose bank line has the
+ * same date and signed amount as the imported bank row. Both SAF-T entries and
+ * posted e-conomic migration entries are eligible. The caller can present
  * ambiguous candidates for a deliberate manual choice without creating a new
  * accounting entry.
  */
@@ -84,8 +85,9 @@ export function findSaftJournalCandidates(
   const bankAccountIds = new Set(accounts.filter(isBankLedgerAccount).map((account) => account.id));
   if (!bankAccountIds.size) return [];
 
+  const allowedSourceTypes = new Set(["saft import", "economic kladde"]);
   const entriesById = new Map(entries
-    .filter((entry) => normalizedText(entry.sourceType) === "saft import")
+    .filter((entry) => allowedSourceTypes.has(normalizedText(entry.sourceType)))
     .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
     .filter((entry) => String(entry.date).slice(0, 10) === String(transaction.date).slice(0, 10))
     .filter((entry) => !usedJournalEntryIds.has(entry.id))
@@ -116,7 +118,7 @@ export function findSaftJournalCandidates(
 }
 
 /**
- * Finds a single, safe SAF-T journal-entry match for one imported bank row.
+ * Finds a single, safe imported journal-entry match for one imported bank row.
  * Date and signed bank amount must agree. Description is only used to resolve
  * otherwise ambiguous candidates; ambiguity is never guessed away.
  */
