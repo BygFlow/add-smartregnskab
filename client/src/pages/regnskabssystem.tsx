@@ -677,6 +677,7 @@ const BANK_MATCH_LABEL: Record<string, string> = {
   journal: "SAF-T-postering",
   journal_entry: "SAF-T-postering",
   bank_transfer: "Intern overførsel",
+  bank_reversal: "Tilbageført betaling",
 };
 
 const TAX_STATUS_VARIANT: Record<string, "blue" | "amber" | "green" | "red" | "gray"> = {
@@ -1208,14 +1209,19 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       const res = await apiRequest("POST", "/api/bank-transactions/auto-match", {});
       return await res.json();
     },
-    onSuccess: (result: { matched?: number; matchedJournalEntries?: number; remaining?: number }) => {
+    onSuccess: (result: { matched?: number; matchedJournalEntries?: number; matchedReversalPairs?: number; remaining?: number }) => {
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       const matched = result.matched ?? 0;
       const saftMatches = result.matchedJournalEntries ?? 0;
+      const reversalPairs = result.matchedReversalPairs ?? 0;
+      const details = [
+        saftMatches ? `${saftMatches} med SAF-T` : "",
+        reversalPairs ? `${reversalPairs} tilbageført${reversalPairs === 1 ? " betaling" : "e betalinger"}` : "",
+      ].filter(Boolean).join(" og ");
       toast({
         title: `${matched} bankpostering${matched === 1 ? "" : "er"} matchet`,
-        description: saftMatches
-          ? `${saftMatches} blev matchet entydigt med SAF-T. ${result.remaining ?? 0} kræver manuel kontrol.`
+        description: details
+          ? `${details} blev matchet entydigt. ${result.remaining ?? 0} kræver manuel kontrol.`
           : `${result.remaining ?? 0} kræver fortsat manuel kontrol.`,
       });
     },

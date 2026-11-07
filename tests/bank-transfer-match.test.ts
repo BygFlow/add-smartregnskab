@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   findInternalTransferCandidates,
+  findSafeBankReversalPairs,
   findSafeInternalTransferCounterparts,
   findSafeInternalTransferPairs,
 } from "../server/bank-transfer-match";
@@ -87,4 +88,26 @@ test("kun en bogført journal-match kan være anker for en intern modpost", () =
     { ...pending(2, 1_200, "4483"), description: "Income sorter" },
   ];
   assert.deepEqual(findSafeInternalTransferCounterparts(rows), []);
+});
+
+test("finder entydige tilbageførte betalinger på samme konto", () => {
+  const rows = [
+    { ...pending(1, -5_373.75, "13800707", "2025-01-08"), description: "Lev. serv. betal 56391" },
+    { ...pending(2, 5_373.75, "13800707", "2025-01-10"), description: "Lev. serv. betal 56391" },
+    { ...pending(3, -17_934.89, "0112", "2025-08-31"), description: "IF" },
+    { ...pending(4, 17_934.89, "0112", "2025-09-03"), description: "IF" },
+  ];
+  assert.deepEqual(findSafeBankReversalPairs(rows).map((pair) => pair.map((row) => row.id)), [[1, 2], [3, 4]]);
+});
+
+test("tilbageførsler springer tvetydige, generiske og for sene par over", () => {
+  assert.deepEqual(findSafeBankReversalPairs([
+    { ...pending(1, -1, "0112", "2025-12-19"), description: "Haandvaerker.dk" },
+    { ...pending(2, -1, "0112", "2025-12-19"), description: "Haandvaerker.dk" },
+    { ...pending(3, 1, "0112", "2025-12-20"), description: "Haandvaerker.dk" },
+    { ...pending(4, -1_000, "0112", "2025-05-01"), description: "Transfer" },
+    { ...pending(5, 1_000, "0112", "2025-05-02"), description: "Transfer" },
+    { ...pending(6, -500, "0112", "2025-05-01"), description: "IF" },
+    { ...pending(7, 500, "0112", "2025-05-06"), description: "IF" },
+  ]), []);
 });

@@ -21,6 +21,28 @@ function oppositeAmount(left: unknown, right: unknown) {
   return Math.abs(Number(left ?? 0) + Number(right ?? 0)) < 0.01;
 }
 
+function dayDistance(left: unknown, right: unknown) {
+  const leftTime = Date.parse(`${String(left ?? "").slice(0, 10)}T00:00:00Z`);
+  const rightTime = Date.parse(`${String(right ?? "").slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) return Number.POSITIVE_INFINITY;
+  return Math.abs(leftTime - rightTime) / 86_400_000;
+}
+
+function normalizedDescription(value: unknown) {
+  return String(value ?? "")
+    .toLocaleLowerCase("da-DK")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isSafeReversalDescription(row: BankTransferRow) {
+  const description = normalizedDescription(row.description);
+  if (description.length < 2) return false;
+  return !/(^| )(transfer|overforsel|income sorter|lon|aconto|privat|digitalt marketing|add multi|udlign|overtr)( |$)/.test(description);
+}
+
 function isPending(row: BankTransferRow) {
   return row.status === "afventer" || row.status === "pending" || row.status === "unmatched";
 }
@@ -149,4 +171,51 @@ export function findSafeInternalTransferCounterparts(transactions: BankTransferR
     results.push({ pending, journalMatched });
   }
   return results.sort((left, right) => left.pending.id - right.pending.id);
+}
+
+/**
+ * Finds unambiguous payment/reversal pairs on the same bank account. A pair is
+ * only accepted when the normalized merchant text and amount are exact,
+ * settlement dates are one to four days apart, and both sides have exactly one
+ * reciprocal candidate. Generic transfers, payroll and private movements are
+ * deliberately excluded.
+ */
+export function findSafeBankReversalPairs(transactions: BankTransferRow[]) {
+  const pending = transactions.filter((transaction) =>
+    isPending(transaction)
+      && normalizedAccountRef(transaction.accountRef)
+      && isSafeReversalDescription(transaction),
+  );
+  const candidates = new Map<number, BankTransferRow[]>();
+  for (const transaction of pending) {
+    const accountRef = normalizedAccountRef(transaction.accountRef);
+    const description = normalizedDescription(transaction.description);
+    const matches = pending
+      .filter((candidate) => candidate.id !== transaction.id)
+      .filter((candidate) => normalizedAccountRef(candidate.accountRef) === accountRef)
+      .filter((candidate) => normalizedDescription(candidate.description) === description)
+      .filter((candidate) => oppositeAmount(candidate.amount, transaction.amount))
+      .filter((candidate) => {
+        const days = dayDistance(candidate.date, transaction.date);
+        return days >= 1 && days <= 4;
+      });
+    candidates.set(transaction.id, matches);
+  }
+
+  const pairs: Array<[BankTransferRow, BankTransferRow]> = [];
+  const used = new Set<number>();
+  for (const transaction of pending) {
+    if (used.has(transaction.id)) continue;
+    const matches = candidates.get(transaction.id) ?? [];
+    if (matches.length !== 1) continue;
+    const counterpart = matches[0];
+    const reciprocal = candidates.get(counterpart.id) ?? [];
+    if (reciprocal.length !== 1 || reciprocal[0].id !== transaction.id) continue;
+    used.add(transaction.id);
+    used.add(counterpart.id);
+    pairs.push(transaction.id < counterpart.id
+      ? [transaction, counterpart]
+      : [counterpart, transaction]);
+  }
+  return pairs.sort((left, right) => left[0].id - right[0].id);
 }

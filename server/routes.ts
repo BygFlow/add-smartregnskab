@@ -35,6 +35,7 @@ import {
   findSaftJournalCandidates,
 } from "./bank-auto-match";
 import {
+  findSafeBankReversalPairs,
   findInternalTransferCandidates,
   findSafeInternalTransferCounterparts,
   findSafeInternalTransferPairs,
@@ -5606,8 +5607,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       usedWithExactMatches,
     );
     const matches = [...exactMatches, ...delayedMatches];
+    const matchedTransactionIds = new Set(matches.map((match) => match.transactionId));
+    const reversalPairs = findSafeBankReversalPairs(
+      (transactions as any[]).filter((transaction) => !matchedTransactionIds.has(Number(transaction.id))),
+    );
 
-    if (matches.length) db.transaction((tx) => {
+    if (matches.length || reversalPairs.length) db.transaction((tx) => {
       for (const match of matches) {
         const result = tx.update(bankTransactions)
           .set({ matchedType: "journal_entry", matchedId: match.journalEntryId, status: "matchet" })
@@ -5618,6 +5623,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           )).run();
         if (result.changes !== 1) {
           throw new Error("En bankpostering blev ændret under afstemningen. Ingen matches blev gemt.");
+        }
+      }
+      for (const [first, second] of reversalPairs) {
+        const firstResult = tx.update(bankTransactions)
+          .set({ matchedType: "bank_reversal", matchedId: second.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, first.id),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        const secondResult = tx.update(bankTransactions)
+          .set({ matchedType: "bank_reversal", matchedId: first.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, second.id),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        if (firstResult.changes !== 1 || secondResult.changes !== 1) {
+          throw new Error("En tilbageført betaling blev ændret under afstemningen. Ingen matches blev gemt.");
         }
       }
       tx.insert(auditLogs).values({
@@ -5631,19 +5655,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           links: matches.map((match) => [match.transactionId, match.journalEntryId]),
           exactDateMatches: exactMatches.length,
           delayedMerchantMatches: delayedMatches.length,
-          rule: "reciprocal-unique-signed-amount; exact-date or 1-4-day strong-merchant settlement",
+          reversalPairs: reversalPairs.map(([first, second]) => [first.id, second.id]),
+          rule: "reciprocal-unique-signed-amount; exact-date or 1-4-day strong-merchant settlement; same-account exact-merchant opposite-amount 1-4-day reversal",
           createsBookkeeping: false,
         }),
         createdAt: nowIso(),
       }).run();
     });
 
-    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matches.length;
+    const reversalRows = reversalPairs.length * 2;
+    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matches.length - reversalRows;
     res.json({
-      matched: matches.length,
+      matched: matches.length + reversalRows,
       matchedInvoices: 0,
       matchedVouchers: 0,
       matchedJournalEntries: matches.length,
+      matchedReversalPairs: reversalPairs.length,
+      matchedReversalRows: reversalRows,
       remaining: Math.max(0, remaining),
     });
   }));
