@@ -53,3 +53,11 @@ test("e-conomic importer is read-only and forces yearly control and approval", (
   assert.match(migration, /CREATE TABLE `economic_import_files`/);
   assert.doesNotMatch(migration, /DROP TABLE|DELETE FROM/);
 });
+
+test("journal lines stay readable for balanced draft verification", () => {
+  const routes = readFileSync(join(process.cwd(), "server", "routes.ts"), "utf8");
+  const allowList = routes.match(/const regnskabApiPrefixes = \[([\s\S]*?)\];/)?.[1] || "";
+
+  assert.match(allowList, /"\/journal-lines"/);
+  assert.match(routes, /app\.get\("\/api\/journal-lines"/);
+});
