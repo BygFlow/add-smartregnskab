@@ -20,6 +20,7 @@ type JournalEntryRow = {
   description?: string | null;
   reference?: string | null;
   sourceType?: string | null;
+  sourceId?: number | null;
   status?: string | null;
 };
 
@@ -59,6 +60,13 @@ export function isBankLedgerAccount(account: AccountRow) {
 
 function sameAmount(left: number, right: number) {
   return Math.abs(left - right) < 0.01;
+}
+
+function reversedJournalEntryIds(entries: JournalEntryRow[]) {
+  return new Set(entries
+    .filter((entry) => normalizedText(entry.sourceType) === "tilbageforsel")
+    .map((entry) => Number(entry.sourceId))
+    .filter((id) => Number.isInteger(id) && id > 0));
 }
 
 function dateOnly(value: unknown) {
@@ -158,10 +166,12 @@ export function findSaftJournalCandidates(
   if (!bankAccountIds.size) return [];
 
   const allowedSourceTypes = new Set(["saft import", "economic kladde"]);
+  const reversedEntryIds = reversedJournalEntryIds(entries);
   const entriesById = new Map(entries
     .filter((entry) => allowedSourceTypes.has(normalizedText(entry.sourceType)))
     .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
     .filter((entry) => String(entry.date).slice(0, 10) === String(transaction.date).slice(0, 10))
+    .filter((entry) => !reversedEntryIds.has(entry.id))
     .filter((entry) => !usedJournalEntryIds.has(entry.id))
     .map((entry) => [entry.id, entry]));
 
@@ -289,9 +299,11 @@ export function findSafeDelayedImportedJournalMatches(
   if (!bankAccountIds.size) return [];
 
   const allowedSourceTypes = new Set(["saft import", "economic kladde"]);
+  const reversedEntryIds = reversedJournalEntryIds(entries);
   const eligibleEntries = entries
     .filter((entry) => allowedSourceTypes.has(normalizedText(entry.sourceType)))
     .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
+    .filter((entry) => !reversedEntryIds.has(entry.id))
     .filter((entry) => !usedJournalEntryIds.has(entry.id));
   const linesByEntry = new Map<number, JournalLineRow[]>();
   for (const line of lines) {

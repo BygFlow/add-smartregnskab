@@ -168,6 +168,24 @@ test("en postering med både betaling og tilbageførsel kan ikke bruges som enke
   assert.deepEqual(candidates.map((candidate) => candidate.id), [20]);
 });
 
+test("en bogført postering der er tilbageført kan ikke bruges som bankmatch", () => {
+  const candidates = findSaftJournalCandidates(
+    { id: 100, date: "2025-10-09", description: "Faktura 523", amount: 165_167.44, status: "afventer" },
+    [
+      { ...entry, id: 30, date: "2025-10-09", description: "Indbet. fak. 523" },
+      { ...entry, id: 31, date: "2025-10-09", description: "Indbet. fak. 523" },
+      { ...entry, id: 32, date: "2025-10-09", sourceType: "tilbageførsel", sourceId: 31 },
+    ],
+    [
+      { journalEntryId: 30, accountId: 1, description: "Indbet. fak. 523", debit: 165_167.44, credit: 0 },
+      { journalEntryId: 31, accountId: 1, description: "Indbet. fak. 523", debit: 165_167.44, credit: 0 },
+      { journalEntryId: 32, accountId: 1, description: "Tilbageførsel", debit: 0, credit: 165_167.44 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [30]);
+});
+
 test("sikker auto-afstemning kræver et gensidigt entydigt match", () => {
   const matches = findSafeImportedJournalMatches(
     [
