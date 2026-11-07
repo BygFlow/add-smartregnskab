@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { requireFeature, requireRole, tenantId } from "./auth";
 import { storage } from "./storage";
 import { previewImport, type MigrationEntity, type MigrationSource } from "./import-adapters";
+import { reviewEconomicJournalDrafts } from "./economic-draft-review";
 
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: any) => Promise.resolve(fn(req, res)).catch(next);
 const sources = new Set<MigrationSource>(["economic", "dinero", "billy", "excel", "csv"]);
@@ -35,6 +36,39 @@ async function deleteImportedJournalEntry(entryId: number, companyId: number): P
 }
 
 export function registerMigrationRoutes(app: Express) {
+  app.get("/api/migration/journal-drafts/review", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "platform_admin"), asyncRoute(async (req, res) => {
+    const cid = tenantId(req);
+    const [entries, lines, accounts] = await Promise.all([
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    res.json(reviewEconomicJournalDrafts(entries, lines, accounts));
+  }));
+
+  app.post("/api/migration/journal-drafts/book", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "platform_admin"), asyncRoute(async (req, res) => {
+    const cid = tenantId(req);
+    const [entries, lines, accounts] = await Promise.all([
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const review = reviewEconomicJournalDrafts(entries, lines, accounts);
+    if (!review.drafts) return void res.status(409).json({ error: "Der er ingen importerede e-conomic-kladder at bogføre.", review });
+    if (!review.canPost) return void res.status(409).json({ error: "Kladderne kan ikke bogføres, før alle kontrolfejl er rettet.", review });
+    const postedIds: number[] = [];
+    try {
+      for (const id of review.draftIds) {
+        await storage.update("journal_entries", id, { status: "bogført" }, cid);
+        postedIds.push(id);
+      }
+    } catch (error) {
+      for (const id of postedIds) await storage.update("journal_entries", id, { status: "kladde" }, cid);
+      throw error;
+    }
+    res.json({ posted: postedIds.length, ids: postedIds, review: { ...review, canPost: false } });
+  }));
+
   app.post("/api/migration/preview", requireFeature("dedikeret_onboarding"), requireRole("leder", "bogholder", "platform_admin"), asyncRoute(async (req, res) => {
     const cid = tenantId(req);
     const value = input(req);

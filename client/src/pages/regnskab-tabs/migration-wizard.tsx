@@ -14,6 +14,7 @@ import EconomicReadonlyImport from "./economic-readonly-import";
 
 type MigrationJob = { id: number; source?: string | null; fileName?: string | null; totalRows?: number | null; importedRows?: number | null; errorRows?: number | null; status?: string | null; rollbackAvailable?: boolean | null; validationErrors?: string | null };
 type ImportPreview = { token: string; totalRows: number; validRows: number; errors: string[]; warnings?: string[]; matchedFields: string[]; sample: Record<string, unknown>[] };
+type DraftReview = { drafts: number; lines: number; totalDebit: number; totalCredit: number; years: string[]; issues: Array<{ entryId: number; entryNumber: string; reason: string }>; canPost: boolean };
 
 const SOURCE_LABEL: Record<string, string> = { economic: "e-conomic", dinero: "Dinero", billy: "Billy", excel: "Excel", csv: "CSV" };
 const SOURCES = Object.keys(SOURCE_LABEL);
@@ -29,6 +30,7 @@ export default function MigrationWizard({ companyId }: { companyId: number }) {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [form, setForm] = useState({ source: "excel", entity: "customers", fileName: "", content: "" });
   const jobsQuery = useQuery<MigrationJob[]>({ queryKey: ["/api/migration-jobs", companyId], queryFn: async () => { const response = await apiRequest("GET", `/api/migration-jobs?companyId=${companyId}`); const value = await response.json(); return Array.isArray(value) ? value : value.items || []; } });
+  const draftReviewQuery = useQuery<DraftReview>({ queryKey: ["/api/migration/journal-drafts/review", companyId], queryFn: async () => (await apiRequest("GET", `/api/migration/journal-drafts/review?companyId=${companyId}`)).json() });
 
   const previewMutation = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/migration/preview", { ...form, companyId })).json(),
@@ -45,11 +47,25 @@ export default function MigrationWizard({ companyId }: { companyId: number }) {
     onSuccess: (value: any) => { qc.invalidateQueries({ queryKey: ["/api/migration-jobs"] }); toast({ title: "Rollback gennemført", description: `${value.removedRows || 0} importerede rækker blev fjernet.` }); },
     onError: (error) => toast({ title: "Rollback fejlede", description: errorText(error), variant: "destructive" }),
   });
+  const bookDraftsMutation = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/migration/journal-drafts/book?companyId=${companyId}`, {})).json(),
+    onSuccess: (value: any) => {
+      qc.invalidateQueries({ queryKey: ["/api/migration/journal-drafts/review"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem"] });
+      toast({ title: "Kladder bogført", description: `${value.posted || 0} kontrollerede kladder er bogført.` });
+    },
+    onError: (error) => toast({ title: "Bogføring stoppet", description: errorText(error), variant: "destructive" }),
+  });
 
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Migreringsguide</h2><p className="text-sm text-muted-foreground">Sikker import fra e-conomic, Dinero, Billy, Excel eller CSV med forhåndsvisning og rollback.</p></div><Button data-testid="start-migration-btn" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" /> Start import</Button></div>
     <div className="rounded-md border border-blue-300/60 bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/20 dark:text-blue-300">Eksportér data som CSV fra kildesystemet. Intet skrives, før du har set og godkendt valideringen.</div>
     <EconomicReadonlyImport companyId={companyId} />
+    {draftReviewQuery.data && draftReviewQuery.data.drafts > 0 && <div className={`rounded-md border p-4 ${draftReviewQuery.data.canPost ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20" : "border-red-300 bg-red-50 dark:bg-red-950/20"}`} data-testid="economic-draft-review">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-medium">Kontrol af importerede e-conomic-kladder</div><div className="mt-1 text-sm text-muted-foreground">{draftReviewQuery.data.drafts} kladder · {draftReviewQuery.data.lines} linjer · {draftReviewQuery.data.years.join(", ")} · Debet {draftReviewQuery.data.totalDebit.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr. · Kredit {draftReviewQuery.data.totalCredit.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr.</div></div>{draftReviewQuery.data.canPost && <Button data-testid="book-economic-drafts" disabled={bookDraftsMutation.isPending} onClick={() => { if (window.confirm(`Bogfør ${draftReviewQuery.data?.drafts || 0} kontrollerede kladder? Bogførte posteringer låses og skal efterfølgende tilbageføres ved rettelser.`)) bookDraftsMutation.mutate(); }}>{bookDraftsMutation.isPending ? "Bogfører…" : `Bogfør ${draftReviewQuery.data.drafts} sikre kladder`}</Button>}</div>
+      {draftReviewQuery.data.issues.length === 0 ? <div className="mt-2 text-sm text-emerald-700 dark:text-emerald-300">Alle kladder balancerer, kontiene findes, og der er ingen eksakte dubletter.</div> : <div className="mt-2 text-sm text-destructive">{draftReviewQuery.data.issues.length} kontrolfejl fundet. Bogføring er blokeret.{draftReviewQuery.data.issues.slice(0, 5).map((issue) => <div key={`${issue.entryId}-${issue.reason}`}>{issue.entryNumber}: {issue.reason}</div>)}</div>}
+    </div>}
     {jobsQuery.isLoading ? <Skeleton className="h-48 w-full" /> : (jobsQuery.data || []).length === 0 ? <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">Ingen migreringer endnu.</div> : <div className="grid gap-4 md:grid-cols-2">{(jobsQuery.data || []).map((job) => {
       const total = Number(job.totalRows || 0); const imported = Number(job.importedRows || 0); const errors = parseErrors(job.validationErrors);
       return <div key={job.id} className="kpi-card space-y-3" data-testid={`job-card-${job.id}`}>
