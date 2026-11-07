@@ -5,6 +5,8 @@ export type BankTransferRow = {
   status?: string | null;
   accountRef?: string | null;
   description?: string | null;
+  matchedType?: string | null;
+  matchedId?: number | null;
 };
 
 function normalizedAccountRef(value: unknown) {
@@ -21,6 +23,15 @@ function oppositeAmount(left: unknown, right: unknown) {
 
 function isPending(row: BankTransferRow) {
   return row.status === "afventer" || row.status === "pending" || row.status === "unmatched";
+}
+
+function isMatchedToJournal(row: BankTransferRow) {
+  return row.status === "matchet" && ["journal", "journal_entry"].includes(String(row.matchedType ?? ""));
+}
+
+function isDescribedAsInternalTransfer(row: BankTransferRow) {
+  const description = String(row.description ?? "").toLocaleLowerCase("da-DK");
+  return /(transfer|overf.rsel|income sorter|l.n skat moms konto|digitalt marketing|add multi service|add multiclean service|udlign|overtr)/i.test(description);
 }
 
 /**
@@ -87,4 +98,55 @@ export function findSafeInternalTransferPairs(transactions: BankTransferRow[]) {
       : [counterpart, transaction]);
   }
   return pairs.sort((left, right) => left[0].id - right[0].id);
+}
+
+/**
+ * Finds the remaining side of an internal transfer when the opposite bank row
+ * is already reconciled to an imported journal entry. The journal link is
+ * preserved; only the still-pending counterpart receives a bank-transfer link.
+ * Both descriptions must identify an internal movement, and the relationship
+ * must be reciprocal and one-to-one across distinct, known bank accounts.
+ */
+export function findSafeInternalTransferCounterparts(transactions: BankTransferRow[]) {
+  const pendingWithAccount = transactions.filter((transaction) =>
+    isPending(transaction)
+      && normalizedAccountRef(transaction.accountRef)
+      && isDescribedAsInternalTransfer(transaction),
+  );
+  const matchedJournalRows = transactions.filter((transaction) =>
+    isMatchedToJournal(transaction)
+      && normalizedAccountRef(transaction.accountRef)
+      && isDescribedAsInternalTransfer(transaction),
+  );
+
+  const candidatesForPending = new Map<number, BankTransferRow[]>();
+  for (const pending of pendingWithAccount) {
+    const sourceAccountRef = normalizedAccountRef(pending.accountRef);
+    const matches = matchedJournalRows
+      .filter((candidate) => normalizedAccountRef(candidate.accountRef) !== sourceAccountRef)
+      .filter((candidate) => sameDate(candidate.date, pending.date))
+      .filter((candidate) => oppositeAmount(candidate.amount, pending.amount));
+    candidatesForPending.set(pending.id, matches);
+  }
+
+  const pendingForMatched = new Map<number, BankTransferRow[]>();
+  for (const matched of matchedJournalRows) {
+    const sourceAccountRef = normalizedAccountRef(matched.accountRef);
+    const matches = pendingWithAccount
+      .filter((candidate) => normalizedAccountRef(candidate.accountRef) !== sourceAccountRef)
+      .filter((candidate) => sameDate(candidate.date, matched.date))
+      .filter((candidate) => oppositeAmount(candidate.amount, matched.amount));
+    pendingForMatched.set(matched.id, matches);
+  }
+
+  const results: Array<{ pending: BankTransferRow; journalMatched: BankTransferRow }> = [];
+  for (const pending of pendingWithAccount) {
+    const matches = candidatesForPending.get(pending.id) ?? [];
+    if (matches.length !== 1) continue;
+    const journalMatched = matches[0];
+    const reciprocal = pendingForMatched.get(journalMatched.id) ?? [];
+    if (reciprocal.length !== 1 || reciprocal[0].id !== pending.id) continue;
+    results.push({ pending, journalMatched });
+  }
+  return results.sort((left, right) => left.pending.id - right.pending.id);
 }

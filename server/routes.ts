@@ -30,7 +30,11 @@ import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
 import { findSaftJournalCandidates, findUniqueSaftJournalMatch } from "./bank-auto-match";
-import { findInternalTransferCandidates, findSafeInternalTransferPairs } from "./bank-transfer-match";
+import {
+  findInternalTransferCandidates,
+  findSafeInternalTransferCounterparts,
+  findSafeInternalTransferPairs,
+} from "./bank-transfer-match";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5487,11 +5491,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const transactions = await storage.all("bank_transactions", cid);
     const pairs = findSafeInternalTransferPairs(transactions as any[]);
-    if (!pairs.length) {
-      return res.json({ matchedPairs: 0, matchedRows: 0, remaining: transactions.filter((row: any) => row.status === "afventer").length });
-    }
-
-    db.transaction((tx) => {
+    if (pairs.length) db.transaction((tx) => {
       for (const [first, second] of pairs) {
         const firstResult = tx.update(bankTransactions)
           .set({ matchedType: "bank_transfer", matchedId: second.id, status: "matchet" })
@@ -5528,10 +5528,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }).run();
     });
 
+    const afterPairs = await storage.all("bank_transactions", cid);
+    const counterparts = findSafeInternalTransferCounterparts(afterPairs as any[]);
+    if (counterparts.length) db.transaction((tx) => {
+      for (const { pending, journalMatched } of counterparts) {
+        const result = tx.update(bankTransactions)
+          .set({ matchedType: "bank_transfer", matchedId: journalMatched.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, pending.id),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        if (result.changes !== 1) {
+          throw new Error("Bankposteringerne blev ændret under afstemningen. Ingen modposter blev gemt.");
+        }
+      }
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankoverfoersel_modposter_autoafstemt",
+        target: "bank_transactions",
+        detail: JSON.stringify({
+          matchedCounterparts: counterparts.length,
+          links: counterparts.map(({ pending, journalMatched }) => [pending.id, journalMatched.id]),
+          rule: "same-date-opposite-amount-distinct-known-accounts-reciprocal-unique-transfer-description-journal-anchor",
+          preservesJournalMatch: true,
+          createsBookkeeping: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+    });
+
     res.json({
       matchedPairs: pairs.length,
-      matchedRows: pairs.length * 2,
-      remaining: transactions.filter((row: any) => row.status === "afventer").length - pairs.length * 2,
+      matchedCounterparts: counterparts.length,
+      matchedRows: pairs.length * 2 + counterparts.length,
+      remaining: transactions.filter((row: any) => row.status === "afventer").length - pairs.length * 2 - counterparts.length,
     });
   }));
 

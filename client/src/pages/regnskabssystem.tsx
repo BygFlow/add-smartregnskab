@@ -1230,14 +1230,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       const res = await apiRequest("POST", "/api/bank-transactions/auto-match-transfers", {});
       return await res.json();
     },
-    onSuccess: (result: { matchedPairs?: number; matchedRows?: number; remaining?: number }) => {
+    onSuccess: (result: { matchedPairs?: number; matchedCounterparts?: number; matchedRows?: number; remaining?: number }) => {
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       setAutoTransferDialogOpen(false);
       const matchedPairs = result.matchedPairs ?? 0;
+      const matchedCounterparts = result.matchedCounterparts ?? 0;
+      const matchedTransfers = matchedPairs + matchedCounterparts;
       toast({
-        title: `${matchedPairs} interne overførsel${matchedPairs === 1 ? "" : "er"} afstemt`,
-        description: matchedPairs
-          ? `${result.matchedRows ?? matchedPairs * 2} banklinjer blev forbundet uden ny bogføring. ${result.remaining ?? 0} afventer.`
+        title: `${matchedTransfers} interne overførsel${matchedTransfers === 1 ? "" : "er"} afstemt`,
+        description: matchedTransfers
+          ? `${result.matchedRows ?? matchedPairs * 2 + matchedCounterparts} banklinjer blev forbundet uden ny bogføring. ${result.remaining ?? 0} afventer.`
           : "Ingen entydige modposter med kendte, forskellige bankkonti blev fundet.",
       });
     },
@@ -3265,7 +3267,8 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </DialogHeader>
                     <div className="space-y-2 text-sm">
                       <p>Programmet forbinder kun entydige banklinjer med samme dato, præcis modsat beløb og to forskellige, kendte konti.</p>
-                      <p className="text-muted-foreground">Tvetydige linjer springes over. Der oprettes ingen ny bogføring, og regnskabstallene ændres ikke.</p>
+                      <p>Hvis den ene side allerede er afstemt med SAF-T, kan den entydige modpost forbindes uden at fjerne SAF-T-linket.</p>
+                      <p className="text-muted-foreground">Tvetydige eller ubeskrevne linjer springes over. Der oprettes ingen ny bogføring, og regnskabstallene ændres ikke.</p>
                     </div>
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setAutoTransferDialogOpen(false)} disabled={autoMatchTransfersMut.isPending}>
