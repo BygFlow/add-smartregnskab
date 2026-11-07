@@ -30,6 +30,7 @@ import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
 import { findSaftJournalCandidates, findUniqueSaftJournalMatch } from "./bank-auto-match";
+import { findInternalTransferCandidates, findSafeInternalTransferPairs } from "./bank-transfer-match";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -65,7 +66,7 @@ import {
   insertPaymentRunSchema,
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
-  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, auditLogs, documentInbox,
+  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, auditLogs, bankTransactions, documentInbox,
   companies, companyIdentityVerifications, subscriptions,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
@@ -5418,6 +5419,120 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       matchedId: journalEntryId,
       status: "matchet",
     }, cid));
+  }));
+
+  app.get("/api/bank-transactions/:id/transfer-candidates", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transaction = await storage.get("bank_transactions", Number(req.params.id), cid);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    const transactions = await storage.all("bank_transactions", cid);
+    res.json(findInternalTransferCandidates(transaction as any, transactions as any[]));
+  }));
+
+  app.post("/api/bank-transactions/:id/match-transfer", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transactionId = Number(req.params.id);
+    const counterpartId = Number(req.body?.counterpartId);
+    if (!Number.isInteger(counterpartId) || counterpartId <= 0 || counterpartId === transactionId) {
+      return res.status(400).json({ error: "Vælg en gyldig modpost." });
+    }
+    const transactions = await storage.all("bank_transactions", cid);
+    const transaction = transactions.find((row: any) => row.id === transactionId);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    const counterpart = findInternalTransferCandidates(transaction as any, transactions as any[])
+      .find((row) => row.id === counterpartId);
+    if (!counterpart) {
+      return res.status(409).json({ error: "Modposten skal være ledig, have samme dato og præcis modsat beløb." });
+    }
+
+    const matched = db.transaction((tx) => {
+      const first = tx.update(bankTransactions)
+        .set({ matchedType: "bank_transfer", matchedId: counterpart.id, status: "matchet" })
+        .where(and(
+          eq(bankTransactions.id, transaction.id),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.status, "afventer"),
+        )).returning().get();
+      const second = tx.update(bankTransactions)
+        .set({ matchedType: "bank_transfer", matchedId: transaction.id, status: "matchet" })
+        .where(and(
+          eq(bankTransactions.id, counterpart.id),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.status, "afventer"),
+        )).returning().get();
+      if (!first || !second) throw new Error("En af bankposteringerne er allerede behandlet. Opdatér siden og prøv igen.");
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankoverfoersel_afstemt",
+        target: `bank_transactions#${transaction.id}+${counterpart.id}`,
+        detail: JSON.stringify({
+          transactionId: transaction.id,
+          counterpartId: counterpart.id,
+          date: transaction.date,
+          amount: transaction.amount,
+          sourceAccountRef: transaction.accountRef ?? null,
+          counterpartAccountRef: counterpart.accountRef ?? null,
+          createsBookkeeping: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+      return [first, second];
+    });
+    res.json({ matched });
+  }));
+
+  app.post("/api/bank-transactions/auto-match-transfers", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transactions = await storage.all("bank_transactions", cid);
+    const pairs = findSafeInternalTransferPairs(transactions as any[]);
+    if (!pairs.length) {
+      return res.json({ matchedPairs: 0, matchedRows: 0, remaining: transactions.filter((row: any) => row.status === "afventer").length });
+    }
+
+    db.transaction((tx) => {
+      for (const [first, second] of pairs) {
+        const firstResult = tx.update(bankTransactions)
+          .set({ matchedType: "bank_transfer", matchedId: second.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, first.id),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        const secondResult = tx.update(bankTransactions)
+          .set({ matchedType: "bank_transfer", matchedId: first.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, second.id),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        if (firstResult.changes !== 1 || secondResult.changes !== 1) {
+          throw new Error("Bankposteringerne blev ændret under afstemningen. Ingen overførsler blev gemt.");
+        }
+      }
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankoverfoersler_autoafstemt",
+        target: "bank_transactions",
+        detail: JSON.stringify({
+          matchedPairs: pairs.length,
+          matchedRows: pairs.length * 2,
+          pairs: pairs.map(([first, second]) => [first.id, second.id]),
+          rule: "same-date-opposite-amount-distinct-known-accounts-reciprocal-unique",
+          createsBookkeeping: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+    });
+
+    res.json({
+      matchedPairs: pairs.length,
+      matchedRows: pairs.length * 2,
+      remaining: transactions.filter((row: any) => row.status === "afventer").length - pairs.length * 2,
+    });
   }));
 
   app.post("/api/bank-transactions/:id/ignore", h(async (req, res) => {

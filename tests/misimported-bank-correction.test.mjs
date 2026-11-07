@@ -18,6 +18,10 @@ const nullReferenceMigration = readFileSync(
   new URL("../migrations/0023_correct_null_account_ref_imports.sql", import.meta.url),
   "utf8",
 );
+const label2025ImportsMigration = readFileSync(
+  new URL("../migrations/0029_label_2025_bank_imports.sql", import.meta.url),
+  "utf8",
+);
 const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 
 function applyMigration(db, sql = migration) {
@@ -195,6 +199,64 @@ test("null-reference imports are separated by their exact observed import window
   db.close();
 });
 
+test("2025 import batches receive only their customer-confirmed bank references", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
+    CREATE TABLE bank_transactions (
+      id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      provider TEXT,
+      account_ref TEXT,
+      external_id TEXT,
+      status TEXT,
+      imported_at TEXT NOT NULL
+    );
+    CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER,
+      user_id INTEGER,
+      user_email TEXT,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO companies (id, name, cvr) VALUES
+      (1, 'ADD Multi Service ApS', '44822539'),
+      (2, 'Anden virksomhed', '22222222');
+    INSERT INTO bank_transactions (id, company_id, date, provider, account_ref, external_id, status, imported_at) VALUES
+      (1, 1, '2025-01-01', 'csv', NULL, 'drift', 'afventer', '2026-11-07T12:49:32.001Z'),
+      (2, 1, '2025-02-01', 'csv', NULL, 'payroll', 'afventer', '2026-11-07T12:50:09.001Z'),
+      (3, 1, '2025-03-01', 'csv', NULL, 'marketing', 'afventer', '2026-11-07T12:51:28.001Z'),
+      (4, 1, '2025-04-01', 'csv', NULL, 'danske-2025', 'afventer', '2026-11-07T12:52:42.001Z'),
+      (5, 1, '2024-12-02', 'csv', NULL, 'danske-duplicate', 'ignoreret', '2026-11-07T12:50:34.500Z'),
+      (6, 1, '2025-01-01', 'csv', NULL, 'outside-window', 'afventer', '2026-11-07T12:49:34.000Z'),
+      (7, 2, '2025-01-01', 'csv', NULL, 'other-company', 'afventer', '2026-11-07T12:49:32.001Z'),
+      (8, 1, '2025-01-01', 'csv', 'existing', 'already-labelled', 'afventer', '2026-11-07T12:49:32.001Z');
+  `);
+
+  applyMigration(db, label2025ImportsMigration);
+  applyMigration(db, label2025ImportsMigration);
+
+  assert.deepEqual(
+    db.prepare("SELECT id, account_ref FROM bank_transactions ORDER BY id").all(),
+    [
+      { id: 1, account_ref: "0112" },
+      { id: 2, account_ref: "4483" },
+      { id: 3, account_ref: "9278" },
+      { id: 4, account_ref: "13800707" },
+      { id: 5, account_ref: "13800707" },
+      { id: 6, account_ref: null },
+      { id: 7, account_ref: null },
+      { id: 8, account_ref: "existing" },
+    ],
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'bank_import_accounts_labelled'").get().count, 1);
+  db.close();
+});
+
 test("partially journalled legacy production database runs approved corrections exactly once", () => {
   const directory = mkdtempSync(join(tmpdir(), "smartregnskab-legacy-bank-fix-"));
   const databasePath = join(directory, "data.db");
@@ -255,12 +317,12 @@ test("partially journalled legacy production database runs approved corrections 
         checked.prepare("SELECT id, company_id, account_ref FROM bank_transactions ORDER BY id").all(),
         [{ id: 2, company_id: 2, account_ref: "13800707" }],
       );
-      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 3);
+      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 4);
       assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 2);
     } finally {
       checked.close();
     }
   } finally {
-    rmSync(directory, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });

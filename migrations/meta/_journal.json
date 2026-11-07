@@ -204,6 +204,13 @@
       "when": 1794056400000,
       "tag": "0028_record_concurrent_nordea_account",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1794060000000,
+      "tag": "0029_label_2025_bank_imports",
+      "breakpoints": true
     }
   ]
 }

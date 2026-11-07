@@ -315,6 +315,7 @@ type BankTransaction = {
   description?: string | null;
   amount?: number | null;
   balance?: number | null;
+  accountRef?: string | null;
   status?: string | null;
   matchedType?: string | null;
   matchedId?: number | null;
@@ -675,6 +676,7 @@ const BANK_MATCH_LABEL: Record<string, string> = {
   bilag: "Bilag",
   journal: "SAF-T-postering",
   journal_entry: "SAF-T-postering",
+  bank_transfer: "Intern overførsel",
 };
 
 const TAX_STATUS_VARIANT: Record<string, "blue" | "amber" | "green" | "red" | "gray"> = {
@@ -1139,10 +1141,14 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   /* ---------- mutationer: Bankafstemning ---------- */
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [autoTransferDialogOpen, setAutoTransferDialogOpen] = useState(false);
   const [saftMatchTransaction, setSaftMatchTransaction] = useState<BankTransaction | null>(null);
   const [selectedSaftEntryId, setSelectedSaftEntryId] = useState("");
+  const [transferMatchTransaction, setTransferMatchTransaction] = useState<BankTransaction | null>(null);
+  const [selectedTransferId, setSelectedTransferId] = useState("");
   const [csvText, setCsvText] = useState("");
   const [bankCsvFileName, setBankCsvFileName] = useState("");
+  const [bankAccountRef, setBankAccountRef] = useState("");
   const [bankImportYear, setBankImportYear] = useState("");
   const parsedBankRows = parseBankCsv(csvText, bankCsvFileName);
   const bankImportYears = Array.from(new Set(parsedBankRows.map((row) => row.date.slice(0, 4)))).sort();
@@ -1157,11 +1163,24 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const transferCandidatesQuery = useQuery<BankTransaction[]>({
+    queryKey: ["/api/bank-transactions/transfer-candidates", transferMatchTransaction?.id],
+    enabled: !!transferMatchTransaction,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/bank-transactions/${transferMatchTransaction!.id}/transfer-candidates`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
   const importBankMut = useMutation({
     mutationFn: async () => {
-      const rows = bankImportYear
+      const accountRef = bankAccountRef.trim() || parsedBankRows[0]?.accountRef?.trim();
+      if (!accountRef) throw new Error("Angiv bankkontoens sidste fire cifre eller et tydeligt kontonavn.");
+      const selectedRows = bankImportYear
         ? parsedBankRows.filter((row) => row.date.startsWith(`${bankImportYear}-`))
         : parsedBankRows;
+      const rows = selectedRows.map((row) => ({ ...row, accountRef }));
       if (!rows.length) throw new Error("Filen indeholder ingen gennemførte bankposteringer.");
       const res = await apiRequest("POST", "/api/bank-transactions/import", { rows });
       return await res.json();
@@ -1175,6 +1194,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       setImportDialogOpen(false);
       setCsvText("");
       setBankCsvFileName("");
+      setBankAccountRef("");
       setBankImportYear("");
     },
     onError: (err: unknown) => {
@@ -1202,6 +1222,28 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
       toast({ title: "Auto-match fejlede", description: message, variant: "destructive" });
+    },
+  });
+
+  const autoMatchTransfersMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/auto-match-transfers", {});
+      return await res.json();
+    },
+    onSuccess: (result: { matchedPairs?: number; matchedRows?: number; remaining?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      setAutoTransferDialogOpen(false);
+      const matchedPairs = result.matchedPairs ?? 0;
+      toast({
+        title: `${matchedPairs} interne overførsel${matchedPairs === 1 ? "" : "er"} afstemt`,
+        description: matchedPairs
+          ? `${result.matchedRows ?? matchedPairs * 2} banklinjer blev forbundet uden ny bogføring. ${result.remaining ?? 0} afventer.`
+          : "Ingen entydige modposter med kendte, forskellige bankkonti blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke afstemme interne overførsler", description: message, variant: "destructive" });
     },
   });
 
@@ -1240,6 +1282,26 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
       toast({ title: "Kunne ikke afstemme", description: message, variant: "destructive" });
+    },
+  });
+
+  const matchTransferMut = useMutation({
+    mutationFn: async () => {
+      if (!transferMatchTransaction || !selectedTransferId) throw new Error("Vælg en modpost.");
+      const res = await apiRequest("POST", `/api/bank-transactions/${transferMatchTransaction.id}/match-transfer`, {
+        counterpartId: Number(selectedTransferId),
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      toast({ title: "Intern overførsel afstemt", description: "De to banklinjer er forbundet uden at oprette ny bogføring." });
+      setTransferMatchTransaction(null);
+      setSelectedTransferId("");
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke afstemme overførslen", description: message, variant: "destructive" });
     },
   });
 
@@ -2991,6 +3053,20 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       <Button
                         size="sm"
                         variant="outline"
+                        data-testid="btn-auto-match-transfers"
+                        onClick={() => setAutoTransferDialogOpen(true)}
+                        disabled={autoMatchTransfersMut.isPending}
+                      >
+                        {autoMatchTransfersMut.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <ArrowLeftRight className="size-4" />
+                        )}
+                        Interne overførsler
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         data-testid="btn-auto-match"
                         onClick={() => autoMatchMut.mutate()}
                         disabled={autoMatchMut.isPending}
@@ -3032,6 +3108,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           <tr className="text-left text-muted-foreground border-b border-border">
                             <th className="font-medium px-3 py-1.5">Dato</th>
                             <th className="font-medium px-3 py-1.5">Beskrivelse</th>
+                            <th className="font-medium px-3 py-1.5">Konto</th>
                             <th className="font-medium px-3 py-1.5 text-right">Beløb</th>
                             <th className="font-medium px-3 py-1.5">Status</th>
                             <th className="font-medium px-3 py-1.5">Match</th>
@@ -3047,6 +3124,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                 <td className="px-3 py-1.5 max-w-[260px] truncate" title={t.description ?? ""}>
                                   {t.description ?? "—"}
                                 </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap">{t.accountRef || "Ikke angivet"}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{money(t.amount)}</td>
                                 <td className="px-3 py-1.5">
                                   {status && (
@@ -3059,6 +3137,18 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                 <td className="px-3 py-1.5">{t.matchedType ? (BANK_MATCH_LABEL[t.matchedType] ?? t.matchedType) : "—"}</td>
                                 <td className="px-3 py-1.5">
                                   <div className="flex items-center justify-end gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      data-testid={`btn-match-transfer-${t.id}`}
+                                      onClick={() => {
+                                        setSelectedTransferId("");
+                                        setTransferMatchTransaction(t);
+                                      }}
+                                      disabled={matchTransferMut.isPending || status !== "afventer"}
+                                    >
+                                      Intern overførsel
+                                    </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -3166,6 +3256,90 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   </DialogContent>
                 </Dialog>
 
+                <Dialog open={autoTransferDialogOpen} onOpenChange={(open) => {
+                  if (!autoMatchTransfersMut.isPending) setAutoTransferDialogOpen(open);
+                }}>
+                  <DialogContent data-testid="dialog-auto-match-transfers">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">Afstem interne overførsler</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2 text-sm">
+                      <p>Programmet forbinder kun entydige banklinjer med samme dato, præcis modsat beløb og to forskellige, kendte konti.</p>
+                      <p className="text-muted-foreground">Tvetydige linjer springes over. Der oprettes ingen ny bogføring, og regnskabstallene ændres ikke.</p>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setAutoTransferDialogOpen(false)} disabled={autoMatchTransfersMut.isPending}>
+                        Annuller
+                      </Button>
+                      <Button
+                        data-testid="btn-confirm-auto-match-transfers"
+                        onClick={() => autoMatchTransfersMut.mutate()}
+                        disabled={autoMatchTransfersMut.isPending}
+                      >
+                        {autoMatchTransfersMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Afstem sikre overførsler
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!transferMatchTransaction} onOpenChange={(open) => {
+                  if (!open && !matchTransferMut.isPending) {
+                    setTransferMatchTransaction(null);
+                    setSelectedTransferId("");
+                  }
+                }}>
+                  <DialogContent data-testid="dialog-match-transfer">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">Match intern overførsel</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <p className="text-sm">
+                        {transferMatchTransaction ? `${dk(transferMatchTransaction.date)} · ${transferMatchTransaction.description ?? "Bankpostering"} · ${money(transferMatchTransaction.amount)}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Afstemningen forbinder to banklinjer med samme dato og præcis modsat beløb. Den opretter ingen ny bogføring.
+                      </p>
+                      {transferCandidatesQuery.isLoading ? (
+                        <Skeleton className="h-10 w-full" />
+                      ) : transferCandidatesQuery.isError ? (
+                        <p className="text-sm text-destructive">Kunne ikke hente mulige modposter.</p>
+                      ) : (transferCandidatesQuery.data?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">Der findes ingen ledig modpost med samme dato og modsat beløb.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label>Modpost</Label>
+                          <Select value={selectedTransferId} onValueChange={setSelectedTransferId}>
+                            <SelectTrigger data-testid="select-transfer-candidate">
+                              <SelectValue placeholder="Vælg modpost" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {transferCandidatesQuery.data!.map((candidate) => (
+                                <SelectItem key={candidate.id} value={String(candidate.id)}>
+                                  {candidate.accountRef || "Konto ikke angivet"} · {candidate.description || "Bankpostering"} · {money(candidate.amount)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTransferMatchTransaction(null)} disabled={matchTransferMut.isPending}>
+                        Annuller
+                      </Button>
+                      <Button
+                        data-testid="btn-confirm-match-transfer"
+                        onClick={() => matchTransferMut.mutate()}
+                        disabled={matchTransferMut.isPending || !selectedTransferId}
+                      >
+                        {matchTransferMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Afstem overførsel
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
                 {/* Dialog: Importér bankudskrift */}
                 <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
                   <DialogContent data-testid="dialog-import-bank">
@@ -3186,9 +3360,11 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           if (!file) return;
                           try {
                             const content = await readBankCsvFile(file);
-                            const years = Array.from(new Set(parseBankCsv(content, file.name).map((row) => row.date.slice(0, 4)))).sort();
+                            const fileRows = parseBankCsv(content, file.name);
+                            const years = Array.from(new Set(fileRows.map((row) => row.date.slice(0, 4)))).sort();
                             setCsvText(content);
                             setBankCsvFileName(file.name);
+                            setBankAccountRef(fileRows[0]?.accountRef ?? "");
                             setBankImportYear(years[0] ?? "");
                           } catch (error) {
                             toast({
@@ -3204,6 +3380,17 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           {bankCsvFileName}: {parsedBankRows.length} gennemførte poster fundet
                         </p>
                       )}
+                      <div className="space-y-1">
+                        <Label htmlFor="bank-account-ref">Bankkonto</Label>
+                        <Input
+                          id="bank-account-ref"
+                          data-testid="input-bank-account-ref"
+                          value={bankAccountRef}
+                          onChange={(event) => setBankAccountRef(event.target.value)}
+                          placeholder="Fx 0112 eller 13800707"
+                        />
+                        <p className="text-xs text-muted-foreground">Brug de sidste fire cifre eller hele kontonummeret. Det er nødvendigt for sikker afstemning mellem egne konti.</p>
+                      </div>
                       {bankImportYears.length > 1 && (
                         <div className="space-y-1">
                           <Label htmlFor="bank-import-year">Regnskabsår, der skal importeres</Label>

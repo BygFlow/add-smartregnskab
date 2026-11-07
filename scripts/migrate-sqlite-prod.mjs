@@ -17,6 +17,7 @@ const LEGACY_DATA_MIGRATIONS = [
   "0023_correct_null_account_ref_imports",
   "0024_register_filed_2024_annual_reports",
   "0025_reconcile_filed_2024_reports",
+  "0029_label_2025_bank_imports",
 ];
 
 function tableExists(sqlite, table) {
