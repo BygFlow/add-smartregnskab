@@ -218,6 +218,13 @@ test("forsinket kortafregning accepterer en entydig fire-dages weekendforskydnin
   assert.deepEqual(matches, [{ transactionId: 100, journalEntryId: 20 }]);
 });
 
+test("leverandørmatch normaliserer HTML, bindeord og filialtekst", () => {
+  assert.equal(isStrongMerchantMatch("Jem & Fix", "Jem &amp; Fix"), true);
+  assert.equal(isStrongMerchantMatch("Jem & Fix", "Jem og fix stolpebeton"), true);
+  assert.equal(isStrongMerchantMatch("916 STARK FREDERIKSV", "STARK"), true);
+  assert.equal(isStrongMerchantMatch("Nord Service", "Syd Service"), false);
+});
+
 test("forsinket match afviser generiske tekster, for lang forsinkelse og genbrug", () => {
   assert.equal(isStrongMerchantMatch("Transfer", "Transfer"), false);
   const matches = findSafeDelayedImportedJournalMatches(

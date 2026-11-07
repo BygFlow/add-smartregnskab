@@ -33,6 +33,7 @@ type JournalLineRow = {
 
 function normalizedText(value: unknown) {
   return String(value ?? "")
+    .replace(/&amp;|&#38;|&#x26;/gi, "&")
     .trim()
     .toLocaleLowerCase("da-DK")
     .replaceAll("æ", "ae")
@@ -71,12 +72,18 @@ function daysAfter(later: unknown, earlier: unknown) {
   return Math.round((laterTime - earlierTime) / 86_400_000);
 }
 
-function merchantKey(value: unknown) {
-  const ignoredSuffixes = new Set(["a", "s", "as", "aps", "danmark", "denmark", "hiller", "hilleroed", "hillerod"]);
+function merchantTokens(value: unknown) {
+  const ignoredSuffixes = new Set([
+    "a", "s", "as", "aps", "danmark", "denmark", "hiller", "hilleroed", "hillerod",
+    "og", "and", "amp",
+  ]);
   return normalizedText(value)
     .split(" ")
-    .filter((part) => part && !ignoredSuffixes.has(part))
-    .join("");
+    .filter((part) => part && !ignoredSuffixes.has(part));
+}
+
+function merchantKey(value: unknown) {
+  return merchantTokens(value).join("");
 }
 
 function differsByAtMostOneCharacter(left: string, right: string) {
@@ -112,7 +119,15 @@ export function isStrongMerchantMatch(left: unknown, right: unknown) {
   ]);
   if (leftKey.length < 5 || rightKey.length < 5 || genericKeys.has(leftKey) || genericKeys.has(rightKey)) return false;
   if (leftKey === rightKey || leftKey.startsWith(rightKey) || rightKey.startsWith(leftKey)) return true;
-  return differsByAtMostOneCharacter(leftKey, rightKey);
+  if (differsByAtMostOneCharacter(leftKey, rightKey)) return true;
+
+  const genericBrandTokens = new Set([
+    "betaling", "butik", "faktura", "farvehandel", "gruppen", "indbet", "kort", "kunde", "service", "shop",
+  ]);
+  const rightTokens = new Set(merchantTokens(right));
+  return merchantTokens(left).some((token) =>
+    token.length >= 5 && !genericBrandTokens.has(token) && rightTokens.has(token),
+  );
 }
 
 export type SaftJournalCandidate = {
