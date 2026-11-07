@@ -60,6 +60,61 @@ function sameAmount(left: number, right: number) {
   return Math.abs(left - right) < 0.01;
 }
 
+function dateOnly(value: unknown) {
+  return String(value ?? "").slice(0, 10);
+}
+
+function daysAfter(later: unknown, earlier: unknown) {
+  const laterTime = Date.parse(`${dateOnly(later)}T00:00:00Z`);
+  const earlierTime = Date.parse(`${dateOnly(earlier)}T00:00:00Z`);
+  if (!Number.isFinite(laterTime) || !Number.isFinite(earlierTime)) return Number.NaN;
+  return Math.round((laterTime - earlierTime) / 86_400_000);
+}
+
+function merchantKey(value: unknown) {
+  const ignoredSuffixes = new Set(["a", "s", "as", "aps", "danmark", "denmark", "hiller", "hilleroed", "hillerod"]);
+  return normalizedText(value)
+    .split(" ")
+    .filter((part) => part && !ignoredSuffixes.has(part))
+    .join("");
+}
+
+function differsByAtMostOneCharacter(left: string, right: string) {
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let differences = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+    differences += 1;
+    if (differences > 1) return false;
+    if (left.length > right.length) leftIndex += 1;
+    else if (right.length > left.length) rightIndex += 1;
+    else {
+      leftIndex += 1;
+      rightIndex += 1;
+    }
+  }
+  if (leftIndex < left.length || rightIndex < right.length) differences += 1;
+  return differences <= 1;
+}
+
+export function isStrongMerchantMatch(left: unknown, right: unknown) {
+  const leftKey = merchantKey(left);
+  const rightKey = merchantKey(right);
+  const genericKeys = new Set([
+    "aconto", "acontolon", "bank", "betaling", "incomesorter", "interest", "lon",
+    "overforsel", "payment", "privat", "rente", "transfer",
+  ]);
+  if (leftKey.length < 5 || rightKey.length < 5 || genericKeys.has(leftKey) || genericKeys.has(rightKey)) return false;
+  if (leftKey === rightKey || leftKey.startsWith(rightKey) || rightKey.startsWith(leftKey)) return true;
+  return differsByAtMostOneCharacter(leftKey, rightKey);
+}
+
 export type SaftJournalCandidate = {
   id: number;
   date: string;
@@ -186,5 +241,69 @@ export function findSafeImportedJournalMatches(
     .filter(({ candidates }) => candidates.length === 1)
     .filter(({ candidates }) => transactionIdsByJournalEntry.get(candidates[0].id)?.length === 1)
     .map(({ transactionId, candidates }) => ({ transactionId, journalEntryId: candidates[0].id }))
+    .sort((left, right) => left.transactionId - right.transactionId);
+}
+
+/**
+ * Finds reciprocal one-to-one matches where the bank date follows the posted
+ * imported journal date by one to three days. Besides signed amount equality,
+ * a strong, non-generic merchant-name match is mandatory. This covers normal
+ * card settlement delays without guessing repeated payroll or transfer rows.
+ */
+export function findSafeDelayedImportedJournalMatches(
+  transactions: BankTransactionRow[],
+  entries: JournalEntryRow[],
+  lines: JournalLineRow[],
+  accounts: AccountRow[],
+  usedJournalEntryIds: ReadonlySet<number> = new Set(),
+): SafeImportedJournalMatch[] {
+  const bankAccountIds = new Set(accounts.filter(isBankLedgerAccount).map((account) => account.id));
+  if (!bankAccountIds.size) return [];
+
+  const allowedSourceTypes = new Set(["saft import", "economic kladde"]);
+  const eligibleEntries = entries
+    .filter((entry) => allowedSourceTypes.has(normalizedText(entry.sourceType)))
+    .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
+    .filter((entry) => !usedJournalEntryIds.has(entry.id));
+  const linesByEntry = new Map<number, JournalLineRow[]>();
+  for (const line of lines) {
+    const entryLines = linesByEntry.get(line.journalEntryId) ?? [];
+    entryLines.push(line);
+    linesByEntry.set(line.journalEntryId, entryLines);
+  }
+
+  const candidatesByTransaction = transactions
+    .filter((transaction) => Number.isInteger(transaction.id) && normalizedText(transaction.status) === "afventer")
+    .map((transaction) => {
+      const candidateIds = new Set<number>();
+      for (const entry of eligibleEntries) {
+        const lagDays = daysAfter(transaction.date, entry.date);
+        if (lagDays < 1 || lagDays > 3) continue;
+        for (const line of linesByEntry.get(entry.id) ?? []) {
+          if (!bankAccountIds.has(line.accountId)) continue;
+          const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
+          if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
+          if (!isStrongMerchantMatch(transaction.description, line.description ?? entry.description)
+            && !isStrongMerchantMatch(transaction.description, entry.description)) continue;
+          candidateIds.add(entry.id);
+        }
+      }
+      return { transactionId: Number(transaction.id), candidateIds: Array.from(candidateIds) };
+    })
+    .filter(({ candidateIds }) => candidateIds.length > 0);
+
+  const transactionIdsByEntry = new Map<number, number[]>();
+  for (const { transactionId, candidateIds } of candidatesByTransaction) {
+    for (const entryId of candidateIds) {
+      const transactionIds = transactionIdsByEntry.get(entryId) ?? [];
+      transactionIds.push(transactionId);
+      transactionIdsByEntry.set(entryId, transactionIds);
+    }
+  }
+
+  return candidatesByTransaction
+    .filter(({ candidateIds }) => candidateIds.length === 1)
+    .filter(({ candidateIds }) => transactionIdsByEntry.get(candidateIds[0])?.length === 1)
+    .map(({ transactionId, candidateIds }) => ({ transactionId, journalEntryId: candidateIds[0] }))
     .sort((left, right) => left.transactionId - right.transactionId);
 }

@@ -29,7 +29,11 @@ import { buildAccountingReport } from "./accounting-reports";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
-import { findSafeImportedJournalMatches, findSaftJournalCandidates } from "./bank-auto-match";
+import {
+  findSafeDelayedImportedJournalMatches,
+  findSafeImportedJournalMatches,
+  findSaftJournalCandidates,
+} from "./bank-auto-match";
 import {
   findInternalTransferCandidates,
   findSafeInternalTransferCounterparts,
@@ -5582,13 +5586,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const usedJournalEntryIds = new Set<number>(transactions
       .filter((tx: any) => ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
       .map((tx: any) => Number(tx.matchedId)));
-    const matches = findSafeImportedJournalMatches(
+    const exactMatches = findSafeImportedJournalMatches(
       transactions as any[],
       journalEntries as any[],
       journalLines as any[],
       accounts as any[],
       usedJournalEntryIds,
     );
+    const exactTransactionIds = new Set(exactMatches.map((match) => match.transactionId));
+    const usedWithExactMatches = new Set([
+      ...Array.from(usedJournalEntryIds),
+      ...exactMatches.map((match) => match.journalEntryId),
+    ]);
+    const delayedMatches = findSafeDelayedImportedJournalMatches(
+      (transactions as any[]).filter((transaction) => !exactTransactionIds.has(Number(transaction.id))),
+      journalEntries as any[],
+      journalLines as any[],
+      accounts as any[],
+      usedWithExactMatches,
+    );
+    const matches = [...exactMatches, ...delayedMatches];
 
     if (matches.length) db.transaction((tx) => {
       for (const match of matches) {
@@ -5612,7 +5629,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         detail: JSON.stringify({
           matchedJournalEntries: matches.length,
           links: matches.map((match) => [match.transactionId, match.journalEntryId]),
-          rule: "reciprocal-unique-exact-date-and-signed-bank-amount",
+          exactDateMatches: exactMatches.length,
+          delayedMerchantMatches: delayedMatches.length,
+          rule: "reciprocal-unique-signed-amount; exact-date or 1-3-day strong-merchant settlement",
           createsBookkeeping: false,
         }),
         createdAt: nowIso(),

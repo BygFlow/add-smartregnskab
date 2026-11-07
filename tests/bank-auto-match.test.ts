@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  findSafeDelayedImportedJournalMatches,
   findSafeImportedJournalMatches,
   findSaftJournalCandidates,
   findUniqueSaftJournalMatch,
   isBankLedgerAccount,
+  isStrongMerchantMatch,
 } from "../server/bank-auto-match";
 
 const accounts = [
@@ -180,6 +182,52 @@ test("sikker auto-afstemning springer delte kandidater og dublerede banklinjer o
     [{ ...entry, id: 20, date: "2025-07-10" }],
     [{ journalEntryId: 20, accountId: 1, debit: 0, credit: 1_000 }],
     accounts,
+  );
+  assert.deepEqual(matches, []);
+});
+
+test("forsinket kortafregning kræver samme beløb, stærkt leverandørnavn og højst tre dage", () => {
+  const matches = findSafeDelayedImportedJournalMatches(
+    [
+      { id: 100, date: "2025-05-17", description: "Bauhaus", amount: -1_051.47, status: "afventer" },
+      { id: 101, date: "2025-05-17", description: "FL?GGER HILLER?", amount: -2_481.12, status: "afventer" },
+    ],
+    [
+      { ...entry, id: 20, date: "2025-05-16", description: "BAUHAUS DANMARK" },
+      { ...entry, id: 21, date: "2025-05-16", description: "Flügger" },
+    ],
+    [
+      { journalEntryId: 20, accountId: 1, description: "BAUHAUS DANMARK", debit: 0, credit: 1_051.47 },
+      { journalEntryId: 21, accountId: 1, description: "Flügger", debit: 0, credit: 2_481.12 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(matches, [
+    { transactionId: 100, journalEntryId: 20 },
+    { transactionId: 101, journalEntryId: 21 },
+  ]);
+});
+
+test("forsinket match afviser generiske tekster, for lang forsinkelse og genbrug", () => {
+  assert.equal(isStrongMerchantMatch("Transfer", "Transfer"), false);
+  const matches = findSafeDelayedImportedJournalMatches(
+    [
+      { id: 100, date: "2025-05-17", description: "Transfer", amount: -1_000, status: "afventer" },
+      { id: 101, date: "2025-05-20", description: "Bauhaus", amount: -2_000, status: "afventer" },
+      { id: 102, date: "2025-05-17", description: "Bauhaus", amount: -3_000, status: "afventer" },
+    ],
+    [
+      { ...entry, id: 20, date: "2025-05-16", description: "Transfer" },
+      { ...entry, id: 21, date: "2025-05-16", description: "Bauhaus" },
+      { ...entry, id: 22, date: "2025-05-16", description: "Bauhaus" },
+    ],
+    [
+      { journalEntryId: 20, accountId: 1, description: "Transfer", debit: 0, credit: 1_000 },
+      { journalEntryId: 21, accountId: 1, description: "Bauhaus", debit: 0, credit: 2_000 },
+      { journalEntryId: 22, accountId: 1, description: "Bauhaus", debit: 0, credit: 3_000 },
+    ],
+    accounts,
+    new Set([22]),
   );
   assert.deepEqual(matches, []);
 });
