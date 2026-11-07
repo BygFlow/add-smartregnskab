@@ -190,7 +190,12 @@ export function buildAccountingReport(input: AccountingReportInput) {
   const assets = round2(assetLines.reduce((sum, line) => sum + line.amount, 0));
   const liabilities = round2(liabilityLines.reduce((sum, line) => sum + line.amount, 0));
   const filedResult = filedAnnualReport ? round2(numberValue(filedAnnualReport.result)) : null;
-  const reconciliationDifference = filedResult == null ? null : round2(filedResult - result);
+  const exactReconciliationDifference = filedResult == null ? null : round2(filedResult - result);
+  // Public annual reports are filed in whole DKK. Preserve øre in the ledger,
+  // but treat a difference below 50 øre as the same filed whole-krone amount.
+  const matchesFiledReport = exactReconciliationDifference != null
+    && Math.abs(exactReconciliationDifference) < 0.5;
+  const reconciliationDifference = matchesFiledReport ? 0 : exactReconciliationDifference;
   const filedReportSummary = filedAnnualReport ? {
     year,
     result: filedResult,
@@ -199,7 +204,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
     equity: round2(numberValue(filedAnnualReport.equity)),
     bookkeepingResult: result,
     reconciliationDifference,
-    matchesBookkeeping: Math.abs(reconciliationDifference ?? 0) <= 0.005,
+    matchesBookkeeping: matchesFiledReport,
     ...filedDetails,
   } : null;
 
@@ -239,7 +244,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
       ].filter((line): line is { label: string; amount: number } => line != null);
       return {
         ...base,
-        notice: Math.abs(reconciliationDifference ?? 0) <= 0.005
+        notice: matchesFiledReport
           ? "Bogføringen stemmer med den indsendte årsrapport."
           : `Den indsendte årsrapport er facit. Bogføringen afviger med ${Math.abs(reconciliationDifference ?? 0).toLocaleString("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr. og bevares særskilt til dokumenteret afstemning.`,
         sections: [
@@ -383,8 +388,8 @@ export function buildAccountingReport(input: AccountingReportInput) {
     controls.splice(1, 0, {
       key: "annual-report-reconciliation",
       title: "Afstemning mod årsrapport",
-      status: Math.abs(reconciliationDifference ?? 0) <= 0.005 ? "ok" : "warning",
-      summary: Math.abs(reconciliationDifference ?? 0) <= 0.005
+      status: matchesFiledReport ? "ok" : "warning",
+      summary: matchesFiledReport
         ? "Bogført resultat stemmer med den indsendte årsrapport."
         : "Det importerede bogføringsresultat afviger fra den indsendte årsrapport. Årsrapportens tal vises som officielt facit uden at overskrive revisionssporet.",
       metrics: [

@@ -16,6 +16,7 @@ const LEGACY_DATA_MIGRATIONS = [
   "0022_remove_unused_multiclean_bank_import",
   "0023_correct_null_account_ref_imports",
   "0024_register_filed_2024_annual_reports",
+  "0025_reconcile_filed_2024_reports",
 ];
 
 function tableExists(sqlite, table) {
@@ -42,6 +43,12 @@ function runLegacyDataMigrations(sqlite, migrationsFolder) {
     if (tag === "0024_register_filed_2024_annual_reports"
       && (!tableExists(sqlite, "annual_reports") || !tableExists(sqlite, "audit_logs"))) {
       console.log(`   Springer ${tag} over — årsrapporttabellerne findes ikke i denne legacy-database.`);
+      continue;
+    }
+    if (tag === "0025_reconcile_filed_2024_reports"
+      && ["annual_reports", "accounts", "journal_entries", "journal_lines", "audit_logs"]
+        .some((table) => !tableExists(sqlite, table))) {
+      console.log(`   Springer ${tag} over — bogførings- eller årsrapporttabellerne findes ikke i denne legacy-database.`);
       continue;
     }
 
