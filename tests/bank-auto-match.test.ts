@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findSaftJournalCandidates, findUniqueSaftJournalMatch, isBankLedgerAccount } from "../server/bank-auto-match";
+import {
+  findSafeImportedJournalMatches,
+  findSaftJournalCandidates,
+  findUniqueSaftJournalMatch,
+  isBankLedgerAccount,
+} from "../server/bank-auto-match";
 
 const accounts = [
   { id: 1, accountNumber: "5820", name: "Bankkonto", type: "aktiv" },
@@ -142,4 +147,39 @@ test("manuel afstemning skjuler en SAF-T-postering der allerede er brugt", () =>
     new Set([10]),
   );
   assert.deepEqual(candidates.map((candidate) => candidate.id), [11]);
+});
+
+test("sikker auto-afstemning kræver et gensidigt entydigt match", () => {
+  const matches = findSafeImportedJournalMatches(
+    [
+      { id: 100, date: "2025-07-10", description: "BYGMA", amount: -15_865.07, status: "afventer" },
+      { id: 101, date: "2025-07-11", description: "Q8", amount: -1_626.45, status: "afventer" },
+    ],
+    [
+      { ...entry, id: 20, date: "2025-07-10", description: "BYGMA" },
+      { ...entry, id: 21, date: "2025-07-11", description: "Q8" },
+    ],
+    [
+      { journalEntryId: 20, accountId: 1, description: "BYGMA", debit: 0, credit: 15_865.07 },
+      { journalEntryId: 21, accountId: 1, description: "Q8", debit: 0, credit: 1_626.45 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(matches, [
+    { transactionId: 100, journalEntryId: 20 },
+    { transactionId: 101, journalEntryId: 21 },
+  ]);
+});
+
+test("sikker auto-afstemning springer delte kandidater og dublerede banklinjer over", () => {
+  const matches = findSafeImportedJournalMatches(
+    [
+      { id: 100, date: "2025-07-10", amount: -1_000, status: "afventer" },
+      { id: 101, date: "2025-07-10", amount: -1_000, status: "afventer" },
+    ],
+    [{ ...entry, id: 20, date: "2025-07-10" }],
+    [{ journalEntryId: 20, accountId: 1, debit: 0, credit: 1_000 }],
+    accounts,
+  );
+  assert.deepEqual(matches, []);
 });

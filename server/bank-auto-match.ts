@@ -1,7 +1,9 @@
 type BankTransactionRow = {
+  id?: number;
   date: string;
   description?: string | null;
   amount: number;
+  status?: string | null;
 };
 
 type AccountRow = {
@@ -143,4 +145,46 @@ export function findUniqueSaftJournalMatch(
     candidate.descriptions.some((description) => description === transactionDescription),
   );
   return exactDescriptionCandidates.length === 1 ? exactDescriptionCandidates[0].id : null;
+}
+
+export type SafeImportedJournalMatch = {
+  transactionId: number;
+  journalEntryId: number;
+};
+
+/**
+ * Returns only reciprocal one-to-one matches. A bank row and an imported,
+ * posted journal entry must be each other's sole exact date-and-amount
+ * candidate. This prevents repeated payroll amounts or duplicate bank rows
+ * from being assigned in an arbitrary order.
+ */
+export function findSafeImportedJournalMatches(
+  transactions: BankTransactionRow[],
+  entries: JournalEntryRow[],
+  lines: JournalLineRow[],
+  accounts: AccountRow[],
+  usedJournalEntryIds: ReadonlySet<number> = new Set(),
+): SafeImportedJournalMatch[] {
+  const candidatesByTransaction = transactions
+    .filter((transaction) => Number.isInteger(transaction.id) && normalizedText(transaction.status) === "afventer")
+    .map((transaction) => ({
+      transactionId: Number(transaction.id),
+      candidates: findSaftJournalCandidates(transaction, entries, lines, accounts, usedJournalEntryIds),
+    }))
+    .filter(({ candidates }) => candidates.length > 0);
+
+  const transactionIdsByJournalEntry = new Map<number, number[]>();
+  for (const { transactionId, candidates } of candidatesByTransaction) {
+    for (const candidate of candidates) {
+      const transactionIds = transactionIdsByJournalEntry.get(candidate.id) ?? [];
+      transactionIds.push(transactionId);
+      transactionIdsByJournalEntry.set(candidate.id, transactionIds);
+    }
+  }
+
+  return candidatesByTransaction
+    .filter(({ candidates }) => candidates.length === 1)
+    .filter(({ candidates }) => transactionIdsByJournalEntry.get(candidates[0].id)?.length === 1)
+    .map(({ transactionId, candidates }) => ({ transactionId, journalEntryId: candidates[0].id }))
+    .sort((left, right) => left.transactionId - right.transactionId);
 }

@@ -29,7 +29,7 @@ import { buildAccountingReport } from "./accounting-reports";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
-import { findSaftJournalCandidates, findUniqueSaftJournalMatch } from "./bank-auto-match";
+import { findSafeImportedJournalMatches, findSaftJournalCandidates } from "./bank-auto-match";
 import {
   findInternalTransferCandidates,
   findSafeInternalTransferCounterparts,
@@ -5576,35 +5576,57 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/bank-transactions/auto-match", h(async (req, res) => {
     const cid = tenantId(req);
     const transactions = await storage.all("bank_transactions", cid);
-    const invoices = await storage.all("invoices", cid);
-    const vouchers = await storage.all("vouchers", cid);
     const journalEntries = await storage.all("journal_entries", cid);
     const journalLines = await storage.all("journal_lines", cid);
     const accounts = await storage.all("accounts", cid);
     const usedJournalEntryIds = new Set<number>(transactions
       .filter((tx: any) => ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
       .map((tx: any) => Number(tx.matchedId)));
-    let matched = 0;
-    let matchedInvoices = 0;
-    let matchedVouchers = 0;
-    let matchedJournalEntries = 0;
-    for (const tx of transactions) {
-      if (tx.status !== "afventer") continue;
-      const inv = invoices.find((i: any) => Math.abs(i.totalAmount - tx.amount) < 0.01 && i.status !== "betalt");
-      if (inv) { await storage.update("bank_transactions", tx.id, { matchedType: "invoice", matchedId: inv.id, status: "matchet" }, cid); matched++; matchedInvoices++; continue; }
-      const vou = vouchers.find((v: any) => Math.abs(v.amount - Math.abs(tx.amount)) < 0.01 && v.status === "kladde");
-      if (vou) { await storage.update("bank_transactions", tx.id, { matchedType: "voucher", matchedId: vou.id, status: "matchet" }, cid); matched++; matchedVouchers++; continue; }
+    const matches = findSafeImportedJournalMatches(
+      transactions as any[],
+      journalEntries as any[],
+      journalLines as any[],
+      accounts as any[],
+      usedJournalEntryIds,
+    );
 
-      const journalEntryId = findUniqueSaftJournalMatch(tx, journalEntries, journalLines, accounts, usedJournalEntryIds);
-      if (journalEntryId) {
-        await storage.update("bank_transactions", tx.id, { matchedType: "journal_entry", matchedId: journalEntryId, status: "matchet" }, cid);
-        usedJournalEntryIds.add(journalEntryId);
-        matched++;
-        matchedJournalEntries++;
+    if (matches.length) db.transaction((tx) => {
+      for (const match of matches) {
+        const result = tx.update(bankTransactions)
+          .set({ matchedType: "journal_entry", matchedId: match.journalEntryId, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, match.transactionId),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        if (result.changes !== 1) {
+          throw new Error("En bankpostering blev ændret under afstemningen. Ingen matches blev gemt.");
+        }
       }
-    }
-    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matched;
-    res.json({ matched, matchedInvoices, matchedVouchers, matchedJournalEntries, remaining: Math.max(0, remaining) });
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankposteringer_auto_afstemt",
+        target: "bank_transactions",
+        detail: JSON.stringify({
+          matchedJournalEntries: matches.length,
+          links: matches.map((match) => [match.transactionId, match.journalEntryId]),
+          rule: "reciprocal-unique-exact-date-and-signed-bank-amount",
+          createsBookkeeping: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+    });
+
+    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matches.length;
+    res.json({
+      matched: matches.length,
+      matchedInvoices: 0,
+      matchedVouchers: 0,
+      matchedJournalEntries: matches.length,
+      remaining: Math.max(0, remaining),
+    });
   }));
 
   // ═══════════════════════════════════════════════════════════════
