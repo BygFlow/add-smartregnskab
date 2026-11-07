@@ -7,13 +7,22 @@ const migrationSql = readFileSync(
   new URL("../migrations/0026_reclassify_multiclean_receipts.sql", import.meta.url),
   "utf8",
 );
+const bankHistoryMigrationSql = readFileSync(
+  new URL("../migrations/0027_preserve_danske_bank_history.sql", import.meta.url),
+  "utf8",
+);
 
-function runMigration(db: Database.Database) {
-  const statements = migrationSql
+function runSqlMigration(db: Database.Database, sql: string) {
+  const statements = sql
     .split("--> statement-breakpoint")
     .map((statement) => statement.trim())
     .filter(Boolean);
   db.transaction(() => statements.forEach((statement) => db.exec(statement)))();
+}
+
+function runMigration(db: Database.Database) {
+  runSqlMigration(db, migrationSql);
+  runSqlMigration(db, bankHistoryMigrationSql);
 }
 
 function setup() {
@@ -106,7 +115,7 @@ test("mærker Lunar-konti og omposterer 0112-indbetalinger idempotent", () => {
     ORDER BY company_id, account_number
   `).all();
   assert.deepEqual(accountNames, [
-    { companyId: 4, accountNumber: "5820", name: "Lunar drift ·0112" },
+    { companyId: 4, accountNumber: "5820", name: "Bankdrift · Danske Bank 13800707 (historisk) / Lunar ·0112" },
     { companyId: 4, accountNumber: "5825", name: "Lunar løn og skat ·4483" },
     { companyId: 4, accountNumber: "5826", name: "Lunar marketing ·9278 (fælles)" },
     { companyId: 12, accountNumber: "5820", name: "Lunar drift ·6477 (MultiClean)" },
@@ -154,7 +163,14 @@ test("mærker Lunar-konti og omposterer 0112-indbetalinger idempotent", () => {
     1,
     "parentens eksisterende posteringer må ikke ændres",
   );
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 3);
+
+  const history = db.prepare(`
+    SELECT detail FROM audit_logs
+    WHERE company_id = 4 AND action = 'bank_account_history_recorded'
+  `).get() as { detail: string };
+  assert.match(history.detail, /13800707/);
+  assert.match(history.detail, /0112/);
 
   db.close();
 });
