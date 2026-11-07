@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CheckCircle2, Database, FileSpreadsheet, Plus, RotateCcw, XCircle } from "lucide-react";
 import EconomicReadonlyImport from "./economic-readonly-import";
@@ -27,6 +28,7 @@ export default function MigrationWizard({ companyId }: { companyId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [confirmBookOpen, setConfirmBookOpen] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [form, setForm] = useState({ source: "excel", entity: "customers", fileName: "", content: "" });
   const jobsQuery = useQuery<MigrationJob[]>({ queryKey: ["/api/migration-jobs", companyId], queryFn: async () => { const response = await apiRequest("GET", `/api/migration-jobs?companyId=${companyId}`); const value = await response.json(); return Array.isArray(value) ? value : value.items || []; } });
@@ -64,7 +66,7 @@ export default function MigrationWizard({ companyId }: { companyId: number }) {
     <EconomicReadonlyImport companyId={companyId} />
     {draftReviewQuery.data && (draftReviewQuery.data.drafts > 0 || draftReviewQuery.data.posted > 0) && <div className={`rounded-md border p-4 ${draftReviewQuery.data.canPost || (draftReviewQuery.data.drafts === 0 && draftReviewQuery.data.posted > 0) ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20" : "border-red-300 bg-red-50 dark:bg-red-950/20"}`} data-testid="economic-draft-review">
       {draftReviewQuery.data.drafts === 0 && draftReviewQuery.data.posted > 0 ? <><div className="font-medium">e-conomic-kladder bogført</div><div className="mt-2 text-sm text-emerald-700 dark:text-emerald-300">{draftReviewQuery.data.posted} importerede kladder er kontrolleret, bogført og låst.</div></> : <>
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-medium">Kontrol af importerede e-conomic-kladder</div><div className="mt-1 text-sm text-muted-foreground">{draftReviewQuery.data.drafts} kladder · {draftReviewQuery.data.lines} linjer · {draftReviewQuery.data.years.join(", ")} · Debet {draftReviewQuery.data.totalDebit.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr. · Kredit {draftReviewQuery.data.totalCredit.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr.</div></div>{draftReviewQuery.data.canPost && <Button data-testid="book-economic-drafts" disabled={bookDraftsMutation.isPending} onClick={() => { if (window.confirm(`Bogfør ${draftReviewQuery.data?.drafts || 0} kontrollerede kladder? Bogførte posteringer låses og skal efterfølgende tilbageføres ved rettelser.`)) bookDraftsMutation.mutate(); }}>{bookDraftsMutation.isPending ? "Bogfører…" : `Bogfør ${draftReviewQuery.data.drafts} sikre kladder`}</Button>}</div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-medium">Kontrol af importerede e-conomic-kladder</div><div className="mt-1 text-sm text-muted-foreground">{draftReviewQuery.data.drafts} kladder · {draftReviewQuery.data.lines} linjer · {draftReviewQuery.data.years.join(", ")} · Debet {draftReviewQuery.data.totalDebit.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr. · Kredit {draftReviewQuery.data.totalCredit.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr.</div></div>{draftReviewQuery.data.canPost && <Button data-testid="book-economic-drafts" disabled={bookDraftsMutation.isPending} onClick={() => setConfirmBookOpen(true)}>{bookDraftsMutation.isPending ? "Bogfører…" : `Bogfør ${draftReviewQuery.data.drafts} sikre kladder`}</Button>}</div>
         {draftReviewQuery.data.issues.length === 0 ? <div className="mt-2 text-sm text-emerald-700 dark:text-emerald-300">Alle kladder balancerer, kontiene findes, og der er ingen eksakte dubletter.</div> : <div className="mt-2 text-sm text-destructive">{draftReviewQuery.data.issues.length} kontrolfejl fundet. Bogføring er blokeret.{draftReviewQuery.data.issues.slice(0, 5).map((issue) => <div key={`${issue.entryId}-${issue.reason}`}>{issue.entryNumber}: {issue.reason}</div>)}</div>}
       </>}
     </div>}
@@ -77,6 +79,19 @@ export default function MigrationWizard({ companyId }: { companyId: number }) {
         <div className="flex items-center justify-between">{job.status === "færdig" && <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Gennemført</span>}{job.rollbackAvailable && job.status !== "rolled_back" && <Button size="sm" variant="ghost" className="ml-auto text-destructive" disabled={rollbackMutation.isPending} onClick={() => rollbackMutation.mutate(job.id)}><RotateCcw className="mr-1 h-3.5 w-3.5" /> Rollback</Button>}</div>
       </div>;
     })}</div>}
+
+    <AlertDialog open={confirmBookOpen} onOpenChange={setConfirmBookOpen}>
+      <AlertDialogContent data-testid="confirm-book-economic-drafts">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Bogfør de kontrollerede kladder?</AlertDialogTitle>
+          <AlertDialogDescription>{draftReviewQuery.data?.drafts || 0} kladder bogføres og låses. Senere rettelser skal ske med en tilbageførsel.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Behold som kladder</AlertDialogCancel>
+          <AlertDialogAction data-testid="confirm-book-economic-drafts-action" disabled={bookDraftsMutation.isPending} onClick={() => bookDraftsMutation.mutate()}>Bogfør og lås</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setPreview(null); }}><DialogContent><DialogHeader><DialogTitle>Importér regnskabsdata</DialogTitle></DialogHeader><div className="space-y-4 py-2">
       <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Kilde</Label><Select value={form.source} onValueChange={(source) => { setPreview(null); setForm((value) => ({ ...value, source })); }}><SelectTrigger data-testid="form-source"><SelectValue /></SelectTrigger><SelectContent>{SOURCES.map((source) => <SelectItem key={source} value={source}>{SOURCE_LABEL[source]}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Datatype</Label><Select value={form.entity} onValueChange={(entity) => { setPreview(null); setForm((value) => ({ ...value, entity, source: entity === "journal_entries" ? "economic" : value.source })); }}><SelectTrigger data-testid="form-entity"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="customers">Kunder</SelectItem><SelectItem value="suppliers">Leverandører</SelectItem><SelectItem value="accounts">Kontoplan</SelectItem><SelectItem value="journal_entries">Bogføringskladde fra e-conomic</SelectItem></SelectContent></Select></div></div>
