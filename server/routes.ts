@@ -40,6 +40,7 @@ import {
   findSafeInternalTransferCounterparts,
   findSafeInternalTransferPairs,
 } from "./bank-transfer-match";
+import { findBankDocumentCandidates, normalizeBankDocumentType } from "./bank-document-match";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5382,8 +5383,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/bank-transactions/:id/match", h(async (req, res) => {
     const cid = tenantId(req);
-    const { matchedType, matchedId } = req.body || {};
-    res.json(await storage.update("bank_transactions", Number(req.params.id), { matchedType, matchedId, status: "matchet" }, cid));
+    const transaction = await storage.get("bank_transactions", Number(req.params.id), cid);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    if (transaction.status !== "afventer") return res.status(409).json({ error: "Bankposteringen er allerede behandlet." });
+    const matchedType = normalizeBankDocumentType(req.body?.matchedType);
+    const matchedId = Number(req.body?.matchedId);
+    if (!matchedType || !Number.isInteger(matchedId) || matchedId <= 0) {
+      return res.status(400).json({ error: "Vælg en konkret faktura eller et konkret bilag." });
+    }
+    const [transactions, invoices, vouchers] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("invoices", cid),
+      storage.all("vouchers", cid),
+    ]);
+    const candidate = findBankDocumentCandidates(
+      transaction as any,
+      matchedType,
+      transactions as any[],
+      invoices as any[],
+      vouchers as any[],
+    ).find((row) => row.id === matchedId);
+    if (!candidate) {
+      return res.status(409).json({ error: "Dokumentet har ikke samme beløb, har forkert retning eller er allerede anvendt." });
+    }
+    res.json(await storage.update("bank_transactions", transaction.id, { matchedType, matchedId, status: "matchet" }, cid));
+  }));
+
+  app.get("/api/bank-transactions/:id/document-candidates", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transaction = await storage.get("bank_transactions", Number(req.params.id), cid);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    const matchedType = normalizeBankDocumentType(req.query.type);
+    if (!matchedType) return res.status(400).json({ error: "Vælg faktura eller bilag." });
+    const [transactions, invoices, vouchers] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("invoices", cid),
+      storage.all("vouchers", cid),
+    ]);
+    res.json(findBankDocumentCandidates(
+      transaction as any,
+      matchedType,
+      transactions as any[],
+      invoices as any[],
+      vouchers as any[],
+    ));
+  }));
+
+  app.post("/api/bank-transactions/:id/unmatch", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transactionId = Number(req.params.id);
+    const transaction = await storage.get("bank_transactions", transactionId, cid);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    if (transaction.status !== "matchet") return res.status(409).json({ error: "Bankposteringen er ikke matchet." });
+
+    const pairedTypes = new Set(["bank_transfer", "bank_reversal"]);
+    const counterpartId = pairedTypes.has(String(transaction.matchedType)) ? Number(transaction.matchedId) : 0;
+    const counterpart = counterpartId > 0 ? await storage.get("bank_transactions", counterpartId, cid) : null;
+    const reset = { matchedType: null, matchedId: null, status: "afventer" };
+    const unmatched = db.transaction((tx) => {
+      const first = tx.update(bankTransactions)
+        .set(reset)
+        .where(and(eq(bankTransactions.id, transactionId), eq(bankTransactions.companyId, cid)))
+        .returning().get();
+      let second = null;
+      if (counterpart && counterpart.matchedId === transactionId && counterpart.matchedType === transaction.matchedType) {
+        second = tx.update(bankTransactions)
+          .set(reset)
+          .where(and(eq(bankTransactions.id, counterpart.id), eq(bankTransactions.companyId, cid)))
+          .returning().get();
+      }
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankafstemning_fortrudt",
+        target: `bank_transactions#${transactionId}`,
+        detail: JSON.stringify({ transactionId, previousMatchedType: transaction.matchedType, previousMatchedId: transaction.matchedId, counterpartReset: second?.id ?? null }),
+        createdAt: nowIso(),
+      }).run();
+      return [first, second].filter(Boolean);
+    });
+    res.json({ unmatched });
   }));
 
   app.get("/api/bank-transactions/:id/saft-candidates", h(async (req, res) => {

@@ -332,6 +332,17 @@ type SaftJournalCandidate = {
   amount: number;
 };
 
+type BankDocumentCandidate = {
+  id: number;
+  type: "invoice" | "voucher";
+  number: string;
+  label: string;
+  date: string;
+  dueDate?: string | null;
+  amount: number;
+  status?: string | null;
+};
+
 type TaxDeadline = {
   id: number;
   type?: string | null;
@@ -1168,6 +1179,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const [selectedSaftEntryId, setSelectedSaftEntryId] = useState("");
   const [transferMatchTransaction, setTransferMatchTransaction] = useState<BankTransaction | null>(null);
   const [selectedTransferId, setSelectedTransferId] = useState("");
+  const [documentMatchTransaction, setDocumentMatchTransaction] = useState<BankTransaction | null>(null);
+  const [documentMatchType, setDocumentMatchType] = useState<"invoice" | "voucher">("voucher");
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [csvText, setCsvText] = useState("");
   const [bankCsvFileName, setBankCsvFileName] = useState("");
   const [bankAccountRef, setBankAccountRef] = useState("");
@@ -1190,6 +1204,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     enabled: !!transferMatchTransaction,
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/bank-transactions/${transferMatchTransaction!.id}/transfer-candidates`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const documentCandidatesQuery = useQuery<BankDocumentCandidate[]>({
+    queryKey: ["/api/bank-transactions/document-candidates", documentMatchTransaction?.id, documentMatchType],
+    enabled: !!documentMatchTransaction,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/bank-transactions/${documentMatchTransaction!.id}/document-candidates?type=${documentMatchType}`);
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },
@@ -1277,20 +1301,38 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
 
   const matchBankMut = useMutation({
-    mutationFn: async ({ id, matchedType }: { id: number; matchedType: string }) => {
-      const res = await apiRequest("POST", `/api/bank-transactions/${id}/match`, {
-        matchedType,
-        matchedId: null,
+    mutationFn: async () => {
+      if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
+      const res = await apiRequest("POST", `/api/bank-transactions/${documentMatchTransaction.id}/match`, {
+        matchedType: documentMatchType,
+        matchedId: Number(selectedDocumentId),
       });
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
-      toast({ title: "Transaktion matchet" });
+      toast({ title: documentMatchType === "invoice" ? "Faktura matchet" : "Bilag matchet" });
+      setDocumentMatchTransaction(null);
+      setSelectedDocumentId("");
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
       toast({ title: "Kunne ikke matche", description: message, variant: "destructive" });
+    },
+  });
+
+  const unmatchBankMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${id}/unmatch`, {});
+      return await res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      toast({ title: "Match fortrudt", description: "Bankposteringen afventer igen." });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke fortryde match", description: message, variant: "destructive" });
     },
   });
 
@@ -3261,8 +3303,12 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                       size="sm"
                                       variant="outline"
                                       data-testid={`btn-match-faktura-${t.id}`}
-                                      onClick={() => matchBankMut.mutate({ id: t.id, matchedType: "faktura" })}
-                                      disabled={matchBankMut.isPending}
+                                      onClick={() => {
+                                        setSelectedDocumentId("");
+                                        setDocumentMatchType("invoice");
+                                        setDocumentMatchTransaction(t);
+                                      }}
+                                      disabled={matchBankMut.isPending || status !== "afventer"}
                                     >
                                       Match faktura
                                     </Button>
@@ -3270,8 +3316,12 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                       size="sm"
                                       variant="outline"
                                       data-testid={`btn-match-bilag-${t.id}`}
-                                      onClick={() => matchBankMut.mutate({ id: t.id, matchedType: "bilag" })}
-                                      disabled={matchBankMut.isPending}
+                                      onClick={() => {
+                                        setSelectedDocumentId("");
+                                        setDocumentMatchType("voucher");
+                                        setDocumentMatchTransaction(t);
+                                      }}
+                                      disabled={matchBankMut.isPending || status !== "afventer"}
                                     >
                                       Match bilag
                                     </Button>
@@ -3280,10 +3330,21 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                       variant="ghost"
                                       data-testid={`btn-ignore-bank-${t.id}`}
                                       onClick={() => ignoreBankMut.mutate(t.id)}
-                                      disabled={ignoreBankMut.isPending}
+                                      disabled={ignoreBankMut.isPending || status !== "afventer"}
                                     >
                                       Ignorer
                                     </Button>
+                                    {status === "matchet" && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        data-testid={`btn-unmatch-bank-${t.id}`}
+                                        onClick={() => unmatchBankMut.mutate(t.id)}
+                                        disabled={unmatchBankMut.isPending}
+                                      >
+                                        Fortryd match
+                                      </Button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -3347,6 +3408,67 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {matchSaftMut.isPending && <Loader2 className="size-4 animate-spin" />}
                         Afstem med SAF-T
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!documentMatchTransaction} onOpenChange={(open) => {
+                  if (!open && !matchBankMut.isPending) {
+                    setDocumentMatchTransaction(null);
+                    setSelectedDocumentId("");
+                  }
+                }}>
+                  <DialogContent data-testid="dialog-match-document">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">
+                        {documentMatchType === "invoice" ? "Match konkret faktura" : "Match konkret bilag"}
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <p className="text-sm">
+                        {documentMatchTransaction ? `${dk(documentMatchTransaction.date)} · ${documentMatchTransaction.description ?? "Bankpostering"} · ${money(documentMatchTransaction.amount)}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Vælg det dokument, som bankposteringen faktisk vedrører. Listen viser kun ledige dokumenter med præcis samme beløb og korrekt ind- eller udbetalingsretning.
+                      </p>
+                      {documentCandidatesQuery.isLoading ? (
+                        <Skeleton className="h-10 w-full" />
+                      ) : documentCandidatesQuery.isError ? (
+                        <p className="text-sm text-destructive">Kunne ikke hente dokumenter.</p>
+                      ) : (documentCandidatesQuery.data?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Der findes ingen ledig {documentMatchType === "invoice" ? "faktura" : "bilag"} med præcis samme beløb.
+                        </p>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label>{documentMatchType === "invoice" ? "Faktura" : "Bilag"}</Label>
+                          <Select value={selectedDocumentId} onValueChange={setSelectedDocumentId}>
+                            <SelectTrigger data-testid="select-document-candidate">
+                              <SelectValue placeholder="Vælg dokument" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {documentCandidatesQuery.data!.map((candidate) => (
+                                <SelectItem key={candidate.id} value={String(candidate.id)}>
+                                  {candidate.number} · {candidate.label} · {dk(candidate.date)} · {money(candidate.amount)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDocumentMatchTransaction(null)} disabled={matchBankMut.isPending}>
+                        Annuller
+                      </Button>
+                      <Button
+                        data-testid="btn-confirm-match-document"
+                        onClick={() => matchBankMut.mutate()}
+                        disabled={matchBankMut.isPending || !selectedDocumentId}
+                      >
+                        {matchBankMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Afstem dokument
                       </Button>
                     </DialogFooter>
                   </DialogContent>
