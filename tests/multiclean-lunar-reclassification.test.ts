@@ -11,6 +11,10 @@ const bankHistoryMigrationSql = readFileSync(
   new URL("../migrations/0027_preserve_danske_bank_history.sql", import.meta.url),
   "utf8",
 );
+const nordeaMigrationSql = readFileSync(
+  new URL("../migrations/0028_record_concurrent_nordea_account.sql", import.meta.url),
+  "utf8",
+);
 
 function runSqlMigration(db: Database.Database, sql: string) {
   const statements = sql
@@ -23,6 +27,7 @@ function runSqlMigration(db: Database.Database, sql: string) {
 function runMigration(db: Database.Database) {
   runSqlMigration(db, migrationSql);
   runSqlMigration(db, bankHistoryMigrationSql);
+  runSqlMigration(db, nordeaMigrationSql);
 }
 
 function setup() {
@@ -115,7 +120,7 @@ test("mærker Lunar-konti og omposterer 0112-indbetalinger idempotent", () => {
     ORDER BY company_id, account_number
   `).all();
   assert.deepEqual(accountNames, [
-    { companyId: 4, accountNumber: "5820", name: "Bankdrift · Danske Bank 13800707 (historisk) / Lunar ·0112" },
+    { companyId: 4, accountNumber: "5820", name: "Bankdrift · Danske 0707 (historisk) / Lunar ·0112 + Nordea ·5361 fra 04-03-2026" },
     { companyId: 4, accountNumber: "5825", name: "Lunar løn og skat ·4483" },
     { companyId: 4, accountNumber: "5826", name: "Lunar marketing ·9278 (fælles)" },
     { companyId: 12, accountNumber: "5820", name: "Lunar drift ·6477 (MultiClean)" },
@@ -163,7 +168,7 @@ test("mærker Lunar-konti og omposterer 0112-indbetalinger idempotent", () => {
     1,
     "parentens eksisterende posteringer må ikke ændres",
   );
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 3);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 4);
 
   const history = db.prepare(`
     SELECT detail FROM audit_logs
@@ -171,6 +176,14 @@ test("mærker Lunar-konti og omposterer 0112-indbetalinger idempotent", () => {
   `).get() as { detail: string };
   assert.match(history.detail, /13800707/);
   assert.match(history.detail, /0112/);
+
+  const nordea = db.prepare(`
+    SELECT detail FROM audit_logs
+    WHERE company_id = 4 AND action = 'concurrent_bank_account_recorded'
+  `).get() as { detail: string };
+  assert.match(nordea.detail, /"registration":"2355"/);
+  assert.match(nordea.detail, /"accountLast4":"5361"/);
+  assert.match(nordea.detail, /"concurrentWith":"Lunar-0112"/);
 
   db.close();
 });
