@@ -49,7 +49,9 @@ function signature(entry: JournalEntry, lines: JournalLine[]) {
 }
 
 export function reviewEconomicJournalDrafts(entries: JournalEntry[], lines: JournalLine[], accounts: Account[]) {
-  const drafts = entries.filter((entry) => entry.sourceType === "economic_kladde" && normalized(entry.status) === "kladde");
+  const importedEntries = entries.filter((entry) => entry.sourceType === "economic_kladde");
+  const drafts = importedEntries.filter((entry) => normalized(entry.status) === "kladde");
+  const posted = importedEntries.filter((entry) => postedStatuses.has(normalized(entry.status))).length;
   const draftIds = new Set(drafts.map((entry) => entry.id));
   const accountIds = new Set(accounts.map((account) => Number(account.id)));
   const grouped = linesByEntry(lines);
@@ -109,6 +111,7 @@ export function reviewEconomicJournalDrafts(entries: JournalEntry[], lines: Jour
 
   return {
     drafts: drafts.length,
+    posted,
     lines: lineCount,
     totalDebit: totalDebitCents / 100,
     totalCredit: totalCreditCents / 100,

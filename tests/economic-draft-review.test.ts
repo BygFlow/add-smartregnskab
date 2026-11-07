@@ -13,6 +13,7 @@ test("balanced economic drafts are approved for posting", () => {
   const result = reviewEconomicJournalDrafts([draft], balancedLines, accounts);
   assert.equal(result.canPost, true);
   assert.equal(result.drafts, 1);
+  assert.equal(result.posted, 0);
   assert.equal(result.lines, 2);
   assert.equal(result.totalDebit, 125);
   assert.equal(result.totalCredit, 125);
@@ -35,4 +36,13 @@ test("an exact match against a posted entry blocks posting", () => {
   const result = reviewEconomicJournalDrafts([draft, posted], [...balancedLines, ...postedLines], accounts);
   assert.equal(result.canPost, false);
   assert.equal(result.exactPostedDuplicates.length, 1);
+  assert.equal(result.posted, 0);
+});
+
+test("posted economic imports are reported as completed", () => {
+  const postedImport = { ...draft, status: "bogført" };
+  const result = reviewEconomicJournalDrafts([postedImport], balancedLines, accounts);
+  assert.equal(result.drafts, 0);
+  assert.equal(result.posted, 1);
+  assert.equal(result.canPost, false);
 });
