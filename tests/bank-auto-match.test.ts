@@ -151,6 +151,23 @@ test("manuel afstemning skjuler en SAF-T-postering der allerede er brugt", () =>
   assert.deepEqual(candidates.map((candidate) => candidate.id), [11]);
 });
 
+test("en postering med både betaling og tilbageførsel kan ikke bruges som enkelt bankmatch", () => {
+  const candidates = findSaftJournalCandidates(
+    { id: 100, date: "2025-06-11", description: "Faktura 503", amount: 11_950, status: "afventer" },
+    [
+      { ...entry, id: 20, date: "2025-06-11", description: "Indbet. fak. 503" },
+      { ...entry, id: 21, date: "2025-06-11", description: "Indbet. fak. 503" },
+    ],
+    [
+      { journalEntryId: 20, accountId: 1, description: "Indbet. fak. 503", debit: 11_950, credit: 0 },
+      { journalEntryId: 21, accountId: 1, description: "Indbet. fak. 503", debit: 11_950, credit: 0 },
+      { journalEntryId: 21, accountId: 1, description: "Tilbageført fak. 503", debit: 0, credit: 11_950 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [20]);
+});
+
 test("sikker auto-afstemning kræver et gensidigt entydigt match", () => {
   const matches = findSafeImportedJournalMatches(
     [

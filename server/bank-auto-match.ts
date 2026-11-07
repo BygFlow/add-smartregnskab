@@ -165,10 +165,22 @@ export function findSaftJournalCandidates(
     .filter((entry) => !usedJournalEntryIds.has(entry.id))
     .map((entry) => [entry.id, entry]));
 
-  const candidates = new Map<number, SaftJournalCandidate>();
+  const bankLinesByEntry = new Map<number, JournalLineRow[]>();
   for (const line of lines) {
-    const entry = entriesById.get(line.journalEntryId);
-    if (!entry || !bankAccountIds.has(line.accountId)) continue;
+    if (!entriesById.has(line.journalEntryId) || !bankAccountIds.has(line.accountId)) continue;
+    const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
+    if (sameAmount(signedBankAmount, 0)) continue;
+    const bankLines = bankLinesByEntry.get(line.journalEntryId) ?? [];
+    bankLines.push(line);
+    bankLinesByEntry.set(line.journalEntryId, bankLines);
+  }
+
+  const candidates = new Map<number, SaftJournalCandidate>();
+  for (const [entryId, bankLines] of Array.from(bankLinesByEntry.entries())) {
+    if (bankLines.length !== 1) continue;
+    const entry = entriesById.get(entryId);
+    if (!entry) continue;
+    const line = bankLines[0];
     const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
     if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
     if (!candidates.has(entry.id)) {
@@ -295,14 +307,18 @@ export function findSafeDelayedImportedJournalMatches(
       for (const entry of eligibleEntries) {
         const lagDays = daysAfter(transaction.date, entry.date);
         if (lagDays < 1 || lagDays > 4) continue;
-        for (const line of linesByEntry.get(entry.id) ?? []) {
-          if (!bankAccountIds.has(line.accountId)) continue;
+        const bankLines = (linesByEntry.get(entry.id) ?? []).filter((line) => {
+          if (!bankAccountIds.has(line.accountId)) return false;
           const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
-          if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
-          if (!isStrongMerchantMatch(transaction.description, line.description ?? entry.description)
-            && !isStrongMerchantMatch(transaction.description, entry.description)) continue;
-          candidateIds.add(entry.id);
-        }
+          return !sameAmount(signedBankAmount, 0);
+        });
+        if (bankLines.length !== 1) continue;
+        const line = bankLines[0];
+        const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
+        if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
+        if (!isStrongMerchantMatch(transaction.description, line.description ?? entry.description)
+          && !isStrongMerchantMatch(transaction.description, entry.description)) continue;
+        candidateIds.add(entry.id);
       }
       return { transactionId: Number(transaction.id), candidateIds: Array.from(candidateIds) };
     })
