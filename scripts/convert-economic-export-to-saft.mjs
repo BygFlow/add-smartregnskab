@@ -106,8 +106,15 @@ function companyHeader(sourceXml) {
   };
 }
 
-export async function convertEconomicExportToSaft(sourceDirectory) {
-  const read = (name) => readFile(resolve(sourceDirectory, name), "utf8");
+export async function convertEconomicExportToSaft(sourceDirectory, options = {}) {
+  const read = async (name) => {
+    const contents = await readFile(resolve(sourceDirectory, name));
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(contents);
+    } catch {
+      return new TextDecoder("windows-1252").decode(contents);
+    }
+  };
   const [accountText, postingText, vatText, sourceSaft] = await Promise.all([
     read("Konto.csv"),
     read("Postering.csv"),
@@ -115,13 +122,28 @@ export async function convertEconomicExportToSaft(sourceDirectory) {
     read("SAF-T.xml"),
   ]);
   const allAccounts = parseCsv(accountText);
-  const postings = parseCsv(postingText).map((posting) => ({
+  const allPostings = parseCsv(postingText).map((posting) => ({
     ...posting,
     isoDate: isoDate(posting.Dato),
     amount: parseDanishNumber(posting.BeloebDKK),
     vatCode: String(posting.MomsKode || "").trim().slice(0, 9),
   }));
+  const requestedYear = options.year == null ? null : String(options.year).trim();
+  if (requestedYear && !/^\d{4}$/.test(requestedYear)) {
+    throw new Error(`Ugyldigt regnskabsår: ${options.year}.`);
+  }
+  const postings = requestedYear
+    ? allPostings.filter((posting) => posting.isoDate.startsWith(`${requestedYear}-`))
+    : allPostings;
   if (!postings.length) throw new Error("Postering.csv indeholder ingen posteringer.");
+  const postingDates = postings.map((posting) => posting.isoDate).sort();
+  const fiscalYears = [...new Set(postingDates.map((date) => date.slice(0, 4)))];
+  if (fiscalYears.length !== 1) {
+    throw new Error(`Eksporten skal indeholde præcis ét regnskabsår, men indeholder: ${fiscalYears.join(", ")}.`);
+  }
+  const fiscalYear = fiscalYears[0];
+  const firstDate = postingDates[0];
+  const lastDate = postingDates.at(-1);
 
   const usedNumbers = new Set(postings.map((posting) => posting.KontoNr));
   const accounts = allAccounts.filter((account) => usedNumbers.has(account.KontoNr));
@@ -171,12 +193,12 @@ export async function convertEconomicExportToSaft(sourceDirectory) {
         : "";
       return `<Line><RecordID>${esc(line.LoebeNr)}</RecordID><AccountID>${esc(line.KontoNr)}</AccountID><SourceDocumentID>${esc(voucherNumber)}</SourceDocumentID><Description>${esc(line.Tekst || description)}</Description>${amount}${tax}</Line>`;
     }).join("");
-    const transactionId = `ECON-2024-${date.replaceAll("-", "")}-${voucherNumber}`;
+    const transactionId = `ECON-${date.slice(0, 4)}-${date.replaceAll("-", "")}-${voucherNumber}`;
     return `<Transaction><TransactionID>${esc(transactionId)}</TransactionID><Period>${Number(date.slice(5, 7))}</Period><PeriodYear>${Number(date.slice(0, 4))}</PeriodYear><TransactionDate>${date}</TransactionDate><SourceID>e-conomic</SourceID><TransactionType>migration</TransactionType><Description>${esc(description)}</Description><SystemEntryDate>${date}</SystemEntryDate><GLPostingDate>${date}</GLPostingDate><SystemID>${esc(transactionId)}</SystemID>${lineXml}</Transaction>`;
   }).join("");
 
   const company = companyHeader(sourceSaft);
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<AuditFile xmlns="${NS}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Header><AuditFileVersion>2.1</AuditFileVersion><AuditFileCountry>DK</AuditFileCountry><AuditFileDateCreated>${esc(company.created)}</AuditFileDateCreated><SoftwareCompanyName>e-conomic / ADD SmartRegnskab migrering</SoftwareCompanyName><SoftwareID>ADD SmartRegnskab</SoftwareID><SoftwareVersion>3.16.4</SoftwareVersion><Company><CVR>${esc(company.registration)}</CVR><Name>${esc(company.name)}</Name><Address><StreetName>${esc(company.street)}</StreetName><City>${esc(company.city)}</City><PostalCode>${esc(company.postalCode)}</PostalCode><Country>DK</Country><AddressType>StreetAddress</AddressType></Address><Contact>${company.phone ? `<Telephone>${esc(company.phone)}</Telephone>` : ""}${company.email ? `<Email>${esc(company.email)}</Email>` : ""}</Contact><TaxRegistration><TaxRegistrationNumber>DK${esc(company.registration)}</TaxRegistrationNumber><TaxType>VAT</TaxType><TaxAuthority>Skattestyrelsen</TaxAuthority><Country>DK</Country></TaxRegistration></Company><DefaultCurrencyCode>DKK</DefaultCurrencyCode><SelectionCriteria><CompanyEntity>${esc(company.name)}</CompanyEntity><SelectionStartDate>2024-01-01</SelectionStartDate><SelectionEndDate>2024-12-31</SelectionEndDate><PeriodStart>1</PeriodStart><PeriodStartYear>2024</PeriodStartYear><PeriodEnd>12</PeriodEnd><PeriodEndYear>2024</PeriodEndYear></SelectionCriteria><HeaderComment>Konverteret sikkert fra e-conomic eksport. Kildedata er ikke ændret.</HeaderComment><TaxAccountingBasis>Regnskabsdata</TaxAccountingBasis><TaxEntity>${esc(company.registration)}</TaxEntity><UserID>e-conomic</UserID></Header><MasterFiles><GeneralLedgerAccounts><NameOfStandardAccount>Kontoplan</NameOfStandardAccount><VersionOfStandardAccount>20260101</VersionOfStandardAccount>${accountXml}</GeneralLedgerAccounts><TaxTable><TaxTableEntry><TaxType>VAT</TaxType><Description>Moms</Description>${taxTable}</TaxTableEntry></TaxTable></MasterFiles><GeneralLedgerEntries><NumberOfEntries>${transactions.length}</NumberOfEntries><TotalDebit>${money(totalDebit)}</TotalDebit><TotalCredit>${money(totalCredit)}</TotalCredit><Journal><JournalID>ECONOMIC-2024</JournalID><Description>e-conomic 2024</Description><Type>GL</Type>${transactionXml}</Journal></GeneralLedgerEntries></AuditFile>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<AuditFile xmlns="${NS}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Header><AuditFileVersion>2.1</AuditFileVersion><AuditFileCountry>DK</AuditFileCountry><AuditFileDateCreated>${esc(company.created)}</AuditFileDateCreated><SoftwareCompanyName>e-conomic / ADD SmartRegnskab migrering</SoftwareCompanyName><SoftwareID>ADD SmartRegnskab</SoftwareID><SoftwareVersion>3.16.4</SoftwareVersion><Company><CVR>${esc(company.registration)}</CVR><Name>${esc(company.name)}</Name><Address><StreetName>${esc(company.street)}</StreetName><City>${esc(company.city)}</City><PostalCode>${esc(company.postalCode)}</PostalCode><Country>DK</Country><AddressType>StreetAddress</AddressType></Address><Contact>${company.phone ? `<Telephone>${esc(company.phone)}</Telephone>` : ""}${company.email ? `<Email>${esc(company.email)}</Email>` : ""}</Contact><TaxRegistration><TaxRegistrationNumber>DK${esc(company.registration)}</TaxRegistrationNumber><TaxType>VAT</TaxType><TaxAuthority>Skattestyrelsen</TaxAuthority><Country>DK</Country></TaxRegistration></Company><DefaultCurrencyCode>DKK</DefaultCurrencyCode><SelectionCriteria><CompanyEntity>${esc(company.name)}</CompanyEntity><SelectionStartDate>${firstDate}</SelectionStartDate><SelectionEndDate>${lastDate}</SelectionEndDate><PeriodStart>${Number(firstDate.slice(5, 7))}</PeriodStart><PeriodStartYear>${firstDate.slice(0, 4)}</PeriodStartYear><PeriodEnd>${Number(lastDate.slice(5, 7))}</PeriodEnd><PeriodEndYear>${lastDate.slice(0, 4)}</PeriodEndYear></SelectionCriteria><HeaderComment>Konverteret sikkert fra e-conomic eksport. Kildedata er ikke ændret.</HeaderComment><TaxAccountingBasis>Regnskabsdata</TaxAccountingBasis><TaxEntity>${esc(company.registration)}</TaxEntity><UserID>e-conomic</UserID></Header><MasterFiles><GeneralLedgerAccounts><NameOfStandardAccount>Kontoplan</NameOfStandardAccount><VersionOfStandardAccount>20260101</VersionOfStandardAccount>${accountXml}</GeneralLedgerAccounts><TaxTable><TaxTableEntry><TaxType>VAT</TaxType><Description>Moms</Description>${taxTable}</TaxTableEntry></TaxTable></MasterFiles><GeneralLedgerEntries><NumberOfEntries>${transactions.length}</NumberOfEntries><TotalDebit>${money(totalDebit)}</TotalDebit><TotalCredit>${money(totalCredit)}</TotalCredit><Journal><JournalID>ECONOMIC-${fiscalYear}</JournalID><Description>e-conomic ${fiscalYear}</Description><Type>GL</Type>${transactionXml}</Journal></GeneralLedgerEntries></AuditFile>`;
   return {
     xml,
     summary: {
@@ -187,8 +209,8 @@ export async function convertEconomicExportToSaft(sourceDirectory) {
       lines: postings.length,
       totalDebit,
       totalCredit,
-      firstDate: postings.map((posting) => posting.isoDate).sort()[0],
-      lastDate: postings.map((posting) => posting.isoDate).sort().at(-1),
+      firstDate,
+      lastDate,
       vatCodes,
     },
   };
@@ -197,8 +219,12 @@ export async function convertEconomicExportToSaft(sourceDirectory) {
 async function main() {
   const sourceDirectory = process.argv[2];
   const outputFile = process.argv[3];
-  if (!sourceDirectory || !outputFile) throw new Error("Brug: node scripts/convert-economic-export-to-saft.mjs <udpakket mappe> <output.xml>");
-  const result = await convertEconomicExportToSaft(sourceDirectory);
+  const yearFlagIndex = process.argv.indexOf("--year");
+  const year = yearFlagIndex >= 0 ? process.argv[yearFlagIndex + 1] : undefined;
+  if (!sourceDirectory || !outputFile || (yearFlagIndex >= 0 && !year)) {
+    throw new Error("Brug: node scripts/convert-economic-export-to-saft.mjs <udpakket mappe> <output.xml> [--year ÅÅÅÅ]");
+  }
+  const result = await convertEconomicExportToSaft(sourceDirectory, { year });
   await writeFile(resolve(outputFile), result.xml, "utf8");
   process.stdout.write(`${JSON.stringify(result.summary, null, 2)}\n`);
 }

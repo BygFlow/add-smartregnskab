@@ -51,6 +51,14 @@ test("SAF-T export reports the deployed application version", () => {
   assert.doesNotMatch(saft, /<SoftwareVersion>3\.5\.1<\/SoftwareVersion>/);
 });
 
+test("SAF-T import refreshes accounts, dashboards, and accounting reports", () => {
+  const page = read("client/src/pages/regnskab-tabs/saft.tsx");
+  assert.match(page, /useQueryClient/);
+  assert.match(page, /accounts\.refetch\(\)/);
+  assert.match(page, /queryKey: \["\/api\/regnskabssystem\/dashboard"\]/);
+  assert.match(page, /queryKey: \["\/api\/regnskabssystem\/report"\]/);
+});
+
 test("customer backup screen exposes status instead of simulated production actions", () => {
   const page = read("client/src/pages/regnskab-tabs/backup-regnskab.tsx");
   assert.match(page, /backup-protection\/status/);

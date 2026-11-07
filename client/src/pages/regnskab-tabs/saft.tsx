@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, apiUrl, getAuthToken } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ type Account = { id: number; accountNumber: string; name: string; standardAccoun
 const auth = () => ({ Authorization: `Bearer ${getAuthToken() || ""}` });
 
 export default function Saft() {
+  const qc = useQueryClient();
   const year = new Date().getFullYear();
   const [from, setFrom] = useState(`${year}-01-01`);
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
@@ -60,7 +61,15 @@ export default function Saft() {
       if (!response.ok) throw new Error(result.error || "SAF-T-import fejlede.");
       if (commit) {
         toast({ title: "SAF-T importeret", description: `${result.accountsCreated} konti og ${result.entriesCreated} posteringer oprettet.` });
-        setPreview(null); setFile(null); await status.refetch();
+        setPreview(null);
+        setFile(null);
+        await Promise.all([
+          status.refetch(),
+          accounts.refetch(),
+          qc.invalidateQueries({ queryKey: ["/api/regnskabssystem"] }),
+          qc.invalidateQueries({ queryKey: ["/api/regnskabssystem/dashboard"] }),
+          qc.invalidateQueries({ queryKey: ["/api/regnskabssystem/report"] }),
+        ]);
       } else setPreview(result);
     } catch (error: any) { toast({ title: "Import fejlede", description: error.message, variant: "destructive" }); }
     finally { setBusy(false); }
