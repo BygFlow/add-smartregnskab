@@ -5631,7 +5631,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           links: matches.map((match) => [match.transactionId, match.journalEntryId]),
           exactDateMatches: exactMatches.length,
           delayedMerchantMatches: delayedMatches.length,
-          rule: "reciprocal-unique-signed-amount; exact-date or 1-3-day strong-merchant settlement",
+          rule: "reciprocal-unique-signed-amount; exact-date or 1-4-day strong-merchant settlement",
           createsBookkeeping: false,
         }),
         createdAt: nowIso(),

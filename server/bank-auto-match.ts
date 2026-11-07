@@ -246,9 +246,10 @@ export function findSafeImportedJournalMatches(
 
 /**
  * Finds reciprocal one-to-one matches where the bank date follows the posted
- * imported journal date by one to three days. Besides signed amount equality,
+ * imported journal date by one to four days. Besides signed amount equality,
  * a strong, non-generic merchant-name match is mandatory. This covers normal
- * card settlement delays without guessing repeated payroll or transfer rows.
+ * card settlement delays, including a long weekend, without guessing repeated
+ * payroll or transfer rows.
  */
 export function findSafeDelayedImportedJournalMatches(
   transactions: BankTransactionRow[],
@@ -278,7 +279,7 @@ export function findSafeDelayedImportedJournalMatches(
       const candidateIds = new Set<number>();
       for (const entry of eligibleEntries) {
         const lagDays = daysAfter(transaction.date, entry.date);
-        if (lagDays < 1 || lagDays > 3) continue;
+        if (lagDays < 1 || lagDays > 4) continue;
         for (const line of linesByEntry.get(entry.id) ?? []) {
           if (!bankAccountIds.has(line.accountId)) continue;
           const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);

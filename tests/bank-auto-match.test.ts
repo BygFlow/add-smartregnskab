@@ -186,7 +186,7 @@ test("sikker auto-afstemning springer delte kandidater og dublerede banklinjer o
   assert.deepEqual(matches, []);
 });
 
-test("forsinket kortafregning kræver samme beløb, stærkt leverandørnavn og højst tre dage", () => {
+test("forsinket kortafregning kræver samme beløb, stærkt leverandørnavn og højst fire dage", () => {
   const matches = findSafeDelayedImportedJournalMatches(
     [
       { id: 100, date: "2025-05-17", description: "Bauhaus", amount: -1_051.47, status: "afventer" },
@@ -208,12 +208,22 @@ test("forsinket kortafregning kræver samme beløb, stærkt leverandørnavn og h
   ]);
 });
 
+test("forsinket kortafregning accepterer en entydig fire-dages weekendforskydning", () => {
+  const matches = findSafeDelayedImportedJournalMatches(
+    [{ id: 100, date: "2025-03-17", description: "Bauhaus Danmark", amount: -239.13, status: "afventer" }],
+    [{ ...entry, id: 20, date: "2025-03-13", description: "BAUHAUS DANMARK" }],
+    [{ journalEntryId: 20, accountId: 1, description: "BAUHAUS DANMARK", debit: 0, credit: 239.13 }],
+    accounts,
+  );
+  assert.deepEqual(matches, [{ transactionId: 100, journalEntryId: 20 }]);
+});
+
 test("forsinket match afviser generiske tekster, for lang forsinkelse og genbrug", () => {
   assert.equal(isStrongMerchantMatch("Transfer", "Transfer"), false);
   const matches = findSafeDelayedImportedJournalMatches(
     [
       { id: 100, date: "2025-05-17", description: "Transfer", amount: -1_000, status: "afventer" },
-      { id: 101, date: "2025-05-20", description: "Bauhaus", amount: -2_000, status: "afventer" },
+      { id: 101, date: "2025-05-21", description: "Bauhaus", amount: -2_000, status: "afventer" },
       { id: 102, date: "2025-05-17", description: "Bauhaus", amount: -3_000, status: "afventer" },
     ],
     [
