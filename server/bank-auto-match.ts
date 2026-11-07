@@ -14,7 +14,9 @@ type AccountRow = {
 type JournalEntryRow = {
   id: number;
   date: string;
+  entryNumber?: string | null;
   description?: string | null;
+  reference?: string | null;
   sourceType?: string | null;
   status?: string | null;
 };
@@ -56,6 +58,63 @@ function sameAmount(left: number, right: number) {
   return Math.abs(left - right) < 0.01;
 }
 
+export type SaftJournalCandidate = {
+  id: number;
+  date: string;
+  entryNumber: string | null;
+  description: string | null;
+  reference: string | null;
+  lineDescription: string | null;
+  amount: number;
+};
+
+/**
+ * Returns every safe, unused SAF-T journal entry whose bank line has the same
+ * date and signed amount as the imported bank row. The caller can present
+ * ambiguous candidates for a deliberate manual choice without creating a new
+ * accounting entry.
+ */
+export function findSaftJournalCandidates(
+  transaction: BankTransactionRow,
+  entries: JournalEntryRow[],
+  lines: JournalLineRow[],
+  accounts: AccountRow[],
+  usedJournalEntryIds: ReadonlySet<number> = new Set(),
+): SaftJournalCandidate[] {
+  const bankAccountIds = new Set(accounts.filter(isBankLedgerAccount).map((account) => account.id));
+  if (!bankAccountIds.size) return [];
+
+  const entriesById = new Map(entries
+    .filter((entry) => normalizedText(entry.sourceType) === "saft import")
+    .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
+    .filter((entry) => String(entry.date).slice(0, 10) === String(transaction.date).slice(0, 10))
+    .filter((entry) => !usedJournalEntryIds.has(entry.id))
+    .map((entry) => [entry.id, entry]));
+
+  const candidates = new Map<number, SaftJournalCandidate>();
+  for (const line of lines) {
+    const entry = entriesById.get(line.journalEntryId);
+    if (!entry || !bankAccountIds.has(line.accountId)) continue;
+    const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
+    if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
+    if (!candidates.has(entry.id)) {
+      candidates.set(entry.id, {
+        id: entry.id,
+        date: String(entry.date).slice(0, 10),
+        entryNumber: entry.entryNumber ?? null,
+        description: entry.description ?? null,
+        reference: entry.reference ?? null,
+        lineDescription: line.description ?? null,
+        amount: signedBankAmount,
+      });
+    }
+  }
+
+  return Array.from(candidates.values()).sort((left, right) =>
+    String(left.entryNumber ?? left.id).localeCompare(String(right.entryNumber ?? right.id), "da", { numeric: true }),
+  );
+}
+
 /**
  * Finds a single, safe SAF-T journal-entry match for one imported bank row.
  * Date and signed bank amount must agree. Description is only used to resolve
@@ -68,29 +127,11 @@ export function findUniqueSaftJournalMatch(
   accounts: AccountRow[],
   usedJournalEntryIds: ReadonlySet<number> = new Set(),
 ) {
-  const bankAccountIds = new Set(accounts.filter(isBankLedgerAccount).map((account) => account.id));
-  if (!bankAccountIds.size) return null;
-
-  const entriesById = new Map(entries
-    .filter((entry) => normalizedText(entry.sourceType) === "saft import")
-    .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
-    .filter((entry) => String(entry.date).slice(0, 10) === String(transaction.date).slice(0, 10))
-    .filter((entry) => !usedJournalEntryIds.has(entry.id))
-    .map((entry) => [entry.id, entry]));
-
-  const candidates = new Map<number, { id: number; descriptions: string[] }>();
-  for (const line of lines) {
-    const entry = entriesById.get(line.journalEntryId);
-    if (!entry || !bankAccountIds.has(line.accountId)) continue;
-    const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
-    if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
-    const existing = candidates.get(entry.id) ?? { id: entry.id, descriptions: [] };
-    existing.descriptions.push(normalizedText(line.description));
-    existing.descriptions.push(normalizedText(entry.description));
-    candidates.set(entry.id, existing);
-  }
-
-  const uniqueCandidates = Array.from(candidates.values());
+  const uniqueCandidates = findSaftJournalCandidates(transaction, entries, lines, accounts, usedJournalEntryIds)
+    .map((candidate) => ({
+      id: candidate.id,
+      descriptions: [normalizedText(candidate.lineDescription), normalizedText(candidate.description)],
+    }));
   if (uniqueCandidates.length === 1) return uniqueCandidates[0].id;
   if (uniqueCandidates.length < 2) return null;
 

@@ -320,6 +320,16 @@ type BankTransaction = {
   matchedId?: number | null;
 };
 
+type SaftJournalCandidate = {
+  id: number;
+  date: string;
+  entryNumber?: string | null;
+  description?: string | null;
+  reference?: string | null;
+  lineDescription?: string | null;
+  amount: number;
+};
+
 type TaxDeadline = {
   id: number;
   type?: string | null;
@@ -1129,11 +1139,23 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   /* ---------- mutationer: Bankafstemning ---------- */
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [saftMatchTransaction, setSaftMatchTransaction] = useState<BankTransaction | null>(null);
+  const [selectedSaftEntryId, setSelectedSaftEntryId] = useState("");
   const [csvText, setCsvText] = useState("");
   const [bankCsvFileName, setBankCsvFileName] = useState("");
   const [bankImportYear, setBankImportYear] = useState("");
   const parsedBankRows = parseBankCsv(csvText, bankCsvFileName);
   const bankImportYears = Array.from(new Set(parsedBankRows.map((row) => row.date.slice(0, 4)))).sort();
+
+  const saftCandidatesQuery = useQuery<SaftJournalCandidate[]>({
+    queryKey: ["/api/bank-transactions/saft-candidates", saftMatchTransaction?.id],
+    enabled: !!saftMatchTransaction,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/bank-transactions/${saftMatchTransaction!.id}/saft-candidates`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
 
   const importBankMut = useMutation({
     mutationFn: async () => {
@@ -1198,6 +1220,26 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
       toast({ title: "Kunne ikke matche", description: message, variant: "destructive" });
+    },
+  });
+
+  const matchSaftMut = useMutation({
+    mutationFn: async () => {
+      if (!saftMatchTransaction || !selectedSaftEntryId) throw new Error("Vælg en SAF-T-postering.");
+      const res = await apiRequest("POST", `/api/bank-transactions/${saftMatchTransaction.id}/match-saft`, {
+        journalEntryId: Number(selectedSaftEntryId),
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      toast({ title: "Bankpostering afstemt", description: "Posteringen er knyttet til den eksisterende SAF-T-bogføring." });
+      setSaftMatchTransaction(null);
+      setSelectedSaftEntryId("");
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke afstemme", description: message, variant: "destructive" });
     },
   });
 
@@ -3020,6 +3062,18 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                     <Button
                                       size="sm"
                                       variant="outline"
+                                      data-testid={`btn-match-saft-${t.id}`}
+                                      onClick={() => {
+                                        setSelectedSaftEntryId("");
+                                        setSaftMatchTransaction(t);
+                                      }}
+                                      disabled={matchSaftMut.isPending || status !== "afventer"}
+                                    >
+                                      Match SAF-T
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
                                       data-testid={`btn-match-faktura-${t.id}`}
                                       onClick={() => matchBankMut.mutate({ id: t.id, matchedType: "faktura" })}
                                       disabled={matchBankMut.isPending}
@@ -3054,6 +3108,63 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     </div>
                   )}
                 </SectionCard>
+
+                <Dialog open={!!saftMatchTransaction} onOpenChange={(open) => {
+                  if (!open && !matchSaftMut.isPending) {
+                    setSaftMatchTransaction(null);
+                    setSelectedSaftEntryId("");
+                  }
+                }}>
+                  <DialogContent data-testid="dialog-match-saft">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">Match eksisterende SAF-T-postering</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <p className="text-sm">
+                        {saftMatchTransaction ? `${dk(saftMatchTransaction.date)} · ${saftMatchTransaction.description ?? "Bankpostering"} · ${money(saftMatchTransaction.amount)}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Afstemningen opretter ingen ny bogføring. Den knytter kun bankposteringen til en allerede bogført SAF-T-postering med samme dato og beløb.
+                      </p>
+                      {saftCandidatesQuery.isLoading ? (
+                        <Skeleton className="h-10 w-full" />
+                      ) : saftCandidatesQuery.isError ? (
+                        <p className="text-sm text-destructive">Kunne ikke hente SAF-T-kandidater.</p>
+                      ) : (saftCandidatesQuery.data?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">Der findes ingen ledige SAF-T-posteringer med samme dato og beløb.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label>SAF-T-postering</Label>
+                          <Select value={selectedSaftEntryId} onValueChange={setSelectedSaftEntryId}>
+                            <SelectTrigger data-testid="select-saft-candidate">
+                              <SelectValue placeholder="Vælg postering" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {saftCandidatesQuery.data!.map((candidate) => (
+                                <SelectItem key={candidate.id} value={String(candidate.id)}>
+                                  {candidate.entryNumber ? `#${candidate.entryNumber} · ` : ""}{candidate.description || candidate.lineDescription || "SAF-T-postering"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setSaftMatchTransaction(null)} disabled={matchSaftMut.isPending}>
+                        Annuller
+                      </Button>
+                      <Button
+                        data-testid="btn-confirm-match-saft"
+                        onClick={() => matchSaftMut.mutate()}
+                        disabled={matchSaftMut.isPending || !selectedSaftEntryId}
+                      >
+                        {matchSaftMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                        Afstem med SAF-T
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
                 {/* Dialog: Importér bankudskrift */}
                 <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>

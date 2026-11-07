@@ -29,7 +29,7 @@ import { buildAccountingReport } from "./accounting-reports";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
-import { findUniqueSaftJournalMatch } from "./bank-auto-match";
+import { findSaftJournalCandidates, findUniqueSaftJournalMatch } from "./bank-auto-match";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5374,6 +5374,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const { matchedType, matchedId } = req.body || {};
     res.json(await storage.update("bank_transactions", Number(req.params.id), { matchedType, matchedId, status: "matchet" }, cid));
+  }));
+
+  app.get("/api/bank-transactions/:id/saft-candidates", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transaction = await storage.get("bank_transactions", Number(req.params.id), cid);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    const [transactions, journalEntries, journalLines, accounts] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const usedJournalEntryIds = new Set<number>(transactions
+      .filter((tx: any) => tx.id !== transaction.id && ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
+      .map((tx: any) => Number(tx.matchedId)));
+    res.json(findSaftJournalCandidates(transaction as any, journalEntries as any[], journalLines as any[], accounts as any[], usedJournalEntryIds));
+  }));
+
+  app.post("/api/bank-transactions/:id/match-saft", h(async (req, res) => {
+    const cid = tenantId(req);
+    const transaction = await storage.get("bank_transactions", Number(req.params.id), cid);
+    if (!transaction) return res.status(404).json({ error: "Bankposteringen findes ikke." });
+    const journalEntryId = Number(req.body?.journalEntryId);
+    if (!Number.isInteger(journalEntryId) || journalEntryId <= 0) {
+      return res.status(400).json({ error: "Vælg en gyldig SAF-T-postering." });
+    }
+    const [transactions, journalEntries, journalLines, accounts] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const usedJournalEntryIds = new Set<number>(transactions
+      .filter((tx: any) => tx.id !== transaction.id && ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
+      .map((tx: any) => Number(tx.matchedId)));
+    const candidates = findSaftJournalCandidates(transaction as any, journalEntries as any[], journalLines as any[], accounts as any[], usedJournalEntryIds);
+    if (!candidates.some((candidate) => candidate.id === journalEntryId)) {
+      return res.status(409).json({ error: "SAF-T-posteringen passer ikke til dato og beløb eller er allerede anvendt." });
+    }
+    res.json(await storage.update("bank_transactions", transaction.id, {
+      matchedType: "journal_entry",
+      matchedId: journalEntryId,
+      status: "matchet",
+    }, cid));
   }));
 
   app.post("/api/bank-transactions/:id/ignore", h(async (req, res) => {

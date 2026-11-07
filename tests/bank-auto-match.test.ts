@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findUniqueSaftJournalMatch, isBankLedgerAccount } from "../server/bank-auto-match";
+import { findSaftJournalCandidates, findUniqueSaftJournalMatch, isBankLedgerAccount } from "../server/bank-auto-match";
 
 const accounts = [
   { id: 1, accountNumber: "5820", name: "Bankkonto", type: "aktiv" },
@@ -82,4 +82,33 @@ test("en allerede anvendt postering matches ikke igen", () => {
     accounts,
     new Set([10]),
   ), null);
+});
+
+test("manuel afstemning viser alle ledige, ens SAF-T-kandidater", () => {
+  const duplicate = { ...entry, id: 11, entryNumber: "2024-0011", description: "Løn Aurel Dan" };
+  const candidates = findSaftJournalCandidates(
+    { date: "2024-12-27", description: "Til Aurel Dan", amount: -713.55 },
+    [{ ...entry, entryNumber: "2024-0010" }, duplicate],
+    [
+      { journalEntryId: 10, accountId: 1, description: "Til Aurel Dan", debit: 0, credit: 713.55 },
+      { journalEntryId: 11, accountId: 1, description: "Til Aurel Dan", debit: 0, credit: 713.55 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [10, 11]);
+  assert.equal(candidates[1].entryNumber, "2024-0011");
+});
+
+test("manuel afstemning skjuler en SAF-T-postering der allerede er brugt", () => {
+  const candidates = findSaftJournalCandidates(
+    { date: "2024-12-27", amount: -713.55 },
+    [entry, { ...entry, id: 11 }],
+    [
+      { journalEntryId: 10, accountId: 1, debit: 0, credit: 713.55 },
+      { journalEntryId: 11, accountId: 1, debit: 0, credit: 713.55 },
+    ],
+    accounts,
+    new Set([10]),
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [11]);
 });
