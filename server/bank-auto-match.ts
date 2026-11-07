@@ -80,6 +80,10 @@ function daysAfter(later: unknown, earlier: unknown) {
   return Math.round((laterTime - earlierTime) / 86_400_000);
 }
 
+function daysApart(left: unknown, right: unknown) {
+  return Math.abs(daysAfter(left, right));
+}
+
 function merchantTokens(value: unknown) {
   const ignoredSuffixes = new Set([
     "a", "s", "as", "aps", "danmark", "denmark", "hiller", "hilleroed", "hillerod",
@@ -125,7 +129,14 @@ export function isStrongMerchantMatch(left: unknown, right: unknown) {
     "aconto", "acontolon", "bank", "betaling", "incomesorter", "interest", "lon",
     "overforsel", "payment", "privat", "rente", "transfer",
   ]);
-  if (leftKey.length < 5 || rightKey.length < 5 || genericKeys.has(leftKey) || genericKeys.has(rightKey)) return false;
+  if (genericKeys.has(leftKey) || genericKeys.has(rightKey)) return false;
+  if (leftKey === rightKey && leftKey.length >= 2) return true;
+  const knownShortBrands = ["104", "jem", "unox"];
+  if (knownShortBrands.some((brand) => leftKey.startsWith(brand) && rightKey.startsWith(brand))) return true;
+  const knownBrandAliases = [["q8", "f24"]];
+  if (knownBrandAliases.some((aliases) =>
+    aliases.some((alias) => leftKey.startsWith(alias)) && aliases.some((alias) => rightKey.startsWith(alias)))) return true;
+  if (leftKey.length < 5 || rightKey.length < 5) return false;
   if (leftKey === rightKey || leftKey.startsWith(rightKey) || rightKey.startsWith(leftKey)) return true;
   if (differsByAtMostOneCharacter(leftKey, rightKey)) return true;
 
@@ -136,6 +147,20 @@ export function isStrongMerchantMatch(left: unknown, right: unknown) {
   return merchantTokens(left).some((token) =>
     token.length >= 5 && !genericBrandTokens.has(token) && rightTokens.has(token),
   );
+}
+
+function invoiceNumber(value: unknown) {
+  const text = normalizedText(value);
+  if (/^\d{1,8}$/.test(text)) return text;
+  if (!/(^| )(fak|faktura|indbet)( |$)/.test(text)) return null;
+  const numbers = text.match(/\b\d{1,8}\b/g);
+  return numbers?.at(-1) ?? null;
+}
+
+function isStrongInvoiceMatch(left: unknown, right: unknown) {
+  const leftInvoice = invoiceNumber(left);
+  const rightInvoice = invoiceNumber(right);
+  return !!leftInvoice && leftInvoice === rightInvoice;
 }
 
 export type SaftJournalCandidate = {
@@ -283,10 +308,10 @@ export function findSafeImportedJournalMatches(
 
 /**
  * Finds reciprocal one-to-one matches where the bank date follows the posted
- * imported journal date by one to four days. Besides signed amount equality,
- * a strong, non-generic merchant-name match is mandatory. This covers normal
- * card settlement delays, including a long weekend, without guessing repeated
- * payroll or transfer rows.
+ * imported journal date by one to four days in either direction. Besides signed
+ * amount equality, a strong merchant-name or invoice-number match is mandatory.
+ * This covers normal card settlement and bookkeeping-date delays, including a
+ * long weekend, without guessing repeated payroll or transfer rows.
  */
 export function findSafeDelayedImportedJournalMatches(
   transactions: BankTransactionRow[],
@@ -317,8 +342,8 @@ export function findSafeDelayedImportedJournalMatches(
     .map((transaction) => {
       const candidateIds = new Set<number>();
       for (const entry of eligibleEntries) {
-        const lagDays = daysAfter(transaction.date, entry.date);
-        if (lagDays < 1 || lagDays > 4) continue;
+        const dateDifference = daysApart(transaction.date, entry.date);
+        if (dateDifference < 1 || dateDifference > 4) continue;
         const bankLines = (linesByEntry.get(entry.id) ?? []).filter((line) => {
           if (!bankAccountIds.has(line.accountId)) return false;
           const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
@@ -329,7 +354,9 @@ export function findSafeDelayedImportedJournalMatches(
         const signedBankAmount = Number(line.debit || 0) - Number(line.credit || 0);
         if (!sameAmount(signedBankAmount, Number(transaction.amount))) continue;
         if (!isStrongMerchantMatch(transaction.description, line.description ?? entry.description)
-          && !isStrongMerchantMatch(transaction.description, entry.description)) continue;
+          && !isStrongMerchantMatch(transaction.description, entry.description)
+          && !isStrongInvoiceMatch(transaction.description, line.description ?? entry.description)
+          && !isStrongInvoiceMatch(transaction.description, entry.description)) continue;
         candidateIds.add(entry.id);
       }
       return { transactionId: Number(transaction.id), candidateIds: Array.from(candidateIds) };

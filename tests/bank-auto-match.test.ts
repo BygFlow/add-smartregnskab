@@ -253,6 +253,42 @@ test("forsinket kortafregning accepterer en entydig fire-dages weekendforskydnin
   assert.deepEqual(matches, [{ transactionId: 100, journalEntryId: 20 }]);
 });
 
+test("entydig bogføringsdato efter bankdato matches med samme fakturanummer", () => {
+  const matches = findSafeDelayedImportedJournalMatches(
+    [{ id: 21, date: "2025-04-10", description: "137", amount: 42_064.86, status: "afventer" }],
+    [{ ...entry, id: 31, date: "2025-04-13", description: "Indbet. fak. 137" }],
+    [{ journalEntryId: 31, accountId: 1, description: "Indbet. fak. 137", debit: 42_064.86, credit: 0 }],
+    accounts,
+  );
+  assert.deepEqual(matches, [{ transactionId: 21, journalEntryId: 31 }]);
+});
+
+test("kendte korte brands matches kun som entydige nærdato-par", () => {
+  const matches = findSafeDelayedImportedJournalMatches(
+    [
+      { id: 22, date: "2025-06-11", description: "10-4.DK", amount: -50_524.50, status: "afventer" },
+      { id: 23, date: "2025-05-15", description: "F24 Tank", amount: -950, status: "afventer" },
+      { id: 24, date: "2025-07-13", description: "Uno-X", amount: -88.64, status: "afventer" },
+    ],
+    [
+      { ...entry, id: 32, date: "2025-06-10", description: "10-4 Tømmerhandel" },
+      { ...entry, id: 33, date: "2025-05-14", description: "Q8 DANMARK" },
+      { ...entry, id: 34, date: "2025-07-12", description: "Uno-X" },
+    ],
+    [
+      { journalEntryId: 32, accountId: 1, description: "10-4 Tømmerhandel", debit: 0, credit: 50_524.50 },
+      { journalEntryId: 33, accountId: 1, description: "Q8 DANMARK", debit: 0, credit: 950 },
+      { journalEntryId: 34, accountId: 1, description: "Uno-X", debit: 0, credit: 88.64 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(matches, [
+    { transactionId: 22, journalEntryId: 32 },
+    { transactionId: 23, journalEntryId: 33 },
+    { transactionId: 24, journalEntryId: 34 },
+  ]);
+});
+
 test("leverandørmatch normaliserer HTML, bindeord og filialtekst", () => {
   assert.equal(isStrongMerchantMatch("Jem & Fix", "Jem &amp; Fix"), true);
   assert.equal(isStrongMerchantMatch("Jem & Fix", "Jem og fix stolpebeton"), true);
