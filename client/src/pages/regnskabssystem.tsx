@@ -222,6 +222,7 @@ type JournalEntry = {
   description?: string | null;
   reference?: string | null;
   sourceType?: string | null;
+  sourceId?: number | null;
   status?: string | null;
   amount?: number | null;
   lines?: JournalLine[];
@@ -951,6 +952,26 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
 
   const detail = detailQuery.data;
+  const [reverseEntry, setReverseEntry] = useState<JournalEntry | null>(null);
+  const [reverseDate, setReverseDate] = useState("");
+  const reverseEntryMut = useMutation({
+    mutationFn: async ({ id, date }: { id: number; date: string }) =>
+      (await apiRequest("POST", `/api/journal-entries/${id}/reverse`, { date })).json(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem/dashboard", effectiveCompanyId] });
+      setReverseEntry(null);
+      setReverseDate("");
+      toast({ title: "Postering tilbageført", description: "Der er oprettet en låst modpostering i revisionssporet." });
+    },
+    onError: (err: unknown) => toast({
+      title: "Kunne ikke tilbageføre posteringen",
+      description: err instanceof Error ? err.message : "Ukendt fejl",
+      variant: "destructive",
+    }),
+  });
 
   /* Dashboard */
   const dashboardQuery = useQuery<DashboardStats>({
@@ -2512,6 +2533,10 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   const accounts = detail?.accounts ?? [];
   const entries = detail?.entries ?? [];
+  const reversedEntryIds = new Set(entries
+    .filter((entry) => String(entry.sourceType ?? "").toLocaleLowerCase("da-DK") === "tilbageførsel")
+    .map((entry) => Number(entry.sourceId))
+    .filter((id) => Number.isInteger(id) && id > 0));
   const vatPeriods = detail?.vatPeriods ?? [];
   const selectedCompany = companies.find((company) => company.id === effectiveCompanyId);
   const activeAddon = getSmartRegnskabAddonForRoute(activeTab);
@@ -2818,12 +2843,13 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                               <th className="font-medium px-3 py-1.5">Kilde</th>
                               <th className="font-medium px-3 py-1.5">Status</th>
                               <th className="font-medium px-3 py-1.5 text-right">Beløb</th>
+                              <th className="font-medium px-3 py-1.5 text-right">Handling</th>
                             </tr>
                           </thead>
                           <tbody>
                             {entries.length === 0 ? (
                               <tr>
-                                <td colSpan={7} className="px-3 py-3 text-muted-foreground">
+                                <td colSpan={8} className="px-3 py-3 text-muted-foreground">
                                   Ingen bogføringsposter.
                                 </td>
                               </tr>
@@ -2848,6 +2874,24 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                     <td className="px-3 py-1.5 text-right tabular-nums">
                                       {money(e.amount)}
                                     </td>
+                                    <td className="px-3 py-1.5 text-right">
+                                      {["bogført", "bogfort", "afstemt"].includes(String(e.status ?? "").toLocaleLowerCase("da-DK"))
+                                        && String(e.sourceType ?? "").toLocaleLowerCase("da-DK") !== "tilbageførsel"
+                                        && !reversedEntryIds.has(e.id) && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          data-testid={`btn-reverse-entry-${e.id}`}
+                                          onClick={() => {
+                                            setReverseEntry(e);
+                                            setReverseDate(String(e.date ?? "").slice(0, 10));
+                                          }}
+                                        >
+                                          <ArrowLeftRight className="size-3.5" />
+                                          Tilbagefør
+                                        </Button>
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })
@@ -2856,6 +2900,50 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         </table>
                       </div>
                     </SectionCard>
+
+                    <Dialog open={!!reverseEntry} onOpenChange={(open) => {
+                      if (!open && !reverseEntryMut.isPending) {
+                        setReverseEntry(null);
+                        setReverseDate("");
+                      }
+                    }}>
+                      <DialogContent data-testid="dialog-reverse-entry">
+                        <DialogHeader>
+                          <DialogTitle>Tilbagefør bogført postering</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3 text-sm">
+                          <p>
+                            Der oprettes en ny modpostering. Originalen slettes ikke, så revisionssporet bevares.
+                          </p>
+                          <div className="rounded-md border border-border bg-muted/40 p-3 text-xs">
+                            <p className="font-mono">{reverseEntry?.entryNumber}</p>
+                            <p>{reverseEntry?.description}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="reverse-entry-date">Dato for modpostering</Label>
+                            <Input
+                              id="reverse-entry-date"
+                              type="date"
+                              value={reverseDate}
+                              onChange={(event) => setReverseDate(event.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setReverseEntry(null)} disabled={reverseEntryMut.isPending}>
+                            Annuller
+                          </Button>
+                          <Button
+                            data-testid="btn-confirm-reverse-entry"
+                            onClick={() => reverseEntry && reverseEntryMut.mutate({ id: reverseEntry.id, date: reverseDate })}
+                            disabled={!reverseEntry || !reverseDate || reverseEntryMut.isPending}
+                          >
+                            {reverseEntryMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                            Tilbagefør postering
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </>
                 )}
               </TabsContent>
