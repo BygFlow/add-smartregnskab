@@ -29,6 +29,7 @@ import { buildAccountingReport } from "./accounting-reports";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
+import { findUniqueSaftJournalMatch } from "./bank-auto-match";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5385,15 +5386,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const transactions = await storage.all("bank_transactions", cid);
     const invoices = await storage.all("invoices", cid);
     const vouchers = await storage.all("vouchers", cid);
+    const journalEntries = await storage.all("journal_entries", cid);
+    const journalLines = await storage.all("journal_lines", cid);
+    const accounts = await storage.all("accounts", cid);
+    const usedJournalEntryIds = new Set<number>(transactions
+      .filter((tx: any) => ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
+      .map((tx: any) => Number(tx.matchedId)));
     let matched = 0;
+    let matchedInvoices = 0;
+    let matchedVouchers = 0;
+    let matchedJournalEntries = 0;
     for (const tx of transactions) {
       if (tx.status !== "afventer") continue;
       const inv = invoices.find((i: any) => Math.abs(i.totalAmount - tx.amount) < 0.01 && i.status !== "betalt");
-      if (inv) { await storage.update("bank_transactions", tx.id, { matchedType: "invoice", matchedId: inv.id, status: "matchet" }, cid); matched++; continue; }
+      if (inv) { await storage.update("bank_transactions", tx.id, { matchedType: "invoice", matchedId: inv.id, status: "matchet" }, cid); matched++; matchedInvoices++; continue; }
       const vou = vouchers.find((v: any) => Math.abs(v.amount - Math.abs(tx.amount)) < 0.01 && v.status === "kladde");
-      if (vou) { await storage.update("bank_transactions", tx.id, { matchedType: "voucher", matchedId: vou.id, status: "matchet" }, cid); matched++; continue; }
+      if (vou) { await storage.update("bank_transactions", tx.id, { matchedType: "voucher", matchedId: vou.id, status: "matchet" }, cid); matched++; matchedVouchers++; continue; }
+
+      const journalEntryId = findUniqueSaftJournalMatch(tx, journalEntries, journalLines, accounts, usedJournalEntryIds);
+      if (journalEntryId) {
+        await storage.update("bank_transactions", tx.id, { matchedType: "journal_entry", matchedId: journalEntryId, status: "matchet" }, cid);
+        usedJournalEntryIds.add(journalEntryId);
+        matched++;
+        matchedJournalEntries++;
+      }
     }
-    res.json({ matched });
+    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matched;
+    res.json({ matched, matchedInvoices, matchedVouchers, matchedJournalEntries, remaining: Math.max(0, remaining) });
   }));
 
   // ═══════════════════════════════════════════════════════════════

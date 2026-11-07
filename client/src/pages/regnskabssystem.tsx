@@ -658,6 +658,15 @@ const BANK_STATUS_LABEL: Record<string, string> = {
   ignoreret: "Ignoreret",
 };
 
+const BANK_MATCH_LABEL: Record<string, string> = {
+  invoice: "Faktura",
+  faktura: "Faktura",
+  voucher: "Bilag",
+  bilag: "Bilag",
+  journal: "SAF-T-postering",
+  journal_entry: "SAF-T-postering",
+};
+
 const TAX_STATUS_VARIANT: Record<string, "blue" | "amber" | "green" | "red" | "gray"> = {
   pending: "amber",
   afventer: "amber",
@@ -1157,9 +1166,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       const res = await apiRequest("POST", "/api/bank-transactions/auto-match", {});
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: { matched?: number; matchedJournalEntries?: number; remaining?: number }) => {
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
-      toast({ title: "Auto-match kørt", description: "Banktransaktioner er forsøgt matchet automatisk." });
+      const matched = result.matched ?? 0;
+      const saftMatches = result.matchedJournalEntries ?? 0;
+      toast({
+        title: `${matched} bankpostering${matched === 1 ? "" : "er"} matchet`,
+        description: saftMatches
+          ? `${saftMatches} blev matchet entydigt med SAF-T. ${result.remaining ?? 0} kræver manuel kontrol.`
+          : `${result.remaining ?? 0} kræver fortsat manuel kontrol.`,
+      });
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
@@ -2998,7 +3014,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                     />
                                   )}
                                 </td>
-                                <td className="px-3 py-1.5">{t.matchedType ?? "—"}</td>
+                                <td className="px-3 py-1.5">{t.matchedType ? (BANK_MATCH_LABEL[t.matchedType] ?? t.matchedType) : "—"}</td>
                                 <td className="px-3 py-1.5">
                                   <div className="flex items-center justify-end gap-1">
                                     <Button
