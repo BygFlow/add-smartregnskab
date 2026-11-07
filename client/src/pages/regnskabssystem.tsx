@@ -6611,7 +6611,11 @@ function YearControlView({ data, testId }: { data: ReportData; testId: string })
           <p className="text-sm font-semibold">{data.companyName ?? "Virksomhed"}</p>
           <p className="text-xs text-muted-foreground">Kontrol af regnskabsåret {data.period ?? "—"}</p>
         </div>
-        <span className="text-[11px] text-muted-foreground">Beregnet direkte fra bogførte posteringer</span>
+        <span className="text-[11px] text-muted-foreground">
+          {data.filedAnnualReport
+            ? "Officiel årsrapport med særskilt bogføringsafstemning"
+            : "Beregnet direkte fra bogførte posteringer"}
+        </span>
       </div>
       {(data.controls ?? []).map((control) => {
         const status = control.status ?? "warning";

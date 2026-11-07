@@ -84,3 +84,70 @@ test("en ubalanceret postering markeres som fejl", () => {
   assert.equal(report.controls?.[0]?.status, "error");
   assert.equal(report.controls?.[0]?.metrics.find((metric) => metric.label === "Forskel")?.value, -1_000);
 });
+
+test("indsendt årsrapport er officielt facit uden at overskrive bogføringen", () => {
+  const report = buildAccountingReport({
+    type: "resultatopgoerelse",
+    requestedYear: 2024,
+    accounts,
+    entries,
+    lines,
+    bankTransactions: [],
+    vatPeriods: [],
+    annualReports: [{
+      year: 2024,
+      result: -134_428,
+      taxResult: 37_662,
+      balanceTotal: 183_252,
+      equity: -94_428,
+      status: "indsendt",
+      xbrlStatus: "indsendt",
+      submittedToErhvervsstyrelsen: 1,
+      auditorPackage: JSON.stringify({
+        grossProfit: -127_377,
+        operatingResult: -171_711,
+        resultBeforeTax: -172_090,
+        liabilitiesTotal: 277_680,
+      }),
+    }],
+  });
+
+  assert.equal(report.sections?.[2]?.title, "Bogført resultat");
+  assert.equal(report.sections?.[2]?.total, 1_000);
+  assert.equal(report.sections?.[3]?.title, "Indsendt årsrapport · Officielt resultat");
+  assert.equal(report.sections?.[3]?.total, -134_428);
+  assert.equal(report.filedAnnualReport?.bookkeepingResult, 1_000);
+  assert.equal(report.filedAnnualReport?.reconciliationDifference, -135_428);
+  assert.match(report.notice ?? "", /facit/i);
+});
+
+test("årsrapportår er tilgængeligt selv uden bogførte posteringer", () => {
+  const report = buildAccountingReport({
+    type: "aarskontrol",
+    requestedYear: 2024,
+    companyName: "Holding ApS",
+    accounts: [],
+    entries: [],
+    lines: [],
+    bankTransactions: [],
+    vatPeriods: [],
+    annualReports: [{
+      year: 2024,
+      result: -4_875,
+      taxResult: 1_375,
+      balanceTotal: 41_375,
+      equity: 35_125,
+      status: "indsendt",
+      xbrlStatus: "indsendt",
+      submittedToErhvervsstyrelsen: 1,
+      auditorPackage: JSON.stringify({ resultBeforeTax: -6_250, liabilitiesTotal: 6_250 }),
+    }],
+  });
+
+  assert.equal(report.year, 2024);
+  assert.deepEqual(report.availableYears, [2024]);
+  assert.equal(report.controls?.[0]?.title, "Indsendt årsrapport");
+  assert.equal(report.controls?.[0]?.metrics.find((metric) => metric.label === "Årets resultat")?.value, -4_875);
+  assert.equal(report.controls?.[1]?.title, "Afstemning mod årsrapport");
+  assert.equal(report.controls?.[1]?.status, "warning");
+});

@@ -36,6 +36,31 @@ type VatPeriodRow = {
   status: string;
 };
 
+type AnnualReportRow = {
+  year: number;
+  result: number;
+  taxResult: number;
+  balanceTotal: number;
+  equity: number;
+  xbrlStatus?: string | null;
+  auditorPackage?: string | null;
+  status?: string | null;
+  submittedToErhvervsstyrelsen?: number | boolean | null;
+};
+
+type FiledAnnualReportDetails = {
+  periodStart?: string;
+  periodEnd?: string;
+  publishedAt?: string;
+  grossProfit?: number;
+  operatingResult?: number;
+  resultBeforeTax?: number;
+  taxBenefit?: number;
+  liabilitiesTotal?: number;
+  sourceLabel?: string;
+  sourceUrl?: string;
+};
+
 type ReportMetric = {
   label: string;
   value: number | string;
@@ -43,7 +68,7 @@ type ReportMetric = {
 };
 
 type ReportControl = {
-  key: "ledger" | "bank" | "vat";
+  key: "ledger" | "bank" | "vat" | "filed-annual-report" | "annual-report-reconciliation";
   title: string;
   status: "ok" | "warning" | "error";
   summary: string;
@@ -59,11 +84,28 @@ export type AccountingReportInput = {
   lines: LineRow[];
   bankTransactions: BankTransactionRow[];
   vatPeriods: VatPeriodRow[];
+  annualReports?: AnnualReportRow[];
 };
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const numberValue = (value: unknown) => Number(value || 0);
 const yearFromDate = (value: string) => Number(String(value || "").slice(0, 4));
+
+function filedAnnualReportDetails(raw: string | null | undefined): FiledAnnualReportDetails {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed as FiledAnnualReportDetails : {};
+  } catch {
+    return {};
+  }
+}
+
+function isFiledAnnualReport(report: AnnualReportRow) {
+  return Boolean(report.submittedToErhvervsstyrelsen)
+    || report.status === "indsendt"
+    || report.xbrlStatus === "indsendt";
+}
 
 function reportLines(
   accountRows: AccountRow[],
@@ -92,10 +134,19 @@ export function availableAccountingYears(entries: EntryRow[]) {
 }
 
 export function buildAccountingReport(input: AccountingReportInput) {
-  const availableYears = availableAccountingYears(input.entries);
+  const availableYears = Array.from(new Set([
+    ...availableAccountingYears(input.entries),
+    ...(input.annualReports ?? [])
+      .filter(isFiledAnnualReport)
+      .map((report) => Number(report.year))
+      .filter((reportYear) => Number.isInteger(reportYear) && reportYear >= 1900 && reportYear <= 2200),
+  ])).sort((a, b) => b - a);
   const year = input.requestedYear && availableYears.includes(input.requestedYear)
     ? input.requestedYear
     : (availableYears[0] ?? input.requestedYear ?? new Date().getFullYear());
+  const filedAnnualReport = (input.annualReports ?? [])
+    .find((report) => Number(report.year) === year && isFiledAnnualReport(report));
+  const filedDetails = filedAnnualReportDetails(filedAnnualReport?.auditorPackage);
   const entries = input.entries.filter((entry) => entry.status !== "kladde" && yearFromDate(entry.date) === year);
   const entryIds = new Set(entries.map((entry) => entry.id));
   const lines = input.lines.filter((line) => entryIds.has(line.journalEntryId));
@@ -138,6 +189,19 @@ export function buildAccountingReport(input: AccountingReportInput) {
   const result = round2(revenue - expenses);
   const assets = round2(assetLines.reduce((sum, line) => sum + line.amount, 0));
   const liabilities = round2(liabilityLines.reduce((sum, line) => sum + line.amount, 0));
+  const filedResult = filedAnnualReport ? round2(numberValue(filedAnnualReport.result)) : null;
+  const reconciliationDifference = filedResult == null ? null : round2(filedResult - result);
+  const filedReportSummary = filedAnnualReport ? {
+    year,
+    result: filedResult,
+    taxResult: round2(numberValue(filedAnnualReport.taxResult)),
+    balanceTotal: round2(numberValue(filedAnnualReport.balanceTotal)),
+    equity: round2(numberValue(filedAnnualReport.equity)),
+    bookkeepingResult: result,
+    reconciliationDifference,
+    matchesBookkeeping: Math.abs(reconciliationDifference ?? 0) <= 0.005,
+    ...filedDetails,
+  } : null;
 
   // Kun selve momskontiene indgår i momssaldoen. En udgifts- eller salgskonto
   // med en momskode er ikke i sig selv en momskonto.
@@ -162,9 +226,30 @@ export function buildAccountingReport(input: AccountingReportInput) {
     period: String(year),
     year,
     availableYears,
+    filedAnnualReport: filedReportSummary,
   };
 
   if (input.type === "resultatopgoerelse") {
+    if (filedAnnualReport && filedResult != null) {
+      const filedLines = [
+        filedDetails.grossProfit == null ? null : { label: "Bruttoresultat", amount: round2(filedDetails.grossProfit) },
+        filedDetails.operatingResult == null ? null : { label: "Driftsresultat", amount: round2(filedDetails.operatingResult) },
+        filedDetails.resultBeforeTax == null ? null : { label: "Resultat før skat", amount: round2(filedDetails.resultBeforeTax) },
+        { label: "Skat af årets resultat", amount: round2(numberValue(filedAnnualReport.taxResult)) },
+      ].filter((line): line is { label: string; amount: number } => line != null);
+      return {
+        ...base,
+        notice: Math.abs(reconciliationDifference ?? 0) <= 0.005
+          ? "Bogføringen stemmer med den indsendte årsrapport."
+          : `Den indsendte årsrapport er facit. Bogføringen afviger med ${Math.abs(reconciliationDifference ?? 0).toLocaleString("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr. og bevares særskilt til dokumenteret afstemning.`,
+        sections: [
+          { title: "Bogføring · Indtægter", lines: incomeLines, total: revenue },
+          { title: "Bogføring · Udgifter", lines: expenseLines, total: expenses },
+          { title: "Bogført resultat", lines: [], total: result },
+          { title: "Indsendt årsrapport · Officielt resultat", lines: filedLines, total: filedResult },
+        ],
+      };
+    }
     return {
       ...base,
       sections: [
@@ -176,6 +261,26 @@ export function buildAccountingReport(input: AccountingReportInput) {
   }
 
   if (input.type === "balance") {
+    if (filedAnnualReport && filedResult != null) {
+      const officialLiabilities = filedDetails.liabilitiesTotal == null
+        ? round2(numberValue(filedAnnualReport.balanceTotal) - numberValue(filedAnnualReport.equity))
+        : round2(filedDetails.liabilitiesTotal);
+      return {
+        ...base,
+        notice: "De officielle totaler nedenfor følger den indsendte årsrapport. De bogførte konti vises separat som revisionsspor.",
+        sections: [
+          { title: "Bogføring · Aktiver", lines: assetLines, total: assets },
+          { title: "Bogføring · Passiver", lines: liabilityLines, total: liabilities },
+          { title: "Bogført resultat", lines: [], total: result },
+          { title: "Indsendt årsrapport · Officiel balance", lines: [
+            { label: "Aktiver i alt", amount: round2(numberValue(filedAnnualReport.balanceTotal)) },
+            { label: "Egenkapital", amount: round2(numberValue(filedAnnualReport.equity)) },
+            { label: "Gæld i alt", amount: officialLiabilities },
+            { label: "Årets resultat", amount: filedResult },
+          ], total: round2(numberValue(filedAnnualReport.balanceTotal)) },
+        ],
+      };
+    }
     return {
       ...base,
       sections: [
@@ -261,6 +366,34 @@ export function buildAccountingReport(input: AccountingReportInput) {
       ],
     },
   ];
+
+  if (filedAnnualReport && filedResult != null) {
+    controls.unshift({
+      key: "filed-annual-report",
+      title: "Indsendt årsrapport",
+      status: "ok",
+      summary: `De officielle ${year}-tal er registreret som indsendt til Erhvervsstyrelsen.`,
+      metrics: [
+        { label: "Årets resultat", value: filedResult, format: "money" },
+        { label: "Skat", value: round2(numberValue(filedAnnualReport.taxResult)), format: "money" },
+        { label: "Aktiver i alt", value: round2(numberValue(filedAnnualReport.balanceTotal)), format: "money" },
+        { label: "Egenkapital", value: round2(numberValue(filedAnnualReport.equity)), format: "money" },
+      ],
+    });
+    controls.splice(1, 0, {
+      key: "annual-report-reconciliation",
+      title: "Afstemning mod årsrapport",
+      status: Math.abs(reconciliationDifference ?? 0) <= 0.005 ? "ok" : "warning",
+      summary: Math.abs(reconciliationDifference ?? 0) <= 0.005
+        ? "Bogført resultat stemmer med den indsendte årsrapport."
+        : "Det importerede bogføringsresultat afviger fra den indsendte årsrapport. Årsrapportens tal vises som officielt facit uden at overskrive revisionssporet.",
+      metrics: [
+        { label: "Bogført resultat", value: result, format: "money" },
+        { label: "Officielt resultat", value: filedResult, format: "money" },
+        { label: "Difference", value: reconciliationDifference ?? 0, format: "money" },
+      ],
+    });
+  }
 
   return {
     ...base,

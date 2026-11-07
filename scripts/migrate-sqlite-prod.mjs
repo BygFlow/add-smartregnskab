@@ -15,6 +15,7 @@ const LEGACY_DATA_MIGRATIONS = [
   "0021_move_misimported_multiservice_bank",
   "0022_remove_unused_multiclean_bank_import",
   "0023_correct_null_account_ref_imports",
+  "0024_register_filed_2024_annual_reports",
 ];
 
 function tableExists(sqlite, table) {
@@ -34,6 +35,15 @@ function runLegacyDataMigrations(sqlite, migrationsFolder) {
   for (const tag of LEGACY_DATA_MIGRATIONS) {
     const applied = sqlite.prepare("SELECT 1 FROM add_legacy_migrations WHERE tag = ?").get(tag);
     if (applied) continue;
+
+    // Nogle tidlige legacy-databaser indeholder kun kerne- og banktabellerne.
+    // Lad årsrapportregistreringen vente, indtil dens tabeller findes, i stedet
+    // for at blokere de uafhængige bankkorrektioner og hele opstarten.
+    if (tag === "0024_register_filed_2024_annual_reports"
+      && (!tableExists(sqlite, "annual_reports") || !tableExists(sqlite, "audit_logs"))) {
+      console.log(`   Springer ${tag} over — årsrapporttabellerne findes ikke i denne legacy-database.`);
+      continue;
+    }
 
     const sql = readFileSync(join(migrationsFolder, `${tag}.sql`), "utf8");
     const statements = sql

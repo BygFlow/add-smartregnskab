@@ -5530,9 +5530,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (requestedYear != null && (!Number.isInteger(requestedYear) || requestedYear < 1900 || requestedYear > 2200)) {
       return res.status(400).json({ error: "Ugyldigt regnskabsår." });
     }
-    const [company, entries, lines, accounts, bankTransactions, vatPeriods] = await Promise.all([
+    const [company, entries, lines, accounts, bankTransactions, vatPeriods, annualReports] = await Promise.all([
       storage.getCompany(cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
       storage.all("accounts", cid), storage.all("bank_transactions", cid), storage.all("vat_periods", cid),
+      storage.all("annual_reports", cid),
     ]);
     const report = buildAccountingReport({
       type: type === "revisorpakke" ? "aarskontrol" : type,
@@ -5543,8 +5544,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       lines: lines as any[],
       bankTransactions: bankTransactions as any[],
       vatPeriods: vatPeriods as any[],
+      annualReports: annualReports as any[],
     });
-    res.json(type === "revisorpakke" ? { ...report, type, raw: { entries, lines, accounts, bankTransactions, vatPeriods } } : report);
+    res.json(type === "revisorpakke" ? { ...report, type, raw: { entries, lines, accounts, bankTransactions, vatPeriods, annualReports } } : report);
   }));
 
   // ═══════════════════════════════════════════════════════════════
