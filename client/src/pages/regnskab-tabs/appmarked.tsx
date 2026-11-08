@@ -55,6 +55,10 @@ type AiUsage = {
   aiAddonAvailable: boolean;
 };
 
+type CurrentCompany = {
+  aiEnabled?: number | null;
+};
+
 const externalApps = [
   { name: "AiiA / Mastercard Open Banking", category: "Bank", description: "Automatisk bankdata og afstemningsgrundlag via kundens samtykke.", route: "bank_integrationer" },
   { name: "Sproom", category: "E-fakturering", description: "NemHandel og Peppol til afsendelse og modtagelse af e-fakturaer.", route: "einvoice_queue" },
@@ -132,6 +136,29 @@ export default function Appmarked({ companyId }: { companyId: number }) {
     queryKey: ["/api/ai-usage"],
     queryFn: async () => (await apiRequest("GET", "/api/ai-usage")).json(),
   });
+  const currentCompany = useQuery<CurrentCompany>({
+    queryKey: ["/api/company", companyId],
+    queryFn: async () => (await apiRequest("GET", "/api/company")).json(),
+  });
+  const activateIncludedAi = useMutation({
+    mutationFn: async () => (await apiRequest("PATCH", "/api/company/ai", { enabled: true })).json(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/company", companyId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/ai-usage"] }),
+        refresh(),
+      ]);
+      toast({
+        title: "AI-regnskab er aktiveret",
+        description: "Funktionen var allerede inkluderet i pakken, så månedsprisen er uændret.",
+      });
+    },
+    onError: (error: unknown) => toast({
+      title: "AI-regnskab kunne ikke aktiveres",
+      description: error instanceof Error ? error.message : "Prøv igen.",
+      variant: "destructive",
+    }),
+  });
   const toggleAiAddon = useMutation({
     mutationFn: async (enabled: boolean) => (await apiRequest("POST", "/api/subscription/ai-addon", {
       enabled,
@@ -202,6 +229,10 @@ export default function Appmarked({ companyId }: { companyId: number }) {
         {SMARTREGNSKAB_ADDONS.map((module) => {
           const included = isSmartRegnskabAddonIncluded(module, { hasFeature, hasAI });
           const isAi = module.feature === "ai_bogforing";
+          const aiIncludedByPlan = isAi && planFeatures(subscription.data?.plan?.features).includes("ai_bogforing");
+          const canActivateIncludedAi = aiIncludedByPlan
+            && currentCompany.data?.aiEnabled !== 1
+            && ["leder", "platform_admin"].includes(String(user?.role ?? ""));
           const canToggleAi = isAi && user?.role === "leder" && aiUsage.data?.aiAddonAvailable;
           const aiAddonPrice = Number(subscription.data?.plan?.aiAddonPrice ?? 0);
           const aiAddonCredits = Number(subscription.data?.plan?.aiAddonCredits ?? 0);
@@ -213,7 +244,8 @@ export default function Appmarked({ companyId }: { companyId: number }) {
             <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-primary" checked={aiTermsAccepted} onChange={(event) => setAiTermsAccepted(event.target.checked)} />
             <span>Jeg accepterer <button type="button" className="font-semibold text-primary underline" onClick={(event) => { event.preventDefault(); setShowSubscriptionTerms(true); }}>abonnementsbetingelserne</button> for dette tilkøb.</span>
           </label>}
-          {canToggleAi && aiUsage.data?.aiAddonEnabled ? <Button variant="outline" className="mt-4 w-full justify-between" disabled={toggleAiAddon.isPending} onClick={() => { if (window.confirm("Fjern AI-tilkøbet nu? AI-adgangen stopper med det samme.")) toggleAiAddon.mutate(false); }}>Fjern AI-tilkøb <ArrowRight className="h-4 w-4" /></Button>
+          {canActivateIncludedAi ? <Button className="mt-4 w-full justify-between" disabled={activateIncludedAi.isPending} onClick={() => activateIncludedAi.mutate()}>Aktivér inkluderet AI <ArrowRight className="h-4 w-4" /></Button>
+            : canToggleAi && aiUsage.data?.aiAddonEnabled ? <Button variant="outline" className="mt-4 w-full justify-between" disabled={toggleAiAddon.isPending} onClick={() => { if (window.confirm("Fjern AI-tilkøbet nu? AI-adgangen stopper med det samme.")) toggleAiAddon.mutate(false); }}>Fjern AI-tilkøb <ArrowRight className="h-4 w-4" /></Button>
             : canToggleAi && !included ? <Button className="mt-4 w-full justify-between" disabled={!aiTermsAccepted || toggleAiAddon.isPending} onClick={() => toggleAiAddon.mutate(true)}>Aktivér AI-tilkøb <ArrowRight className="h-4 w-4" /></Button>
               : <Button variant="outline" className="mt-4 w-full justify-between" onClick={() => {
                 if (included) openTab(module.route);

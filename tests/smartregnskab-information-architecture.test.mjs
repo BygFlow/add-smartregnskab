@@ -42,6 +42,8 @@ test("optional products are collected in Appmarked instead of normal accounting 
 
   assert.match(marketplace, /Tilkøb og tillægsmoduler/);
   assert.match(marketplace, /Aktivér AI-tilkøb/);
+  assert.match(marketplace, /Aktivér inkluderet AI/);
+  assert.match(marketplace, /PATCH", "\/api\/company\/ai"/);
   assert.match(marketplace, /Se pakker og pris her/);
   assert.match(marketplace, /appmarked-package-selector/);
   assert.match(marketplace, /abonnementsbetingelserne/);
