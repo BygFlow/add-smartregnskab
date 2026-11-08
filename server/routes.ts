@@ -5316,7 +5316,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const limit = await checkAccountingLimit(cid, "documents");
     if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
-    const data = validate(insertVoucherSchema, { ...req.body, companyId: cid, status: "kladde", createdAt: nowIso() });
+    const voucherNumber = String(req.body?.voucherNumber ?? "").trim()
+      || `MAN-${Date.now()}-${randomBytes(3).toString("hex")}`;
+    const data = validate(insertVoucherSchema, {
+      ...req.body,
+      voucherNumber,
+      companyId: cid,
+      status: "kladde",
+      createdAt: nowIso(),
+    });
     res.status(201).json(await storage.insert("vouchers", data));
   }));
 

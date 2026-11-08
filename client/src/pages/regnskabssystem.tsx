@@ -3171,7 +3171,12 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       <Button
                         data-testid="btn-bilag-gem"
                         onClick={() => createVoucherMut.mutate()}
-                        disabled={createVoucherMut.isPending || !voucherForm.supplier || !voucherForm.amount}
+                          disabled={
+                            createVoucherMut.isPending
+                            || !voucherForm.supplier
+                            || !voucherForm.date
+                            || !voucherForm.amount
+                          }
                       >
                         {createVoucherMut.isPending && <Loader2 className="size-4 animate-spin" />}
                         Gem bilag
