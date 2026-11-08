@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { accounts, auditLogs, companies, documentInbox, journalEntries, journalLines, periodCloses, vouchers } from "@shared/schema";
 import { checkAccountingLimit, requireRole, tenantId } from "./auth";
 import { db } from "./storage";
@@ -140,6 +140,15 @@ type Extraction = {
   confidence: number; documentType: string; currency: string; reverseCharge: boolean; creditNote: boolean;
 };
 
+function canReceiveOcrUpdate(companyId: number, documentId: number) {
+  return and(
+    eq(documentInbox.id, documentId),
+    eq(documentInbox.companyId, companyId),
+    ne(documentInbox.status, "papirkurv"),
+    isNull(documentInbox.postedJournalEntryId),
+  );
+}
+
 export function validExtraction(value: Extraction) {
   return typeof value.supplier === "string" && value.supplier.length > 1
     && typeof value.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.invoiceDate)
@@ -205,7 +214,7 @@ async function processDocument(companyId: number, documentId: number) {
     // Undgå en permanent "AI læser"-status, når AI ikke er tilgængelig.
     // Filen er stadig sikkert modtaget og kan kontrolleres manuelt.
     db.update(documentInbox).set({ ocrStatus: "fejlet" })
-      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
+      .where(canReceiveOcrUpdate(companyId, documentId)).run();
     return;
   }
   if (document.ocrStatus === "behandlet" || document.postedJournalEntryId) return;
@@ -255,7 +264,7 @@ async function processDocument(companyId: number, documentId: number) {
   const extracted = JSON.parse(extractOpenAiText(payload)) as Extraction;
   if (!validExtraction(extracted)) {
     db.update(documentInbox).set({ ocrStatus: "fejlet", ocrData: JSON.stringify(extracted) })
-      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
+      .where(canReceiveOcrUpdate(companyId, documentId)).run();
     return;
   }
   const supplier = extracted.supplier.trim().slice(0, 200);
@@ -267,7 +276,7 @@ async function processDocument(companyId: number, documentId: number) {
   db.update(documentInbox).set({ supplier, invoiceDate: date, invoiceNumber, amount: total,
     vatAmount: vat, vatRate: total > vat ? Math.round(vat / (total - vat) * 10000) / 100 : 0,
     suggestedAccount: expense?.accountNumber || null, ocrStatus: "behandlet", ocrData: JSON.stringify(extracted),
-  }).where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
+  }).where(canReceiveOcrUpdate(companyId, documentId)).run();
 
   // Stop her: udtrækket vises som forslag i web- og mobilklienten. Den særskilte
   // /approve-rute foretager alle kontroller og registrerer den menneskelige
@@ -278,7 +287,7 @@ async function processReceivedDocument(companyId: number, documentId: number) {
   try { await processDocument(companyId, documentId); }
   catch (error) {
     db.update(documentInbox).set({ ocrStatus: "fejlet" })
-      .where(and(eq(documentInbox.id, documentId), eq(documentInbox.companyId, companyId), eq(documentInbox.status, "ny"))).run();
+      .where(canReceiveOcrUpdate(companyId, documentId)).run();
     console.warn("Bilag kræver manuel kontrol:", error instanceof Error ? error.message : "Ukendt fejl");
   }
 }
