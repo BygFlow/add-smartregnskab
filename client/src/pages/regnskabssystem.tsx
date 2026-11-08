@@ -1147,11 +1147,17 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   const createVoucherMut = useMutation({
     mutationFn: async () => {
+      const amount = Number(voucherForm.amount) || 0;
+      const vatRate = Number(voucherForm.vatRate) || 0;
+      const vatAmount = vatRate > 0
+        ? Math.round((amount * vatRate / (100 + vatRate)) * 100) / 100
+        : 0;
       const payload = {
         supplier: voucherForm.supplier,
         date: voucherForm.date,
-        amount: Number(voucherForm.amount) || 0,
-        vatRate: Number(voucherForm.vatRate) || 0,
+        amount,
+        vatRate,
+        vatAmount,
         description: voucherForm.description,
         category: voucherForm.category,
         companyId: effectiveCompanyId,
