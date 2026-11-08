@@ -18,6 +18,7 @@ const LEGACY_DATA_MIGRATIONS = [
   "0024_register_filed_2024_annual_reports",
   "0025_reconcile_filed_2024_reports",
   "0029_label_2025_bank_imports",
+  "0030_remove_smartdrift_aiia_test_bank",
 ];
 
 function tableExists(sqlite, table) {

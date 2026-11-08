@@ -22,6 +22,10 @@ const label2025ImportsMigration = readFileSync(
   new URL("../migrations/0029_label_2025_bank_imports.sql", import.meta.url),
   "utf8",
 );
+const removeAiiaTestBankMigration = readFileSync(
+  new URL("../migrations/0030_remove_smartdrift_aiia_test_bank.sql", import.meta.url),
+  "utf8",
+);
 const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 
 function applyMigration(db, sql = migration) {
@@ -257,6 +261,90 @@ test("2025 import batches receive only their customer-confirmed bank references"
   db.close();
 });
 
+test("customer-approved cleanup deletes exactly the 972 SmartDrift AiiA test rows", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
+    CREATE TABLE bank_transactions (
+      id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      provider TEXT,
+      account_ref TEXT,
+      external_id TEXT
+    );
+    CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER,
+      user_id INTEGER,
+      user_email TEXT,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO companies (id, name, cvr) VALUES
+      (1, 'ADD SmartDrift ApS', '46761898'),
+      (2, 'Anden virksomhed', '22222222');
+  `);
+  const accountRef = "MTM2MmJhYTktMjFjNS00MmZiLWEwYjEtODAyZjgzN2ZhZTdmfFRlc3REYXRhQmFuazF8SGllbFB2d21iTnp0cFJibUVfWVJnTVJnMXUxMGRzZVd4dzNGTDVSSDRMOC4xNjZlZjcwMDVjOGI=";
+  const insert = db.prepare("INSERT INTO bank_transactions (id, company_id, provider, account_ref, external_id) VALUES (?, ?, ?, ?, ?)");
+  const seed = db.transaction(() => {
+    for (let id = 1; id <= 972; id += 1) {
+      insert.run(id, 1, "aiia", accountRef, `aiia:${accountRef}:test-${id}`);
+    }
+    insert.run(973, 1, "csv", "0112", "real-smartdrift-row");
+    insert.run(974, 2, "aiia", accountRef, `aiia:${accountRef}:other-company`);
+  });
+  seed();
+
+  applyMigration(db, removeAiiaTestBankMigration);
+
+  assert.deepEqual(
+    db.prepare("SELECT id, company_id, provider FROM bank_transactions ORDER BY id").all(),
+    [
+      { id: 973, company_id: 1, provider: "csv" },
+      { id: 974, company_id: 2, provider: "aiia" },
+    ],
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'aiia_test_bank_deleted'").get().count,
+    1,
+  );
+  db.close();
+});
+
+test("AiiA test cleanup fails closed for an unexpected partial batch", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cvr TEXT);
+    CREATE TABLE bank_transactions (
+      id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      provider TEXT,
+      account_ref TEXT,
+      external_id TEXT
+    );
+    CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER,
+      user_id INTEGER,
+      user_email TEXT,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO companies (id, name, cvr) VALUES (1, 'ADD SmartDrift ApS', '46761898');
+  `);
+  const accountRef = "MTM2MmJhYTktMjFjNS00MmZiLWEwYjEtODAyZjgzN2ZhZTdmfFRlc3REYXRhQmFuazF8SGllbFB2d21iTnp0cFJibUVfWVJnTVJnMXUxMGRzZVd4dzNGTDVSSDRMOC4xNjZlZjcwMDVjOGI=";
+  db.prepare("INSERT INTO bank_transactions (id, company_id, provider, account_ref, external_id) VALUES (1, 1, 'aiia', ?, ?)")
+    .run(accountRef, `aiia:${accountRef}:partial`);
+
+  assert.throws(() => applyMigration(db, removeAiiaTestBankMigration), /CHECK constraint failed/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM bank_transactions").get().count, 1);
+  db.close();
+});
+
 test("partially journalled legacy production database runs approved corrections exactly once", () => {
   const directory = mkdtempSync(join(tmpdir(), "smartregnskab-legacy-bank-fix-"));
   const databasePath = join(directory, "data.db");
@@ -317,7 +405,7 @@ test("partially journalled legacy production database runs approved corrections 
         checked.prepare("SELECT id, company_id, account_ref FROM bank_transactions ORDER BY id").all(),
         [{ id: 2, company_id: 2, account_ref: "13800707" }],
       );
-      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 4);
+      assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM add_legacy_migrations").get().count, 5);
       assert.equal(checked.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count, 2);
     } finally {
       checked.close();
