@@ -22,7 +22,9 @@ type LineRow = {
 };
 
 type BankTransactionRow = {
+  companyId?: number | null;
   date: string;
+  description?: string | null;
   amount: number;
   balance?: number | null;
   status: string;
@@ -85,6 +87,7 @@ export type AccountingReportInput = {
   bankTransactions: BankTransactionRow[];
   vatPeriods: VatPeriodRow[];
   annualReports?: AnnualReportRow[];
+  accountingScopes?: Array<{ id: number; name: string; registrationNumber?: string | null }>;
 };
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -232,6 +235,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
     year,
     availableYears,
     filedAnnualReport: filedReportSummary,
+    accountingScopes: input.accountingScopes ?? [],
   };
 
   if (input.type === "resultatopgoerelse") {
@@ -322,6 +326,24 @@ export function buildAccountingReport(input: AccountingReportInput) {
   }).filter((line) => Math.abs(line.amount) > 0.004);
   const bankTransactions = input.bankTransactions.filter((transaction) => yearFromDate(transaction.date) === year);
   const pendingBankTransactions = bankTransactions.filter((transaction) => transaction.status === "afventer").length;
+  const crossScopeDuplicateBankRows = (() => {
+    if ((input.accountingScopes?.length ?? 0) < 2) return 0;
+    const grouped = new Map<string, Map<number, number>>();
+    for (const transaction of bankTransactions) {
+      const companyId = Number(transaction.companyId);
+      if (!Number.isInteger(companyId)) continue;
+      const description = String(transaction.description || "").trim().toLocaleLowerCase("da-DK").replace(/\s+/g, " ");
+      const key = `${transaction.date}|${round2(numberValue(transaction.amount)).toFixed(2)}|${description}`;
+      const byCompany = grouped.get(key) ?? new Map<number, number>();
+      byCompany.set(companyId, (byCompany.get(companyId) ?? 0) + 1);
+      grouped.set(key, byCompany);
+    }
+    return Array.from(grouped.values()).reduce((sum, byCompany) => {
+      if (byCompany.size < 2) return sum;
+      const counts = Array.from(byCompany.values());
+      return sum + Math.min(...counts) * (counts.length - 1);
+    }, 0);
+  })();
   const ledgerOk = entries.length > 0 && entriesMissingLines === 0 && unbalancedEntries === 0 && Math.abs(difference) <= 0.005;
   const controls: ReportControl[] = [
     {
@@ -343,9 +365,11 @@ export function buildAccountingReport(input: AccountingReportInput) {
     {
       key: "bank",
       title: "Bankafstemning",
-      status: bankTransactions.length > 0 && pendingBankTransactions === 0 ? "ok" : "warning",
+      status: bankTransactions.length > 0 && pendingBankTransactions === 0 && crossScopeDuplicateBankRows === 0 ? "ok" : "warning",
       summary: bankTransactions.length === 0
         ? "Bogføringen indeholder bankkonti, men et eksternt kontoudtog skal importeres, før banksaldoen kan bekræftes."
+        : crossScopeDuplicateBankRows > 0
+          ? `${crossScopeDuplicateBankRows} mulig(e) dubletbankpostering(er) findes på tværs af hoved- og SE-regnskabet. De skal kontrolleres før årsafslutning.`
         : pendingBankTransactions > 0
           ? `${pendingBankTransactions} bankpostering(er) afventer afstemning.`
           : "Alle importerede bankposteringer for året er afstemt.",
@@ -353,6 +377,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
         ...bankAccountLines.map((line) => ({ label: line.label, value: line.amount, format: "money" as const })),
         { label: "Importerede bankposteringer", value: bankTransactions.length, format: "number" },
         { label: "Afventer afstemning", value: pendingBankTransactions, format: "number" },
+        { label: "Mulige dubletter på tværs af regnskaber", value: crossScopeDuplicateBankRows, format: "number" },
       ],
     },
     {

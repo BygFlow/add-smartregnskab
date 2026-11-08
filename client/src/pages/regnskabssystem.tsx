@@ -373,6 +373,7 @@ type ReportData = {
   lines?: ReportLine[];
   sections?: ReportSection[];
   controls?: ReportControl[];
+  accountingScopes?: Array<{ id?: number; name?: string | null; registrationNumber?: string | null }>;
   [key: string]: unknown;
 };
 
@@ -7078,6 +7079,11 @@ function ReportView({ data, testId }: { data: ReportData; testId: string }) {
           {data.notice}
         </div>
       )}
+      {(data.accountingScopes?.length ?? 0) > 1 && (
+        <div className="px-3 py-2 text-xs text-sky-900 bg-sky-50 border-y border-sky-200">
+          Årsrapporten samler den juridiske virksomhed og dens SE-regnskaber: {data.accountingScopes?.map((scope) => scope.name).filter(Boolean).join(" · ")}.
+        </div>
+      )}
       {sections.length === 0 ? (
         <p className="text-xs text-muted-foreground px-3 py-3">
           Rapporten indeholder ingen data.
@@ -7138,6 +7144,11 @@ function YearControlView({ data, testId }: { data: ReportData; testId: string })
             : "Beregnet direkte fra bogførte posteringer"}
         </span>
       </div>
+      {(data.accountingScopes?.length ?? 0) > 1 && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          Årskontrollen omfatter {data.accountingScopes?.map((scope) => scope.name).filter(Boolean).join(" og ")}. Momsrapporten forbliver særskilt pr. CVR/SE-nummer.
+        </div>
+      )}
       {(data.controls ?? []).map((control) => {
         const status = control.status ?? "warning";
         const style = styles[status];

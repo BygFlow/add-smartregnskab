@@ -151,3 +151,28 @@ test("årsrapportår er tilgængeligt selv uden bogførte posteringer", () => {
   assert.equal(report.controls?.[1]?.title, "Afstemning mod årsrapport");
   assert.equal(report.controls?.[1]?.status, "warning");
 });
+
+test("årskontrol advarer om mulige dubletbanklinjer på tværs af SE-regnskaber", () => {
+  const report = buildAccountingReport({
+    type: "aarskontrol",
+    requestedYear: 2025,
+    companyName: "Drift ApS",
+    accountingScopes: [
+      { id: 1, name: "Drift ApS", registrationNumber: "11111111" },
+      { id: 2, name: "Rengøring", registrationNumber: "22222222" },
+    ],
+    accounts,
+    entries,
+    lines,
+    bankTransactions: [
+      { companyId: 1, date: "2025-04-10", description: "Aconto løn", amount: -3_000, status: "matchet" },
+      { companyId: 2, date: "2025-04-10", description: " ACONTO  LØN ", amount: -3_000, status: "matchet" },
+    ],
+    vatPeriods: [],
+  });
+
+  const bankControl = report.controls?.find((control) => control.key === "bank");
+  assert.equal(bankControl?.status, "warning");
+  assert.equal(bankControl?.metrics.find((metric) => metric.label === "Mulige dubletter på tværs af regnskaber")?.value, 1);
+  assert.match(bankControl?.summary ?? "", /dubletbankpostering/i);
+});

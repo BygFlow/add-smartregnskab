@@ -26,6 +26,7 @@ import { registerExternalAccountingApi } from "./external-accounting-api";
 import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from "./document-intake";
 import { prepareDocumentInbox } from "./document-inbox-order";
 import { buildAccountingReport } from "./accounting-reports";
+import { accountingReportScopes } from "./accounting-report-scope";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
@@ -5835,11 +5836,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (requestedYear != null && (!Number.isInteger(requestedYear) || requestedYear < 1900 || requestedYear > 2200)) {
       return res.status(400).json({ error: "Ugyldigt regnskabsår." });
     }
-    const [company, entries, lines, accounts, bankTransactions, vatPeriods, annualReports] = await Promise.all([
-      storage.getCompany(cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
-      storage.all("accounts", cid), storage.all("bank_transactions", cid), storage.all("vat_periods", cid),
-      storage.all("annual_reports", cid),
-    ]);
+    const allCompanies = await db.select().from(companies).all();
+    const reportScopes = accountingReportScopes(cid, type, allCompanies);
+    const company = reportScopes.find((scope) => scope.id === cid) ?? await storage.getCompany(cid);
+    const scopedData = await Promise.all(reportScopes.map(async (scope) => ({
+      scope,
+      entries: await storage.all("journal_entries", scope.id),
+      lines: await storage.all("journal_lines", scope.id),
+      accounts: await storage.all("accounts", scope.id),
+      bankTransactions: await storage.all("bank_transactions", scope.id),
+      vatPeriods: await storage.all("vat_periods", scope.id),
+    })));
+    const entries = scopedData.flatMap((data) => data.entries);
+    const lines = scopedData.flatMap((data) => data.lines);
+    const accounts = scopedData.flatMap((data) => data.accounts.map((account: any) => ({
+      ...account,
+      name: data.scope.id === cid ? account.name : `${data.scope.name} · ${account.name}`,
+    })));
+    const bankTransactions = scopedData.flatMap((data) => data.bankTransactions);
+    const vatPeriods = scopedData.flatMap((data) => data.vatPeriods);
+    const annualReports = await storage.all("annual_reports", cid);
     const report = buildAccountingReport({
       type: type === "revisorpakke" ? "aarskontrol" : type,
       requestedYear,
@@ -5850,6 +5866,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       bankTransactions: bankTransactions as any[],
       vatPeriods: vatPeriods as any[],
       annualReports: annualReports as any[],
+      accountingScopes: reportScopes.map((scope) => ({
+        id: scope.id,
+        name: scope.name,
+        registrationNumber: scope.cvr,
+      })),
     });
     res.json(type === "revisorpakke" ? { ...report, type, raw: { entries, lines, accounts, bankTransactions, vatPeriods, annualReports } } : report);
   }));
