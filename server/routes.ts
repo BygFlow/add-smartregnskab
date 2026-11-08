@@ -5583,22 +5583,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/bank-transactions/auto-match-transfers", h(async (req, res) => {
     const cid = tenantId(req);
-    const transactions = await storage.all("bank_transactions", cid);
+    const allCompanies = await db.select().from(companies).all();
+    const scopeIds = accountingReportScopes(cid, "aarskontrol", allCompanies).map((scope) => scope.id);
+    const transactions = (await Promise.all(
+      scopeIds.map((scopeId) => storage.all("bank_transactions", scopeId)),
+    )).flat();
     const pairs = findSafeInternalTransferPairs(transactions as any[]);
     if (pairs.length) db.transaction((tx) => {
       for (const [first, second] of pairs) {
+        const firstCompanyId = Number((first as any).companyId);
+        const secondCompanyId = Number((second as any).companyId);
         const firstResult = tx.update(bankTransactions)
           .set({ matchedType: "bank_transfer", matchedId: second.id, status: "matchet" })
           .where(and(
             eq(bankTransactions.id, first.id),
-            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.companyId, firstCompanyId),
             eq(bankTransactions.status, "afventer"),
           )).run();
         const secondResult = tx.update(bankTransactions)
           .set({ matchedType: "bank_transfer", matchedId: first.id, status: "matchet" })
           .where(and(
             eq(bankTransactions.id, second.id),
-            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.companyId, secondCompanyId),
             eq(bankTransactions.status, "afventer"),
           )).run();
         if (firstResult.changes !== 1 || secondResult.changes !== 1) {
@@ -5614,23 +5620,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         detail: JSON.stringify({
           matchedPairs: pairs.length,
           matchedRows: pairs.length * 2,
-          pairs: pairs.map(([first, second]) => [first.id, second.id]),
-          rule: "same-date-opposite-amount-distinct-known-accounts-reciprocal-unique",
+          pairs: pairs.map(([first, second]) => ({
+            first: { companyId: (first as any).companyId, transactionId: first.id },
+            second: { companyId: (second as any).companyId, transactionId: second.id },
+          })),
+          scopeCompanyIds: scopeIds,
+          rule: "same-date-opposite-amount-distinct-known-accounts-reciprocal-unique-across-accounting-scopes",
           createsBookkeeping: false,
         }),
         createdAt: nowIso(),
       }).run();
     });
 
-    const afterPairs = await storage.all("bank_transactions", cid);
+    const afterPairs = (await Promise.all(
+      scopeIds.map((scopeId) => storage.all("bank_transactions", scopeId)),
+    )).flat();
     const counterparts = findSafeInternalTransferCounterparts(afterPairs as any[]);
     if (counterparts.length) db.transaction((tx) => {
       for (const { pending, journalMatched } of counterparts) {
+        const pendingCompanyId = Number((pending as any).companyId);
         const result = tx.update(bankTransactions)
           .set({ matchedType: "bank_transfer", matchedId: journalMatched.id, status: "matchet" })
           .where(and(
             eq(bankTransactions.id, pending.id),
-            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.companyId, pendingCompanyId),
             eq(bankTransactions.status, "afventer"),
           )).run();
         if (result.changes !== 1) {
@@ -5645,8 +5658,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         target: "bank_transactions",
         detail: JSON.stringify({
           matchedCounterparts: counterparts.length,
-          links: counterparts.map(({ pending, journalMatched }) => [pending.id, journalMatched.id]),
-          rule: "same-date-opposite-amount-distinct-known-accounts-reciprocal-unique-transfer-description-journal-anchor",
+          links: counterparts.map(({ pending, journalMatched }) => ({
+            pending: { companyId: (pending as any).companyId, transactionId: pending.id },
+            journalMatched: { companyId: (journalMatched as any).companyId, transactionId: journalMatched.id },
+          })),
+          scopeCompanyIds: scopeIds,
+          rule: "same-date-opposite-amount-distinct-known-accounts-reciprocal-unique-transfer-description-journal-anchor-across-accounting-scopes",
           preservesJournalMatch: true,
           createsBookkeeping: false,
         }),
@@ -5658,7 +5675,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       matchedPairs: pairs.length,
       matchedCounterparts: counterparts.length,
       matchedRows: pairs.length * 2 + counterparts.length,
-      remaining: transactions.filter((row: any) => row.status === "afventer").length - pairs.length * 2 - counterparts.length,
+      remaining: afterPairs.filter((row: any) => row.status === "afventer").length - counterparts.length,
+      scopeCompanyIds: scopeIds,
     });
   }));
 

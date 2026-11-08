@@ -1,5 +1,6 @@
 export type BankTransferRow = {
   id: number;
+  companyId?: number | null;
   date: string;
   amount: number;
   status?: string | null;
