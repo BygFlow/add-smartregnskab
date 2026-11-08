@@ -2444,7 +2444,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/vat-reconciliations"] });
-      toast({ title: "Momsafstemning oprettet", description: "Moms er automatisk beregnet for perioden." });
+      toast({ title: "Momsafstemning oprettet", description: "Kladde beregnet fra bogførte momskonti i den valgte periode. Den er ikke indberettet." });
       setVatReconDialogOpen(false);
       setVatReconForm({ period: "" });
     },

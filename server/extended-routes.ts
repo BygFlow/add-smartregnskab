@@ -332,6 +332,16 @@ export function registerExtendedRoutes(app: Express) {
     res.status(201).json(await storage.insert("payroll_reports", data));
   }));
   app.patch("/api/payroll-reports/:id", requireFeature("loen"), h(async (req, res) => {
+    const attemptsExternalSubmission =
+      (req.body.eindkomstStatus !== undefined && req.body.eindkomstStatus !== "ikke_sendt")
+      || (req.body.feriekontoStatus !== undefined && req.body.feriekontoStatus !== "ikke_sendt")
+      || req.body.status === "indsendt"
+      || req.body.submittedAt !== undefined;
+    if (attemptsExternalSubmission) {
+      return res.status(409).json({
+        error: "Ingen aktiv eIndkomst-/FerieKonto-integration. Kladder kan godkendes internt, men må ikke markeres som indsendt uden en myndighedskvittering.",
+      });
+    }
     res.json(await storage.update("payroll_reports", Number(req.params.id), UPDATABLE(prFields)(req), tenantId(req)));
   }));
 

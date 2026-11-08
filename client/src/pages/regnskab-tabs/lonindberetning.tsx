@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Users, Wallet, ScrollText, Banknote, Check, X } from "lucide-react";
+import { Plus, Users, Wallet, ScrollText, Banknote, Check, X, ShieldAlert } from "lucide-react";
 
 /* Lønindberetning (eIndkomst / FerieKonto) */
 
@@ -153,7 +153,13 @@ export default function Lonindberetning({ companyId }: { companyId: number }) {
       </div>
 
       <div className="rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-        Lønindberetning (beta) — Kræver API-aftale hos eIndkomst/FerieKonto.
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Programmet opretter og godkender kun lønkladder. Der er ingen aktiv eIndkomst-/FerieKonto-integration,
+            og en kladde bliver derfor aldrig vist som indsendt uden en rigtig myndighedskvittering.
+          </span>
+        </div>
       </div>
 
       {isLoading ? (
@@ -217,27 +223,16 @@ export default function Lonindberetning({ companyId }: { companyId: number }) {
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
                 <Button
                   size="sm"
-                  data-testid={`send-eindkomst-${r.id}`}
-                  disabled={r.eindkomstStatus === "godkendt" || updateMut.isPending}
+                  data-testid={`approve-payroll-draft-${r.id}`}
+                  disabled={r.status === "godkendt" || updateMut.isPending}
                   onClick={() =>
                     updateMut.mutate({
                       id: r.id,
-                      patch: { eindkomstStatus: "sendt", status: "indsendt", submittedAt: new Date().toISOString() },
+                      patch: { status: "godkendt" },
                     })
                   }
                 >
-                  <Check className="mr-1.5 h-3.5 w-3.5" /> Send til eIndkomst
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid={`send-ferie-${r.id}`}
-                  disabled={r.feriekontoStatus === "godkendt" || updateMut.isPending}
-                  onClick={() =>
-                    updateMut.mutate({ id: r.id, patch: { feriekontoStatus: "sendt" } })
-                  }
-                >
-                  Send til FerieKonto
+                  <Check className="mr-1.5 h-3.5 w-3.5" /> Godkend kladde
                 </Button>
                 <Button
                   size="sm"

@@ -27,6 +27,7 @@ import { registerDocumentIntakeRoutes, registerPublicDocumentIntakeRoutes } from
 import { prepareDocumentInbox } from "./document-inbox-order";
 import { buildAccountingReport } from "./accounting-reports";
 import { accountingReportScopes } from "./accounting-report-scope";
+import { calculateJournalVatReconciliation } from "./vat-reconciliation";
 import { registerMitidRoutes, registerPublicMitidRoutes } from "./mitid";
 import { registerVatApiRoutes } from "./vat-api-routes";
 import { ensureNemhandelRegistrationNotice } from "./nemhandel-registration-notice";
@@ -6579,15 +6580,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const cid = tenantId(req);
     const { period } = req.body;
     if (!period) return res.status(400).json({ error: "Periode mangler" });
-    // Auto-beregn moms for perioden
-    const invoices = await storage.all("invoices", cid);
-    const vouchers = await storage.all("vouchers", cid);
-    const outputVat = invoices.reduce((s: number, inv: any) => s + (inv.vatAmount || 0), 0);
-    const inputVat = vouchers.reduce((s: number, v: any) => s + ((v.amount || 0) * (v.vatRate || 0) / 100), 0);
-    const netVat = outputVat - inputVat;
+    const calculation = calculateJournalVatReconciliation({
+      period,
+      entries: await storage.all("journal_entries", cid),
+      lines: await storage.all("journal_lines", cid),
+      accounts: await storage.all("accounts", cid),
+    });
+    const existing = (await storage.all("vat_reconciliations", cid))
+      .find((item: any) => item.period === calculation.normalizedPeriod);
+    if (existing) return res.status(409).json({ error: `Momsafstemning ${calculation.normalizedPeriod} findes allerede.` });
+    if (!calculation.recognizedLineCount) {
+      return res.status(422).json({ error: "Der blev ikke fundet bogførte købsmoms- eller salgsmomslinjer i perioden." });
+    }
+    const notes = [
+      `Automatisk kladde fra ${calculation.entryCount} bogførte posteringer (${calculation.start}–${calculation.end}).`,
+      calculation.ignoredVatAccounts.length
+        ? `Kontrollér øvrige momskonti manuelt: ${calculation.ignoredVatAccounts.join(", ")}.`
+        : "Alle identificerede momskonti er medtaget.",
+      "Kladde: beløbene er ikke indberettet til Skattestyrelsen.",
+    ].join(" ");
     const data = validate(insertVatReconciliationSchema, {
-      companyId: cid, period, outputVat, inputVat, netVat,
-      skatAccount: netVat, difference: 0, status: "afstemt", createdAt: nowIso(),
+      companyId: cid,
+      period: calculation.normalizedPeriod,
+      outputVat: calculation.outputVat,
+      inputVat: calculation.inputVat,
+      netVat: calculation.netVat,
+      skatAccount: calculation.taxAccount,
+      difference: calculation.difference,
+      status: "afventer",
+      notes,
+      createdAt: nowIso(),
     });
     res.status(201).json(await storage.insert("vat_reconciliations", data));
   }));
