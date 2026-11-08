@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAccountingReport } from "../server/accounting-reports";
+import { buildAccountingReport, isVatBalanceAccount } from "../server/accounting-reports";
 
 const accounts = [
   { id: 1, accountNumber: "1010", name: "Salg", type: "indtaegt" },
@@ -83,6 +83,35 @@ test("en ubalanceret postering markeres som fejl", () => {
 
   assert.equal(report.controls?.[0]?.status, "error");
   assert.equal(report.controls?.[0]?.metrics.find((metric) => metric.label === "Forskel")?.value, -1_000);
+});
+
+test("momsrapporten udelukker bankkonti der blot nævner moms", () => {
+  const vatAccounts = [
+    { id: 40, accountNumber: "6902", name: "Udgående (salg) moms", type: "passiv" },
+    { id: 50, accountNumber: "6903", name: "Indgående (køb) moms", type: "aktiv" },
+    { id: 60, accountNumber: "5825", name: "Bank løn og moms", type: "aktiv" },
+  ];
+  const report = buildAccountingReport({
+    type: "momsrapport",
+    requestedYear: 2025,
+    accounts: [...accounts, ...vatAccounts],
+    entries: [{ id: 20, entryNumber: "M1", date: "2025-06-30", status: "bogført" }],
+    lines: [
+      { journalEntryId: 20, accountId: 40, debit: 0, credit: 100 },
+      { journalEntryId: 20, accountId: 50, debit: 25, credit: 0 },
+      { journalEntryId: 20, accountId: 60, debit: 1_000, credit: 0 },
+      { journalEntryId: 20, accountId: 3, debit: 0, credit: 925 },
+    ],
+    bankTransactions: [],
+    vatPeriods: [],
+  });
+
+  assert.equal(report.sections?.[0]?.total, -75);
+  assert.deepEqual(report.sections?.[0]?.lines.map((line) => line.label), [
+    "6902 · Udgående (salg) moms",
+    "6903 · Indgående (køb) moms",
+  ]);
+  assert.equal(isVatBalanceAccount(vatAccounts[2]), false);
 });
 
 test("indsendt årsrapport er officielt facit uden at overskrive bogføringen", () => {

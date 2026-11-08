@@ -104,6 +104,19 @@ const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 1
 const numberValue = (value: unknown) => Number(value || 0);
 const yearFromDate = (value: string) => Number(String(value || "").slice(0, 4));
 
+function normalizedAccountName(value: string) {
+  return value.toLocaleLowerCase("da-DK")
+    .replaceAll("å", "aa")
+    .replaceAll("ø", "oe")
+    .replaceAll("æ", "ae");
+}
+
+export function isVatBalanceAccount(account: Pick<AccountRow, "name" | "type">) {
+  if (!["aktiv", "passiv"].includes(account.type)) return false;
+  const name = normalizedAccountName(account.name);
+  return /(?:indgaaende(?:\s+\([^)]*\))?\s+moms|udgaaende(?:\s+\([^)]*\))?\s+moms|koebsmoms|salgsmoms|skyldig\s+moms|momsafregning|erhvervelsesmoms|importmoms|input\s+vat|output\s+vat|vat\s+(?:payable|receivable))/.test(name);
+}
+
 function filedAnnualReportDetails(raw: string | null | undefined): FiledAnnualReportDetails {
   if (!raw) return {};
   try {
@@ -223,8 +236,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
 
   // Kun selve momskontiene indgår i momssaldoen. En udgifts- eller salgskonto
   // med en momskode er ikke i sig selv en momskonto.
-  const vatAccounts = input.accounts.filter((account) =>
-    ["aktiv", "passiv"].includes(account.type) && /moms|\bvat\b/i.test(account.name));
+  const vatAccounts = input.accounts.filter(isVatBalanceAccount);
   const vatAccountLines = vatAccounts.map((account) => {
     const amount = totals.get(account.id) ?? { debit: 0, credit: 0 };
     return {
