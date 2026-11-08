@@ -6599,7 +6599,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         : "Alle identificerede momskonti er medtaget.",
       "Kladde: beløbene er ikke indberettet til Skattestyrelsen.",
     ].join(" ");
-    const data = validate(insertVatReconciliationSchema, {
+    const data = {
+      ...validate(insertVatReconciliationSchema, {
       companyId: cid,
       period: calculation.normalizedPeriod,
       outputVat: calculation.outputVat,
@@ -6609,8 +6610,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       difference: calculation.difference,
       status: "afventer",
       notes,
+      }),
       createdAt: nowIso(),
-    });
+    };
     res.status(201).json(await storage.insert("vat_reconciliations", data));
   }));
   app.patch("/api/vat-reconciliations/:id", h(async (req, res) => {
