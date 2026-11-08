@@ -41,7 +41,7 @@ import {
   findSafeInternalTransferCounterparts,
   findSafeInternalTransferPairs,
 } from "./bank-transfer-match";
-import { findBankDocumentCandidates, normalizeBankDocumentType } from "./bank-document-match";
+import { findBankDocumentCandidates, findSafeBankDocumentMatches, normalizeBankDocumentType } from "./bank-document-match";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5718,8 +5718,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const reversalPairs = findSafeBankReversalPairs(
       (transactions as any[]).filter((transaction) => !matchedTransactionIds.has(Number(transaction.id))),
     );
+    const reversalTransactionIds = new Set(reversalPairs.flatMap(([first, second]) => [Number(first.id), Number(second.id)]));
+    const documentMatches = findSafeBankDocumentMatches(
+      (transactions as any[]).filter((transaction) =>
+        !matchedTransactionIds.has(Number(transaction.id)) && !reversalTransactionIds.has(Number(transaction.id))),
+      await storage.all("invoices", cid) as any[],
+      await storage.all("vouchers", cid) as any[],
+    );
 
-    if (matches.length || reversalPairs.length) db.transaction((tx) => {
+    if (matches.length || reversalPairs.length || documentMatches.length) db.transaction((tx) => {
       for (const match of matches) {
         const result = tx.update(bankTransactions)
           .set({ matchedType: "journal_entry", matchedId: match.journalEntryId, status: "matchet" })
@@ -5751,6 +5758,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           throw new Error("En tilbageført betaling blev ændret under afstemningen. Ingen matches blev gemt.");
         }
       }
+      for (const match of documentMatches) {
+        const result = tx.update(bankTransactions)
+          .set({ matchedType: match.type, matchedId: match.documentId, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, match.transactionId),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).run();
+        if (result.changes !== 1) {
+          throw new Error("En bankpostering blev ændret under dokumentafstemningen. Ingen matches blev gemt.");
+        }
+      }
       tx.insert(auditLogs).values({
         companyId: cid,
         userId: req.auth?.user.id,
@@ -5763,7 +5782,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           exactDateMatches: exactMatches.length,
           delayedMerchantMatches: delayedMatches.length,
           reversalPairs: reversalPairs.map(([first, second]) => [first.id, second.id]),
-          rule: "reciprocal-unique-signed-amount; exact-date or 1-4-day strong-merchant settlement; same-account exact-merchant opposite-amount 1-4-day reversal",
+          documentMatches: documentMatches.map((match) => [match.transactionId, match.type, match.documentId]),
+          rule: "reciprocal-unique-signed-amount; exact-date or 1-4-day strong-merchant settlement; same-account exact-merchant opposite-amount 1-4-day reversal; explicit-invoice-number or 0-4-day strong-supplier document match",
           createsBookkeeping: false,
         }),
         createdAt: nowIso(),
@@ -5771,11 +5791,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
 
     const reversalRows = reversalPairs.length * 2;
-    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matches.length - reversalRows;
+    const matchedInvoices = documentMatches.filter((match) => match.type === "invoice").length;
+    const matchedVouchers = documentMatches.filter((match) => match.type === "voucher").length;
+    const remaining = transactions.filter((tx: any) => tx.status === "afventer").length - matches.length - reversalRows - documentMatches.length;
     res.json({
-      matched: matches.length + reversalRows,
-      matchedInvoices: 0,
-      matchedVouchers: 0,
+      matched: matches.length + reversalRows + documentMatches.length,
+      matchedInvoices,
+      matchedVouchers,
       matchedJournalEntries: matches.length,
       matchedReversalPairs: reversalPairs.length,
       matchedReversalRows: reversalRows,

@@ -1301,14 +1301,18 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       const res = await apiRequest("POST", "/api/bank-transactions/auto-match", {});
       return await res.json();
     },
-    onSuccess: (result: { matched?: number; matchedJournalEntries?: number; matchedReversalPairs?: number; remaining?: number }) => {
+    onSuccess: (result: { matched?: number; matchedJournalEntries?: number; matchedReversalPairs?: number; matchedInvoices?: number; matchedVouchers?: number; remaining?: number }) => {
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       const matched = result.matched ?? 0;
       const saftMatches = result.matchedJournalEntries ?? 0;
       const reversalPairs = result.matchedReversalPairs ?? 0;
+      const invoiceMatches = result.matchedInvoices ?? 0;
+      const voucherMatches = result.matchedVouchers ?? 0;
       const details = [
         saftMatches ? `${saftMatches} med SAF-T` : "",
         reversalPairs ? `${reversalPairs} tilbageført${reversalPairs === 1 ? " betaling" : "e betalinger"}` : "",
+        invoiceMatches ? `${invoiceMatches} faktura${invoiceMatches === 1 ? "" : "er"}` : "",
+        voucherMatches ? `${voucherMatches} bilag` : "",
       ].filter(Boolean).join(" og ");
       toast({
         title: `${matched} bankpostering${matched === 1 ? "" : "er"} matchet`,
