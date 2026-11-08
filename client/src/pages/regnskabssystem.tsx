@@ -1119,6 +1119,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     description: "",
     category: "kontor",
   });
+  const [editingVoucherId, setEditingVoucherId] = useState<number | null>(null);
 
   function resetVoucherForm() {
     setVoucherForm({
@@ -1129,6 +1130,19 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       description: "",
       category: "kontor",
     });
+  }
+
+  function openVoucherEditor(voucher: Voucher) {
+    setEditingVoucherId(voucher.id);
+    setVoucherForm({
+      supplier: voucher.supplier ?? "",
+      date: String(voucher.date ?? "").slice(0, 10),
+      amount: String(voucher.amount ?? ""),
+      vatRate: String(voucher.vatRate ?? 0),
+      description: voucher.description ?? "",
+      category: voucher.category ?? "andre",
+    });
+    setVoucherDialogOpen(true);
   }
 
   const createVoucherMut = useMutation({
@@ -1142,13 +1156,21 @@ function CompanyRegnskabssystemPage(props: any = {}) {
         category: voucherForm.category,
         companyId: effectiveCompanyId,
       };
-      const res = await apiRequest("POST", "/api/vouchers", payload);
+      const res = editingVoucherId
+        ? await apiRequest("PATCH", `/api/vouchers/${editingVoucherId}`, payload)
+        : await apiRequest("POST", "/api/vouchers", payload);
       return await res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      toast({ title: "Bilag oprettet", description: "Det nye bilag er gemt som kladde." });
+      toast({
+        title: editingVoucherId ? "Bilag opdateret" : "Bilag oprettet",
+        description: editingVoucherId
+          ? "Bilagskladden er opdateret."
+          : "Det nye bilag er gemt som kladde.",
+      });
       setVoucherDialogOpen(false);
+      setEditingVoucherId(null);
       resetVoucherForm();
     },
     onError: (err: unknown) => {
@@ -2999,7 +3021,11 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                     <Button
                       size="sm"
                       data-testid="btn-nyt-bilag"
-                      onClick={() => setVoucherDialogOpen(true)}
+                      onClick={() => {
+                        setEditingVoucherId(null);
+                        resetVoucherForm();
+                        setVoucherDialogOpen(true);
+                      }}
                     >
                       <FileText className="size-4" />
                       Nyt bilag
@@ -3055,7 +3081,17 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                                 <td className="px-3 py-1.5">
                                   <div className="flex items-center justify-end gap-1">
                                     {status !== "bogfoert" && status !== "bogført" && (
-                                      <span className="text-xs text-muted-foreground">Bogfør via bilagsindbakken</span>
+                                      <>
+                                        <span className="text-xs text-muted-foreground">Bogfør via bilagsindbakken</span>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          data-testid={`btn-rediger-bilag-${v.id}`}
+                                          onClick={() => openVoucherEditor(v)}
+                                        >
+                                          Rediger
+                                        </Button>
+                                      </>
                                     )}
                                     <Button
                                       size="sm"
@@ -3079,10 +3115,18 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                 </SectionCard>
 
                 {/* Dialog: Nyt bilag */}
-                <Dialog open={voucherDialogOpen} onOpenChange={setVoucherDialogOpen}>
+                <Dialog
+                  open={voucherDialogOpen}
+                  onOpenChange={(open) => {
+                    setVoucherDialogOpen(open);
+                    if (!open) setEditingVoucherId(null);
+                  }}
+                >
                   <DialogContent data-testid="dialog-nyt-bilag">
                     <DialogHeader>
-                      <DialogTitle className="text-xl">Nyt bilag</DialogTitle>
+                      <DialogTitle className="text-xl">
+                        {editingVoucherId ? "Rediger bilag" : "Nyt bilag"}
+                      </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
                       <div className="space-y-1">
@@ -3179,7 +3223,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           }
                       >
                         {createVoucherMut.isPending && <Loader2 className="size-4 animate-spin" />}
-                        Gem bilag
+                        {editingVoucherId ? "Gem ændringer" : "Gem bilag"}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
