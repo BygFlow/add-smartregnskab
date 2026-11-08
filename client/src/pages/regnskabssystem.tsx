@@ -366,6 +366,7 @@ type DuplicateBankTransaction = {
   date?: string | null;
   description?: string | null;
   amount?: number | null;
+  accountRef?: string | null;
   scopeNames?: string[];
   duplicateCount?: number | null;
 };
@@ -7186,7 +7187,7 @@ function YearControlView({ data, testId }: { data: ReportData; testId: string })
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm font-semibold">Mulige dublet-bankposteringer</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Samme dato, beløb og tekst findes i både hoved- og SE-regnskabet. Kontrollér kilden før en post ignoreres eller flyttes.
+            Samme konto, dato, beløb og tekst findes i både hoved- og SE-regnskabet. Kontrollér kilden før en post ignoreres eller flyttes.
           </p>
           <div className="mt-3 overflow-x-auto rounded-md border border-amber-200 bg-white/80">
             <table className="w-full text-xs">
@@ -7194,6 +7195,7 @@ function YearControlView({ data, testId }: { data: ReportData; testId: string })
                 <tr>
                   <th className="px-2 py-1.5 font-medium">Dato</th>
                   <th className="px-2 py-1.5 font-medium">Tekst</th>
+                  <th className="px-2 py-1.5 font-medium">Konto</th>
                   <th className="px-2 py-1.5 text-right font-medium">Beløb</th>
                   <th className="px-2 py-1.5 font-medium">Regnskaber</th>
                 </tr>
@@ -7203,6 +7205,7 @@ function YearControlView({ data, testId }: { data: ReportData; testId: string })
                   <tr key={`${row.date}-${row.description}-${row.amount}-${index}`} className="border-t border-amber-100">
                     <td className="whitespace-nowrap px-2 py-1.5">{row.date ?? "—"}</td>
                     <td className="px-2 py-1.5">{row.description ?? "—"}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 font-mono">{row.accountRef ?? "—"}</td>
                     <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">{money(Number(row.amount || 0))}</td>
                     <td className="px-2 py-1.5">{row.scopeNames?.join(" · ") ?? "—"}</td>
                   </tr>

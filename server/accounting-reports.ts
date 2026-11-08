@@ -23,6 +23,7 @@ type LineRow = {
 
 type BankTransactionRow = {
   companyId?: number | null;
+  accountRef?: string | null;
   date: string;
   description?: string | null;
   amount: number;
@@ -81,6 +82,7 @@ type DuplicateBankTransaction = {
   date: string;
   description: string;
   amount: number;
+  accountRef: string;
   scopeNames: string[];
   duplicateCount: number;
 };
@@ -340,19 +342,23 @@ export function buildAccountingReport(input: AccountingReportInput) {
       date: string;
       description: string;
       amount: number;
+      accountRef: string;
       byCompany: Map<number, number>;
     }>();
     const scopeNameById = new Map((input.accountingScopes ?? []).map((scope) => [scope.id, scope.name]));
     for (const transaction of bankTransactions) {
       const companyId = Number(transaction.companyId);
       if (!Number.isInteger(companyId)) continue;
+      const accountRef = String(transaction.accountRef || "").trim().toLocaleLowerCase("da-DK").replace(/\s+/g, " ");
+      if (!accountRef) continue;
       const description = String(transaction.description || "").trim().toLocaleLowerCase("da-DK").replace(/\s+/g, " ");
       const amount = round2(numberValue(transaction.amount));
-      const key = `${transaction.date}|${amount.toFixed(2)}|${description}`;
+      const key = `${transaction.date}|${amount.toFixed(2)}|${description}|${accountRef}`;
       const group = grouped.get(key) ?? {
         date: transaction.date,
         description: String(transaction.description || "").trim() || "(uden tekst)",
         amount,
+        accountRef: String(transaction.accountRef || "").trim(),
         byCompany: new Map<number, number>(),
       };
       group.byCompany.set(companyId, (group.byCompany.get(companyId) ?? 0) + 1);
@@ -366,6 +372,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
           date: group.date,
           description: group.description,
           amount: group.amount,
+          accountRef: group.accountRef,
           scopeNames: Array.from(group.byCompany.keys()).map((companyId) => scopeNameById.get(companyId) ?? `Regnskab ${companyId}`),
           duplicateCount: Math.min(...counts) * (counts.length - 1),
         };

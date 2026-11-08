@@ -165,8 +165,8 @@ test("årskontrol advarer om mulige dubletbanklinjer på tværs af SE-regnskaber
     entries,
     lines,
     bankTransactions: [
-      { companyId: 1, date: "2025-04-10", description: "Aconto løn", amount: -3_000, status: "matchet" },
-      { companyId: 2, date: "2025-04-10", description: " ACONTO  LØN ", amount: -3_000, status: "matchet" },
+      { companyId: 1, accountRef: "0112", date: "2025-04-10", description: "Aconto løn", amount: -3_000, status: "matchet" },
+      { companyId: 2, accountRef: " 0112 ", date: "2025-04-10", description: " ACONTO  LØN ", amount: -3_000, status: "matchet" },
     ],
     vatPeriods: [],
   });
@@ -179,7 +179,33 @@ test("årskontrol advarer om mulige dubletbanklinjer på tværs af SE-regnskaber
     date: "2025-04-10",
     description: "Aconto løn",
     amount: -3_000,
+    accountRef: "0112",
     scopeNames: ["Drift ApS", "Rengøring"],
     duplicateCount: 1,
   }]);
+});
+
+test("årskontrol behandler samme dato, tekst og beløb på forskellige bankkonti som en intern overførsel", () => {
+  const report = buildAccountingReport({
+    type: "aarskontrol",
+    requestedYear: 2025,
+    companyName: "Drift ApS",
+    accountingScopes: [
+      { id: 1, name: "Drift ApS", registrationNumber: "11111111" },
+      { id: 2, name: "Rengøring", registrationNumber: "22222222" },
+    ],
+    accounts,
+    entries,
+    lines,
+    bankTransactions: [
+      { companyId: 1, accountRef: "4483", date: "2025-07-31", description: "Løn Overførslerne", amount: -9_069, status: "afventer" },
+      { companyId: 2, accountRef: "9507", date: "2025-07-31", description: "Løn Overførslerne", amount: -9_069, status: "afventer" },
+    ],
+    vatPeriods: [],
+  });
+
+  assert.deepEqual(report.duplicateBankTransactions, []);
+  const bankControl = report.controls?.find((control) => control.key === "bank");
+  assert.equal(bankControl?.metrics.find((metric) => metric.label === "Mulige dubletter på tværs af regnskaber")?.value, 0);
+  assert.doesNotMatch(bankControl?.summary ?? "", /dubletbankpostering/i);
 });
