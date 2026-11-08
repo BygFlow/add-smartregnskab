@@ -114,6 +114,9 @@ export function calculateJournalVatReconciliation(input: {
       recognizedLineCount++;
       continue;
     }
+    // Bankkonti kan være navngivet efter deres formål (fx "Bank løn og moms"),
+    // men er hverken momskonti eller ukendte momsafstemningskonti.
+    if (/\bbank\b/.test(name)) continue;
     if (/moms|\bvat\b/.test(name) && ["aktiv", "passiv"].includes(String(account.type))) {
       ignoredVatAccounts.add(`${account.accountNumber ?? "?"} · ${account.name}`);
     }

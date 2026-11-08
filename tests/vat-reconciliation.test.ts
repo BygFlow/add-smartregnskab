@@ -58,6 +58,17 @@ test("ukendte balance-momskonti kræver manuel kontrol", () => {
   assert.equal(result.recognizedLineCount, 0);
 });
 
+test("bankkonto med moms i navnet giver ikke en falsk momsadvarsel", () => {
+  const result = calculateJournalVatReconciliation({
+    period: "2025",
+    accounts: [{ id: 1, accountNumber: "5825", name: "Bank løn og moms", type: "aktiv" }],
+    entries: [{ id: 10, date: "2025-05-01", status: "bogført" }],
+    lines: [{ journalEntryId: 10, accountId: 1, debit: 1_000, credit: 0 }],
+  });
+  assert.deepEqual(result.ignoredVatAccounts, []);
+  assert.equal(result.recognizedLineCount, 0);
+});
+
 test("danske standardkonti med forklarende parentes genkendes", () => {
   const result = calculateJournalVatReconciliation({
     period: "2025",
