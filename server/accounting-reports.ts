@@ -77,6 +77,14 @@ type ReportControl = {
   metrics: ReportMetric[];
 };
 
+type DuplicateBankTransaction = {
+  date: string;
+  description: string;
+  amount: number;
+  scopeNames: string[];
+  duplicateCount: number;
+};
+
 export type AccountingReportInput = {
   type: string;
   requestedYear?: number | null;
@@ -326,24 +334,45 @@ export function buildAccountingReport(input: AccountingReportInput) {
   }).filter((line) => Math.abs(line.amount) > 0.004);
   const bankTransactions = input.bankTransactions.filter((transaction) => yearFromDate(transaction.date) === year);
   const pendingBankTransactions = bankTransactions.filter((transaction) => transaction.status === "afventer").length;
-  const crossScopeDuplicateBankRows = (() => {
-    if ((input.accountingScopes?.length ?? 0) < 2) return 0;
-    const grouped = new Map<string, Map<number, number>>();
+  const duplicateBankTransactions = (() => {
+    if ((input.accountingScopes?.length ?? 0) < 2) return [] as DuplicateBankTransaction[];
+    const grouped = new Map<string, {
+      date: string;
+      description: string;
+      amount: number;
+      byCompany: Map<number, number>;
+    }>();
+    const scopeNameById = new Map((input.accountingScopes ?? []).map((scope) => [scope.id, scope.name]));
     for (const transaction of bankTransactions) {
       const companyId = Number(transaction.companyId);
       if (!Number.isInteger(companyId)) continue;
       const description = String(transaction.description || "").trim().toLocaleLowerCase("da-DK").replace(/\s+/g, " ");
-      const key = `${transaction.date}|${round2(numberValue(transaction.amount)).toFixed(2)}|${description}`;
-      const byCompany = grouped.get(key) ?? new Map<number, number>();
-      byCompany.set(companyId, (byCompany.get(companyId) ?? 0) + 1);
-      grouped.set(key, byCompany);
+      const amount = round2(numberValue(transaction.amount));
+      const key = `${transaction.date}|${amount.toFixed(2)}|${description}`;
+      const group = grouped.get(key) ?? {
+        date: transaction.date,
+        description: String(transaction.description || "").trim() || "(uden tekst)",
+        amount,
+        byCompany: new Map<number, number>(),
+      };
+      group.byCompany.set(companyId, (group.byCompany.get(companyId) ?? 0) + 1);
+      grouped.set(key, group);
     }
-    return Array.from(grouped.values()).reduce((sum, byCompany) => {
-      if (byCompany.size < 2) return sum;
-      const counts = Array.from(byCompany.values());
-      return sum + Math.min(...counts) * (counts.length - 1);
-    }, 0);
+    return Array.from(grouped.values())
+      .filter((group) => group.byCompany.size > 1)
+      .map((group) => {
+        const counts = Array.from(group.byCompany.values());
+        return {
+          date: group.date,
+          description: group.description,
+          amount: group.amount,
+          scopeNames: Array.from(group.byCompany.keys()).map((companyId) => scopeNameById.get(companyId) ?? `Regnskab ${companyId}`),
+          duplicateCount: Math.min(...counts) * (counts.length - 1),
+        };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date) || a.description.localeCompare(b.description, "da"));
   })();
+  const crossScopeDuplicateBankRows = duplicateBankTransactions.reduce((sum, row) => sum + row.duplicateCount, 0);
   const ledgerOk = entries.length > 0 && entriesMissingLines === 0 && unbalancedEntries === 0 && Math.abs(difference) <= 0.005;
   const controls: ReportControl[] = [
     {
@@ -428,6 +457,7 @@ export function buildAccountingReport(input: AccountingReportInput) {
   return {
     ...base,
     controls,
+    duplicateBankTransactions,
     summary: {
       revenue,
       expenses,

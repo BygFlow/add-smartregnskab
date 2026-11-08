@@ -175,4 +175,11 @@ test("årskontrol advarer om mulige dubletbanklinjer på tværs af SE-regnskaber
   assert.equal(bankControl?.status, "warning");
   assert.equal(bankControl?.metrics.find((metric) => metric.label === "Mulige dubletter på tværs af regnskaber")?.value, 1);
   assert.match(bankControl?.summary ?? "", /dubletbankpostering/i);
+  assert.deepEqual(report.duplicateBankTransactions, [{
+    date: "2025-04-10",
+    description: "Aconto løn",
+    amount: -3_000,
+    scopeNames: ["Drift ApS", "Rengøring"],
+    duplicateCount: 1,
+  }]);
 });
