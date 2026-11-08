@@ -45,6 +45,15 @@ test("large bank reconciliations are paginated instead of rendering every action
   assert.match(router, /af \{bankTx\.length\} bankposter/);
 });
 
+test("annual periods can be filled safely from year presets", () => {
+  const router = read("client/src/pages/regnskabssystem.tsx");
+
+  assert.match(router, /Hurtigt valg af regnskabsår/);
+  assert.match(router, /data-testid={`btn-periode-aar-\${year}`}/);
+  assert.match(router, /startDate: `\${year}-01-01`/);
+  assert.match(router, /endDate: `\${year}-12-31`/);
+});
+
 test("optional products are collected in Appmarked instead of normal accounting navigation", () => {
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const marketplace = read("client/src/pages/regnskab-tabs/appmarked.tsx");

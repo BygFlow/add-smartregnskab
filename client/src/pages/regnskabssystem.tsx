@@ -4698,6 +4698,29 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           placeholder="F.eks. August 2026, Q3 2026 eller 2026"
                         />
                       </div>
+                      {periodForm.periodType === "aar" && (
+                        <div className="flex flex-wrap gap-2" aria-label="Hurtigt valg af regnskabsår">
+                          {[new Date().getFullYear() - 1, new Date().getFullYear()].map((year) => (
+                            <Button
+                              key={year}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`btn-periode-aar-${year}`}
+                              onClick={() =>
+                                setPeriodForm((form) => ({
+                                  ...form,
+                                  periodLabel: `Regnskabsår ${year}`,
+                                  startDate: `${year}-01-01`,
+                                  endDate: `${year}-12-31`,
+                                }))
+                              }
+                            >
+                              Brug {year}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label htmlFor="pf-start">Startdato</Label>
