@@ -5967,9 +5967,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     ]);
     const data = validate(insertPeriodCloseSchema, {
       companyId: tenantId(req), periodType, periodLabel, startDate, endDate,
-      status: "aabne", checklist, createdAt: nowIso(),
+      status: "aabne", checklist,
     });
-    res.status(201).json(await storage.insert("period_closes", data));
+    res.status(201).json(await storage.insert("period_closes", { ...data, createdAt: nowIso() }));
   }));
 
   app.patch("/api/period-closes/:id", h(async (req, res) => {

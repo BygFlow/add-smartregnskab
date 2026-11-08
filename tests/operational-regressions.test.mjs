@@ -110,3 +110,11 @@ test("accounting assistant is mounted for company users with accounting guidance
   assert.match(routes, /req\.path === "\/ai\/assist"/);
   assert.doesNotMatch(routes, /AI auto-planlægning til at fordele opgaver/);
 });
+
+test("period creation persists its required creation timestamp", () => {
+  const routes = read("server/routes.ts");
+  assert.match(
+    routes,
+    /storage\.insert\("period_closes", \{ \.\.\.data, createdAt: nowIso\(\) \}\)/,
+  );
+});
