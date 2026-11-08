@@ -6489,8 +6489,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       { task: "Skattekonto afstemt", done: false },
       { task: "Årsberetning godkendt", done: false },
     ]);
-    const data = validate(insertYearEndCloseSchema, { ...req.body, companyId: tenantId(req), checklist, createdAt: nowIso() });
-    res.status(201).json(await storage.insert("year_end_closes", data));
+    const data = validate(insertYearEndCloseSchema, { ...req.body, companyId: tenantId(req), checklist });
+    res.status(201).json(await storage.insert("year_end_closes", { ...data, createdAt: nowIso() }));
   }));
   app.patch("/api/year-end-closes/:id", h(async (req, res) => {
     const updates: Record<string, any> = {};

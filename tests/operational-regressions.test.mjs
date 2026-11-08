@@ -117,4 +117,8 @@ test("period creation persists its required creation timestamp", () => {
     routes,
     /storage\.insert\("period_closes", \{ \.\.\.data, createdAt: nowIso\(\) \}\)/,
   );
+  assert.match(
+    routes,
+    /storage\.insert\("year_end_closes", \{ \.\.\.data, createdAt: nowIso\(\) \}\)/,
+  );
 });
