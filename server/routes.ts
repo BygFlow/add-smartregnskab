@@ -106,6 +106,10 @@ import {
 import { invoicePdf, platformInvoicePdf, quotePdf, kr, dkDate } from "./documents";
 import { encryptField, decryptField, maskSecret, usingFallbackKey } from "./crypto";
 import {
+  calculateAccountBalances,
+  journalEntryAmount,
+} from "./accounting-calculations";
+import {
   checkLoginAllowed, recordLogin, GENERISK_LOGINFEJL,
   generateTotpSecret, totpUri, verifyTotp, generateBackupCodes, consumeBackupCode,
   enableTwoFactor, disableTwoFactor,
@@ -4513,7 +4517,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //  ACCOUNTING — kontoplan, posteringer, moms
   // ══════════════════════════════════════════════
   app.get("/api/accounts", requireRole("leder", "platform_admin"), h(async (req, res) => {
-    res.json(await storage.all("accounts", tenantId(req)));
+    const cid = tenantId(req);
+    const [accounts, entries, lines] = await Promise.all([
+      storage.all("accounts", cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
+    ]);
+    res.json(calculateAccountBalances(accounts, entries, lines));
   }));
   app.post("/api/accounts", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const data = validate(insertAccountSchema, { ...req.body, companyId: tenantId(req) });
@@ -4640,13 +4648,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Regnskab oversigt — dashboard
   app.get("/api/accounting/overview", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const tid = tenantId(req);
-    const accts = await storage.all("accounts", tid);
-    const entries = await storage.all("journal_entries", tid);
+    const [storedAccounts, entries, lines] = await Promise.all([
+      storage.all("accounts", tid), storage.all("journal_entries", tid), storage.all("journal_lines", tid),
+    ]);
+    const accts = calculateAccountBalances(storedAccounts, entries, lines);
     const vat = await storage.all("vat_periods", tid);
-    const revenue = accts.filter((a: any) => a.type === "indtaegt").reduce((s: number, a: any) => s + a.balance, 0);
+    const revenue = -accts.filter((a: any) => a.type === "indtaegt").reduce((s: number, a: any) => s + a.balance, 0);
     const expenses = accts.filter((a: any) => a.type === "udgift").reduce((s: number, a: any) => s + a.balance, 0);
     const assets = accts.filter((a: any) => a.type === "aktiv").reduce((s: number, a: any) => s + a.balance, 0);
-    const liabilities = accts.filter((a: any) => a.type === "passiv").reduce((s: number, a: any) => s + a.balance, 0);
+    const liabilities = -accts.filter((a: any) => a.type === "passiv").reduce((s: number, a: any) => s + a.balance, 0);
     res.json({
       revenue, expenses, profit: revenue - expenses, assets, liabilities,
       equity: assets - liabilities,
@@ -5242,7 +5252,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const [company, accounts, entries, vatPeriods, lines] = await Promise.all([
       storage.getCompany(cid), storage.all("accounts", cid), storage.all("journal_entries", cid), storage.all("vat_periods", cid), storage.all("journal_lines", cid),
     ]);
-    res.json({ company, accounts, entries, vatPeriods, lines });
+    const calculatedAccounts = calculateAccountBalances(accounts, entries, lines);
+    const entriesWithLines = entries.map((entry: any) => ({
+      ...entry,
+      lines: lines.filter((line: any) => line.journalEntryId === entry.id),
+      amount: journalEntryAmount(entry.id, lines),
+    }));
+    res.json({ company, accounts: calculatedAccounts, entries: entriesWithLines, vatPeriods, lines });
   }));
 
   // ═══════════════════════════════════════════════════════════════
@@ -6574,7 +6590,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Moms-afstemning ──
   app.get("/api/vat-reconciliations", h(async (req, res) => {
-    res.json(await storage.all("vat_reconciliations", tenantId(req)));
+    const cid = tenantId(req);
+    const [reconciliations, accounts, entries, lines] = await Promise.all([
+      storage.all("vat_reconciliations", cid), storage.all("accounts", cid),
+      storage.all("journal_entries", cid), storage.all("journal_lines", cid),
+    ]);
+    res.json(reconciliations.map((item: any) => {
+      try {
+        const calculation = calculateJournalVatReconciliation({ period: item.period, accounts, entries, lines });
+        return {
+          ...item,
+          period: calculation.normalizedPeriod,
+          outputVat: calculation.outputVat,
+          inputVat: calculation.inputVat,
+          netVat: calculation.netVat,
+          skatAccount: calculation.taxAccount,
+          difference: calculation.difference,
+          status: Math.abs(calculation.difference) > 0.005
+            ? "afvigelse"
+            : item.status === "afstemt" ? "afstemt" : "afventer",
+        };
+      } catch {
+        return { ...item, status: "afvigelse", calculationError: "Momsperioden kunne ikke beregnes." };
+      }
+    }));
   }));
   app.post("/api/vat-reconciliations", h(async (req, res) => {
     const cid = tenantId(req);
@@ -6616,9 +6655,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json(await storage.insert("vat_reconciliations", data));
   }));
   app.patch("/api/vat-reconciliations/:id", h(async (req, res) => {
+    const cid = tenantId(req);
+    const existing = await storage.get("vat_reconciliations", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "Momsafstemningen findes ikke." });
+    let current;
+    try {
+      current = calculateJournalVatReconciliation({
+        period: existing.period,
+        accounts: await storage.all("accounts", cid),
+        entries: await storage.all("journal_entries", cid),
+        lines: await storage.all("journal_lines", cid),
+      });
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : "Ugyldig momsperiode." });
+    }
     const updates: Record<string, any> = {};
     for (const k of ["status", "notes", "difference", "skatAccount"]) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
-    res.json(await storage.update("vat_reconciliations", Number(req.params.id), updates, tenantId(req)));
+    updates.outputVat = current.outputVat;
+    updates.inputVat = current.inputVat;
+    updates.netVat = current.netVat;
+    if (updates.skatAccount === undefined) updates.skatAccount = current.taxAccount;
+    updates.difference = Math.round((current.netVat - Number(updates.skatAccount)) * 100) / 100;
+    if (updates.status === "afstemt") {
+      const difference = Number(updates.difference ?? existing.difference ?? 0);
+      if (Math.abs(difference) > 0.005) {
+        return res.status(409).json({ error: "Momsafstemningen har en difference og kan ikke markeres som afstemt." });
+      }
+    }
+    res.json(await storage.update("vat_reconciliations", Number(req.params.id), updates, cid));
   }));
 
   // ── Likviditetsprojektioner (cashflow) ──
