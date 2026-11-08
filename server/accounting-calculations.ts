@@ -2,6 +2,7 @@ type AccountLike = {
   id: number;
   accountNumber: string;
   name?: string | null;
+  type?: string | null;
   balance?: number | null;
 };
 
@@ -59,4 +60,29 @@ export function journalEntryAmount(entryId: number, lines: LineLike[]): number {
   const debits = entryLines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
   const credits = entryLines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
   return roundMoney(Math.max(debits, credits));
+}
+
+export function calculatePeriodProfitLoss<T extends AccountLike>(
+  accounts: T[],
+  entries: EntryLike[],
+  lines: LineLike[],
+  startDate: string,
+  endDate: string,
+): { revenue: number; expenses: number; result: number } {
+  const periodEntries = entries.filter((entry) => entry.date >= startDate && entry.date <= endDate);
+  const periodEntryIds = new Set(periodEntries.map((entry) => entry.id));
+  const periodLines = lines.filter((line) => periodEntryIds.has(line.journalEntryId));
+  const periodAccounts = calculateAccountBalances(
+    accounts.map((account) => ({ ...account, balance: 0 })),
+    periodEntries,
+    periodLines,
+  );
+  const revenue = roundMoney(-periodAccounts
+    .filter((account) => account.type === "indtaegt")
+    .reduce((sum, account) => sum + account.balance, 0));
+  const expenses = roundMoney(periodAccounts
+    .filter((account) => account.type === "udgift")
+    .reduce((sum, account) => sum + account.balance, 0));
+
+  return { revenue, expenses, result: roundMoney(revenue - expenses) };
 }

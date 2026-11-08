@@ -107,6 +107,7 @@ import { invoicePdf, platformInvoicePdf, quotePdf, kr, dkDate } from "./document
 import { encryptField, decryptField, maskSecret, usingFallbackKey } from "./crypto";
 import {
   calculateAccountBalances,
+  calculatePeriodProfitLoss,
   journalEntryAmount,
 } from "./accounting-calculations";
 import {
@@ -5866,18 +5867,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/regnskabssystem/dashboard/:companyId", h(async (req, res) => {
     const cid = Number(req.params.companyId);
     if (!req.auth!.isPlatformAdmin && cid !== tenantId(req)) return res.status(403).json({ error: "Ingen adgang." });
-    const [invoices, entries, vouchers, vatPeriods, taxDls, bankTx] = await Promise.all([
-      storage.all("invoices", cid), storage.all("journal_entries", cid), storage.all("vouchers", cid),
+    const [invoices, entries, lines, accounts, vouchers, vatPeriods, taxDls, bankTx] = await Promise.all([
+      storage.all("invoices", cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid),
+      storage.all("accounts", cid), storage.all("vouchers", cid),
       storage.all("vat_periods", cid), storage.all("tax_deadlines", cid), storage.all("bank_transactions", cid),
     ]);
-    const revenue = invoices.filter((i: any) => i.status === "betalt").reduce((s: number, i: any) => s + (i.totalAmount || 0), 0);
-    const expenses = vouchers.filter((v: any) => v.status === "bogfoert").reduce((s: number, v: any) => s + (v.amount || 0), 0);
-    const vatPayable = vatPeriods.filter((v: any) => v.status === "aaben" || v.status === "afventer").reduce((s: number, v: any) => s + (v.calculatedVat || 0), 0);
+    const currentYear = new Date().getFullYear();
+    const startDate = `${currentYear}-01-01`;
+    const endDate = `${currentYear}-12-31`;
+    const { revenue, expenses, result } = calculatePeriodProfitLoss(accounts, entries, lines, startDate, endDate);
+    const vatFromLedger = calculateJournalVatReconciliation({ period: currentYear, entries, lines, accounts });
+    const vatFromPeriods = vatPeriods
+      .filter((v: any) => v.status === "aaben" || v.status === "afventer" || v.status === "åben")
+      .reduce((s: number, v: any) => s + (v.calculatedVat || 0), 0);
+    const vatPayable = vatFromLedger.recognizedLineCount > 0 ? vatFromLedger.netVat : vatFromPeriods;
     const overdueInvoices = invoices.filter((i: any) => i.status === "forfalden" || (i.dueDate && new Date(i.dueDate) < new Date() && i.status !== "betalt"));
     const openDrafts = entries.filter((e: any) => e.status === "kladde");
     const pendingBankTx = bankTx.filter((b: any) => b.status === "afventer");
     const upcomingDeadlines = taxDls.filter((t: any) => t.status === "afventer").sort((a: any, b: any) => a.deadline.localeCompare(b.deadline)).slice(0, 5);
-    res.json({ revenue, expenses, result: revenue - expenses, vatPayable, overdueInvoices: overdueInvoices.length, openDrafts: openDrafts.length, pendingBankTx: pendingBankTx.length, upcomingDeadlines, invoiceCount: invoices.length, voucherCount: vouchers.length, entryCount: entries.length });
+    res.json({ revenue, expenses, result, vatPayable, overdueInvoices: overdueInvoices.length, openDrafts: openDrafts.length, pendingBankTx: pendingBankTx.length, upcomingDeadlines, invoiceCount: invoices.length, voucherCount: vouchers.length, entryCount: entries.length });
   }));
 
   // ═══════════════════════════════════════════════════════════════
