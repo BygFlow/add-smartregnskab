@@ -287,10 +287,14 @@ test("customer-approved cleanup deletes exactly the 972 SmartDrift AiiA test row
       (2, 'Anden virksomhed', '22222222');
   `);
   const accountRef = "MTM2MmJhYTktMjFjNS00MmZiLWEwYjEtODAyZjgzN2ZhZTdmfFRlc3REYXRhQmFuazF8SGllbFB2d21iTnp0cFJibUVfWVJnTVJnMXUxMGRzZVd4dzNGTDVSSDRMOC4xNjZlZjcwMDVjOGI=";
+  const secondAccountRef = "MTM2MmJhYTktMjFjNS00MmZiLWEwYjEtODAyZjgzN2ZhZTdmfFRlc3REYXRhQmFuazF8UnRvQUdPeHFlMk5nLUhUS09SZFVWMG1DWkdFYUdmLWQyWjZWVVNnTDRicy5jODFjMDE4MzFhOGY=";
   const insert = db.prepare("INSERT INTO bank_transactions (id, company_id, provider, account_ref, external_id) VALUES (?, ?, ?, ?, ?)");
   const seed = db.transaction(() => {
-    for (let id = 1; id <= 972; id += 1) {
+    for (let id = 1; id <= 799; id += 1) {
       insert.run(id, 1, "aiia", accountRef, `aiia:${accountRef}:test-${id}`);
+    }
+    for (let id = 800; id <= 972; id += 1) {
+      insert.run(id, 1, "aiia", secondAccountRef, `aiia:${secondAccountRef}:test-${id}`);
     }
     insert.run(973, 1, "csv", "0112", "real-smartdrift-row");
     insert.run(974, 2, "aiia", accountRef, `aiia:${accountRef}:other-company`);
