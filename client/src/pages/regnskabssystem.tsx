@@ -1019,6 +1019,15 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
 
   const bankTx = bankTxQuery.data ?? [];
+  const BANK_PAGE_SIZE = 100;
+  const [bankPage, setBankPage] = useState(1);
+  const bankPageCount = Math.max(1, Math.ceil(bankTx.length / BANK_PAGE_SIZE));
+  const visibleBankTx = bankTx.slice((bankPage - 1) * BANK_PAGE_SIZE, bankPage * BANK_PAGE_SIZE);
+
+  useEffect(() => setBankPage(1), [effectiveCompanyId]);
+  useEffect(() => {
+    if (bankPage > bankPageCount) setBankPage(bankPageCount);
+  }, [bankPage, bankPageCount]);
 
   /* Moms & Skat — fristkalender */
   const taxDeadlinesQuery = useQuery<TaxDeadline[]>({
@@ -3309,7 +3318,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           </tr>
                         </thead>
                         <tbody>
-                          {bankTx.map((t) => {
+                          {visibleBankTx.map((t) => {
                             const status = t.status ?? "";
                             return (
                               <tr key={t.id} className="border-b border-border/50 last:border-0">
@@ -3407,6 +3416,34 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           })}
                         </tbody>
                       </table>
+                      {bankPageCount > 1 && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Viser {(bankPage - 1) * BANK_PAGE_SIZE + 1}–{Math.min(bankPage * BANK_PAGE_SIZE, bankTx.length)} af {bankTx.length} bankposter
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              data-testid="btn-bank-page-prev"
+                              disabled={bankPage === 1}
+                              onClick={() => setBankPage((page) => Math.max(1, page - 1))}
+                            >
+                              Forrige
+                            </Button>
+                            <span className="text-xs tabular-nums">Side {bankPage} af {bankPageCount}</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              data-testid="btn-bank-page-next"
+                              disabled={bankPage === bankPageCount}
+                              onClick={() => setBankPage((page) => Math.min(bankPageCount, page + 1))}
+                            >
+                              Næste
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </SectionCard>

@@ -34,6 +34,17 @@ test("company and invoice settings persist through the tenant-scoped company end
   assert.match(invoice, /Allerede udstedte fakturanumre ændres ikke/);
 });
 
+test("large bank reconciliations are paginated instead of rendering every action row", () => {
+  const router = read("client/src/pages/regnskabssystem.tsx");
+
+  assert.match(router, /const BANK_PAGE_SIZE = 100/);
+  assert.match(router, /const visibleBankTx = bankTx\.slice/);
+  assert.match(router, /visibleBankTx\.map/);
+  assert.match(router, /data-testid="btn-bank-page-prev"/);
+  assert.match(router, /data-testid="btn-bank-page-next"/);
+  assert.match(router, /af \{bankTx\.length\} bankposter/);
+});
+
 test("optional products are collected in Appmarked instead of normal accounting navigation", () => {
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const marketplace = read("client/src/pages/regnskab-tabs/appmarked.tsx");
