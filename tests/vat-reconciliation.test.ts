@@ -57,3 +57,23 @@ test("ukendte balance-momskonti kræver manuel kontrol", () => {
   assert.deepEqual(result.ignoredVatAccounts, ["6999 · Moms mellemregning"]);
   assert.equal(result.recognizedLineCount, 0);
 });
+
+test("danske standardkonti med forklarende parentes genkendes", () => {
+  const result = calculateJournalVatReconciliation({
+    period: "2025",
+    entries: [{ id: 1, date: "2025-06-30", status: "bogført" }],
+    lines: [
+      { journalEntryId: 1, accountId: 61, debit: 100, credit: 500 },
+      { journalEntryId: 1, accountId: 62, debit: 250, credit: 0 },
+    ],
+    accounts: [
+      { id: 61, name: "Udgående (salg) moms", type: "passiv" },
+      { id: 62, name: "Indgående (køb) moms", type: "aktiv" },
+    ],
+  });
+
+  assert.equal(result.outputVat, 400);
+  assert.equal(result.inputVat, 250);
+  assert.equal(result.netVat, 150);
+  assert.equal(result.recognizedLineCount, 2);
+});

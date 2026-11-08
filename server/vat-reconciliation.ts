@@ -104,12 +104,12 @@ export function calculateJournalVatReconciliation(input: {
       taxAccount += debitMinusCredit;
       continue;
     }
-    if (/indgaaende moms|koebsmoms|input vat/.test(name)) {
+    if (/indgaaende(?:\s+\([^)]*\))?\s+moms|koebsmoms|input vat/.test(name)) {
       inputVat += debitMinusCredit;
       recognizedLineCount++;
       continue;
     }
-    if (/udgaaende moms|salgsmoms|output vat/.test(name)) {
+    if (/udgaaende(?:\s+\([^)]*\))?\s+moms|salgsmoms|output vat/.test(name)) {
       outputVat -= debitMinusCredit;
       recognizedLineCount++;
       continue;
