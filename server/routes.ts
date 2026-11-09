@@ -48,6 +48,7 @@ import { findSafeInterestPostings } from "./bank-interest-reconciliation";
 import { findSafeCustomerPrepayments } from "./bank-customer-prepayment-reconciliation";
 import { findSafePayrollClearingPostings } from "./bank-payroll-clearing-reconciliation";
 import { findMultiCleanReceiptRepairPlan } from "./bank-multiclean-receipt-repair";
+import { findCustomerReceiptDuplicateRepairPlan } from "./bank-customer-receipt-duplicate-repair";
 import { findCrossCompanyJemFixRepairPlan } from "./bank-cross-company-expense-repair";
 import { findDanskeMarchCompletionPlan } from "./bank-danske-march-completion";
 import { aiUsageOverview } from "./ai-usage";
@@ -6013,6 +6014,161 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       total: matched.reduce((sum, row) => sum + row.amount, 0),
       remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
       year,
+    });
+  }));
+
+  app.get("/api/bank-transactions/customer-receipt-duplicate-repair-preview", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    res.json(findCustomerReceiptDuplicateRepairPlan(
+      transactions as any[], entries as any[], lines as any[], accountRows as any[],
+    ));
+  }));
+
+  app.post("/api/bank-transactions/repair-customer-receipt-duplicates", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const plan = findCustomerReceiptDuplicateRepairPlan(
+      transactions as any[], entries as any[], lines as any[], accountRows as any[],
+    );
+    if (!plan.safe) {
+      return res.status(409).json({
+        error: "Kundebetalingsdubletterne kunne ikke dokumenteres entydigt. Ingen ændringer er gemt.",
+        reasons: plan.reasons,
+        preview: plan,
+      });
+    }
+
+    const result = db.transaction((tx) => plan.rows.map((row) => {
+      const reverseImportedEntry = (entryId: number, sourceType: string, entryNumber: string) => {
+        const original = tx.select().from(journalEntries).where(and(
+          eq(journalEntries.id, entryId),
+          eq(journalEntries.companyId, cid),
+        )).get();
+        if (!original) throw new Error(`Importpostering ${entryId} findes ikke længere.`);
+        const alreadyMatched = tx.select().from(bankTransactions).where(and(
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.matchedId, entryId),
+          eq(bankTransactions.status, "matchet"),
+        )).get();
+        if (alreadyMatched) throw new Error(`Importpostering ${entryId} er allerede anvendt af en bankpost.`);
+        const existingCorrection = tx.select().from(journalEntries).where(and(
+          eq(journalEntries.companyId, cid),
+          eq(journalEntries.sourceType, sourceType),
+          eq(journalEntries.sourceId, entryId),
+        )).get();
+        if (existingCorrection) throw new Error(`Importpostering ${entryId} er allerede korrigeret.`);
+        const originalLines = tx.select().from(journalLines).where(and(
+          eq(journalLines.companyId, cid),
+          eq(journalLines.journalEntryId, entryId),
+        )).all();
+        if (originalLines.length !== 2) throw new Error(`Importpostering ${entryId} har ikke præcis to bogføringslinjer.`);
+        const correction = tx.insert(journalEntries).values({
+          companyId: cid,
+          entryNumber,
+          date: original.date,
+          description: `Kontrolleret tilbageførsel: ${original.description}`,
+          reference: original.reference || original.entryNumber,
+          sourceType,
+          sourceId: entryId,
+          status: "bogført",
+          createdBy: req.auth?.user.email,
+          createdAt: nowIso(),
+        }).returning().get();
+        tx.insert(journalLines).values(originalLines.map((line) => ({
+          companyId: cid,
+          journalEntryId: correction.id,
+          accountId: line.accountId,
+          description: `Tilbageførsel: ${line.description || original.description}`,
+          debit: Number(line.credit || 0),
+          credit: Number(line.debit || 0),
+          vatCode: line.vatCode,
+        }))).run();
+        return correction.id;
+      };
+
+      const transaction = tx.select().from(bankTransactions).where(and(
+        eq(bankTransactions.id, row.transactionId),
+        eq(bankTransactions.companyId, cid),
+      )).get();
+      if (!transaction) throw new Error(`Bankpostering ${row.transactionId} findes ikke længere.`);
+      const expectedMatched = row.transactionWasMatched
+        && transaction.status === "matchet"
+        && transaction.matchedType === "journal_entry"
+        && Number(transaction.matchedId) === row.keepEntryId;
+      const expectedPending = !row.transactionWasMatched && transaction.status === "afventer";
+      if (!expectedMatched && !expectedPending) {
+        throw new Error(`Bankpostering ${row.transactionId} er ændret. Ingen rettelser er gemt.`);
+      }
+
+      const keepEntry = tx.select().from(journalEntries).where(and(
+        eq(journalEntries.id, row.keepEntryId),
+        eq(journalEntries.companyId, cid),
+      )).get();
+      if (!keepEntry) throw new Error("Bogføringsgrundlaget blev ændret. Ingen rettelser er gemt.");
+      const reversalEntryId = reverseImportedEntry(
+        row.duplicateEntryId,
+        "bank_customer_receipt_duplicate_reversal",
+        `KORR-KUNDE-DUB-${row.duplicateEntryId}`,
+      );
+      const neutralizerEntryId = row.neutralizeEntryId ? reverseImportedEntry(
+        row.neutralizeEntryId,
+        "bank_customer_receipt_duplicate_neutralizer",
+        `KORR-KUNDE-NEUTRAL-${row.neutralizeEntryId}`,
+      ) : null;
+
+      if (expectedPending) {
+        const updated = tx.update(bankTransactions).set({
+          matchedType: "journal_entry",
+          matchedId: row.keepEntryId,
+          status: "matchet",
+        }).where(and(
+          eq(bankTransactions.id, row.transactionId),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.status, "afventer"),
+        )).returning().get();
+        if (!updated) throw new Error(`Bankpostering ${row.transactionId} blev ændret under rettelsen.`);
+      }
+
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "kundebetalingsdublet_tilbagefoert",
+        target: `journal_entries#${row.duplicateEntryId}`,
+        detail: JSON.stringify({
+          transactionId: row.transactionId,
+          keepEntryId: row.keepEntryId,
+          duplicateEntryId: row.duplicateEntryId,
+          reversalEntryId,
+          neutralizeEntryId: row.neutralizeEntryId,
+          neutralizerEntryId,
+          invoiceReference: row.invoiceReference,
+          amount: row.amount,
+          revenueReposted: false,
+          vatReposted: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+      return { ...row, reversalEntryId, neutralizerEntryId };
+    }));
+
+    res.json({
+      repaired: result.length,
+      total: result.reduce((sum, row) => sum + row.amount, 0),
+      rows: result,
+      revenueReposted: false,
+      vatReposted: false,
     });
   }));
 

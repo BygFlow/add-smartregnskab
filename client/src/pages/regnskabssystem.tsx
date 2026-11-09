@@ -1487,6 +1487,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairCustomerReceiptDuplicatesMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-customer-receipt-duplicates", {});
+      return await res.json();
+    },
+    onSuccess: (result: { repaired?: number; total?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const repaired = result.repaired ?? 0;
+      toast({
+        title: `${repaired} kundebetalingsdublet${repaired === 1 ? "" : "ter"} tilbageført`,
+        description: repaired
+          ? `${money(result.total ?? 0)} i dobbelt importerede betalinger er tilbageført med revisionsspor. En dokumenteret 2026-modpost neutraliseres samtidig, hvis den findes. Omsætning og moms er ikke ændret.`
+          : "Ingen dokumenterede kundebetalingsdubletter blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke rette kundebetalingsdubletter", description: message, variant: "destructive" });
+    },
+  });
+
   const reconcilePayrollClearingMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/bank-transactions/reconcile-payroll-clearing", { year: "2025" });
@@ -3712,6 +3737,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {reconcileCustomerPrepaymentsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Kundedobbeltbetalinger
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-customer-receipt-duplicates"
+                        onClick={() => repairCustomerReceiptDuplicatesMut.mutate()}
+                        disabled={repairCustomerReceiptDuplicatesMut.isPending}
+                      >
+                        {repairCustomerReceiptDuplicatesMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret kundebetalingsdubletter
                       </Button>
                       <Button
                         size="sm"
