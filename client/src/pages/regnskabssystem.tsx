@@ -1534,6 +1534,28 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairKnownBankChargesMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-known-bank-charges", {});
+      return await res.json();
+    },
+    onSuccess: (result: { matched?: number; total?: number; interestExpense?: number; rejectionFee?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({
+        title: `${result.matched ?? 0} bankomkostninger bogført og afstemt`,
+        description: `${money(result.interestExpense ?? 0)} i bankrenter og ${money(result.rejectionFee ?? 0)} i afvisningsgebyr er bogført uden moms. I alt ${money(result.total ?? 0)}.`,
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke bogføre bankomkostningerne", description: message, variant: "destructive" });
+    },
+  });
+
   const repairCrossCompanyCustomerReceiptsMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/bank-transactions/repair-cross-company-customer-receipts", {});
@@ -3804,6 +3826,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {repairKnownBankDiscrepanciesMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Ret øre/lønkonto
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-known-bank-charges"
+                        onClick={() => repairKnownBankChargesMut.mutate()}
+                        disabled={repairKnownBankChargesMut.isPending}
+                      >
+                        {repairKnownBankChargesMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret bankrenter/gebyr
                       </Button>
                       <Button
                         size="sm"

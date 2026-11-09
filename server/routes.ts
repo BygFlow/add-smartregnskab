@@ -52,6 +52,7 @@ import { findCustomerReceiptDuplicateRepairPlan } from "./bank-customer-receipt-
 import { findCrossCompanyJemFixRepairPlan } from "./bank-cross-company-expense-repair";
 import { findCrossCompanyCustomerReceiptRepairPlan } from "./bank-cross-company-customer-receipt-repair";
 import { findKnownBankDiscrepancyRepairPlan } from "./bank-known-discrepancy-repair";
+import { findKnownBankChargeRepairPlan } from "./bank-known-charge-repair";
 import { findDanskeMarchCompletionPlan } from "./bank-danske-march-completion";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
@@ -6284,6 +6285,106 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return { invoiceReversalId: invoiceReversal.id, invoiceCorrectedId: invoiceCorrected.id, payrollCorrectionId: payrollCorrection.id, liabilityAccountId: liability.id };
     });
     res.json({ repaired: 2, invoiceDifference: plan.invoice515.overpayment, payrollAmount: plan.payrollJune.amount, ...result, revenueReposted: false, vatReposted: false, payrollExpenseChanged: false });
+  }));
+
+  app.get("/api/bank-transactions/known-bank-charge-repair-preview", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const company = db.select().from(companies).where(eq(companies.id, cid)).get();
+    if (!company || String(company.cvr ?? "").replace(/\D/g, "") !== "44822539") {
+      return res.status(409).json({ error: "Denne kontrol gælder kun ADD Multi Service ApS." });
+    }
+    const [transactions, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid), storage.all("accounts", cid),
+    ]);
+    res.json(findKnownBankChargeRepairPlan(transactions as any[], accountRows as any[]));
+  }));
+
+  app.post("/api/bank-transactions/repair-known-bank-charges", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const company = db.select().from(companies).where(eq(companies.id, cid)).get();
+    if (!company || String(company.cvr ?? "").replace(/\D/g, "") !== "44822539") {
+      return res.status(409).json({ error: "Denne rettelse gælder kun ADD Multi Service ApS. Ingen ændringer er gemt." });
+    }
+    const [transactions, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid), storage.all("accounts", cid),
+    ]);
+    const plan = findKnownBankChargeRepairPlan(transactions as any[], accountRows as any[]);
+    if (!plan.safe || plan.rows.length !== 3) {
+      return res.status(409).json({ error: "De tre bankomkostninger kunne ikke dokumenteres entydigt. Ingen ændringer er gemt.", reasons: plan.reasons, preview: plan });
+    }
+
+    const result = db.transaction((tx) => plan.rows.map((posting) => {
+      const bankTransaction = tx.select().from(bankTransactions).where(and(
+        eq(bankTransactions.id, posting.transactionId),
+        eq(bankTransactions.companyId, cid),
+        eq(bankTransactions.status, "afventer"),
+      )).get();
+      if (!bankTransaction
+        || String(bankTransaction.date ?? "").slice(0, 10) !== posting.date
+        || Math.abs(Number(bankTransaction.amount) + posting.amount) >= 0.005
+        || String(bankTransaction.accountRef ?? "").replace(/\s+/g, "") !== "0112"
+        || String(bankTransaction.description ?? "").trim().toLocaleLowerCase("da-DK") !== posting.description.toLocaleLowerCase("da-DK")) {
+        throw new Error(`Bankpost ${posting.transactionId} blev ændret. Ingen rettelser er gemt.`);
+      }
+      const entryNumber = `BANK-MS-OMK-${posting.transactionId}`;
+      if (tx.select().from(journalEntries).where(and(eq(journalEntries.companyId, cid), eq(journalEntries.entryNumber, entryNumber))).get()) {
+        throw new Error(`Rettelsen ${entryNumber} findes allerede. Ingen nye posteringer er oprettet.`);
+      }
+      const entry = tx.insert(journalEntries).values({
+        companyId: cid,
+        entryNumber,
+        date: posting.date,
+        description: posting.kind === "rejection_fee" ? "Bankgebyr ved afvist Betalingsservice" : "Renteudgift til bank",
+        reference: posting.description,
+        sourceType: "bank_known_charge",
+        sourceId: posting.transactionId,
+        status: "afstemt",
+        createdBy: req.auth?.user.email,
+        createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        {
+          companyId: cid,
+          journalEntryId: entry.id,
+          accountId: posting.expenseAccountId,
+          description: posting.description,
+          debit: posting.amount,
+          credit: 0,
+          vatCode: null,
+        },
+        {
+          companyId: cid,
+          journalEntryId: entry.id,
+          accountId: posting.bankAccountId,
+          description: posting.description,
+          debit: 0,
+          credit: posting.amount,
+          vatCode: null,
+        },
+      ]).run();
+      const updated = tx.update(bankTransactions).set({ matchedType: "journal_entry", matchedId: entry.id, status: "matchet" })
+        .where(and(eq(bankTransactions.id, posting.transactionId), eq(bankTransactions.companyId, cid), eq(bankTransactions.status, "afventer"))).returning().get();
+      if (!updated) throw new Error(`Bankpost ${posting.transactionId} blev ændret under rettelsen.`);
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "kendt_bankomkostning_bogført",
+        target: `bank_transactions#${posting.transactionId}`,
+        detail: JSON.stringify({ ...posting, journalEntryId: entry.id, vatReposted: false }),
+        createdAt: nowIso(),
+      }).run();
+      return { transactionId: posting.transactionId, journalEntryId: entry.id, amount: posting.amount, kind: posting.kind };
+    }));
+
+    res.json({
+      matched: result.length,
+      rows: result,
+      total: plan.total,
+      interestExpense: plan.interestExpense,
+      rejectionFee: plan.rejectionFee,
+      vatReposted: false,
+    });
   }));
 
   app.get("/api/bank-transactions/multiclean-receipt-repair-preview", requireRole("leder", "platform_admin"), h(async (req, res) => {
