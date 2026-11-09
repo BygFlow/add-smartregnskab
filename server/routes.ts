@@ -5512,7 +5512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       journalLines as any[],
       accounts as any[],
       usedJournalEntryIds,
-      4,
+      31,
     ));
   }));
 
@@ -5539,7 +5539,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       journalLines as any[],
       accounts as any[],
       usedJournalEntryIds,
-      4,
+      31,
     );
     if (!candidates.some((candidate) => candidate.id === journalEntryId)) {
       return res.status(409).json({ error: "SAF-T-posteringen passer ikke til beløb og den tilladte datoforskel eller er allerede anvendt." });

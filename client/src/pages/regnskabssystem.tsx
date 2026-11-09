@@ -3477,14 +3477,14 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         {saftMatchTransaction ? `${dk(saftMatchTransaction.date)} · ${saftMatchTransaction.description ?? "Bankpostering"} · ${money(saftMatchTransaction.amount)}` : ""}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Afstemningen opretter ingen ny bogføring. Den knytter kun bankposteringen til en allerede bogført SAF-T-postering med samme beløb og højst fire dages forskel mellem bilagsdato og bankens bogføringsdato.
+                        Afstemningen opretter ingen ny bogføring. Den knytter kun bankposteringen til en allerede bogført SAF-T-postering med samme beløb. Ved dokumenteret efterfølgende bogføring kan datoerne være op til 31 dage fra hinanden; vælg derfor altid den konkrete postering ud fra originalbilaget.
                       </p>
                       {saftCandidatesQuery.isLoading ? (
                         <Skeleton className="h-10 w-full" />
                       ) : saftCandidatesQuery.isError ? (
                         <p className="text-sm text-destructive">Kunne ikke hente SAF-T-kandidater.</p>
                       ) : (saftCandidatesQuery.data?.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground">Der findes ingen ledige SAF-T-posteringer med samme beløb inden for fire dage.</p>
+                        <p className="text-sm text-muted-foreground">Der findes ingen ledige SAF-T-posteringer med samme beløb inden for 31 dage.</p>
                       ) : (
                         <div className="space-y-1">
                           <Label>SAF-T-postering</Label>

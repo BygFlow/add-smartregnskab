@@ -165,14 +165,26 @@ test("manuel SAF-T-afstemning kan vise dokumenterede kortafregninger op til fire
 
 test("manuel SAF-T-afstemning afviser samme beløb uden for datotolerancen", () => {
   const candidates = findSaftJournalCandidates(
-    { date: "2025-01-26", description: "Thansen Gruppen", amount: -79.95 },
+    { date: "2025-02-22", description: "Thansen Gruppen", amount: -79.95 },
     [{ ...entry, id: 50187, date: "2025-01-21", description: "Sprinklervæske" }],
     [{ journalEntryId: 50187, accountId: 1, description: "Sprinklervæske", debit: 0, credit: 79.95 }],
     accounts,
     new Set(),
-    4,
+    31,
   );
   assert.deepEqual(candidates, []);
+});
+
+test("manuel SAF-T-afstemning viser et dokumenteret køb bogført senere i samme måned", () => {
+  const candidates = findSaftJournalCandidates(
+    { date: "2025-07-09", description: "Jem & Fix", amount: -479.85 },
+    [{ ...entry, id: 50439, date: "2025-07-25", description: "Jem &amp; Fix" }],
+    [{ journalEntryId: 50439, accountId: 1, description: "Jem &amp; Fix", debit: 0, credit: 479.85 }],
+    accounts,
+    new Set(),
+    31,
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [50439]);
 });
 
 test("en postering med både betaling og tilbageførsel kan ikke bruges som enkelt bankmatch", () => {
