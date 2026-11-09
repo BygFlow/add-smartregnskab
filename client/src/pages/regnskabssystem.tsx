@@ -1437,6 +1437,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const reconcileInterestMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/reconcile-interest", {});
+      return await res.json();
+    },
+    onSuccess: (result: { matched?: number; remaining?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const matched = result.matched ?? 0;
+      toast({
+        title: `${matched} rentepost${matched === 1 ? "" : "er"} bogført og afstemt`,
+        description: matched
+          ? `Renterne er bogført på den dokumenterede bankkonto mod renteindtægt. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
+          : "Ingen åbne, entydige renteposter på kendte bankkonti blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke bogføre renter", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3525,6 +3550,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           <FileCheck2 className="size-4" />
                         )}
                         Betalte kreditorer
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-reconcile-interest"
+                        onClick={() => reconcileInterestMut.mutate()}
+                        disabled={reconcileInterestMut.isPending}
+                      >
+                        {reconcileInterestMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <TrendingUp className="size-4" />}
+                        Bogfør renter
                       </Button>
                       <Button
                         size="sm"

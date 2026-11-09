@@ -44,6 +44,7 @@ import {
 } from "./bank-transfer-match";
 import { findBankDocumentCandidates, findSafeBankDocumentMatches, normalizeBankDocumentType } from "./bank-document-match";
 import { findSafePayableSettlements } from "./bank-payable-reconciliation";
+import { findSafeInterestPostings } from "./bank-interest-reconciliation";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5436,6 +5437,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(409).json({ error: "Dokumentet har ikke samme beløb, har forkert retning eller er allerede anvendt." });
     }
     res.json(await storage.update("bank_transactions", transaction.id, { matchedType, matchedId, status: "matchet" }, cid));
+  }));
+
+  app.post("/api/bank-transactions/reconcile-interest", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const limit = await checkAccountingLimit(cid, "entries");
+    if (!limit.ok) return res.status(402).json({ error: limit.message, code: "pakke_begraensning" });
+    const [transactions, accountRows, entryRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("accounts", cid),
+      storage.all("journal_entries", cid),
+    ]);
+    const postings = findSafeInterestPostings(transactions as any[], accountRows as any[], entryRows as any[]);
+    const matched = db.transaction((tx) => postings.flatMap((posting) => {
+      const current = tx.select().from(bankTransactions).where(and(
+        eq(bankTransactions.id, posting.transactionId),
+        eq(bankTransactions.companyId, cid),
+        eq(bankTransactions.status, "afventer"),
+      )).get();
+      if (!current) return [];
+      const entry = tx.insert(journalEntries).values({
+        companyId: cid,
+        entryNumber: `BANK-RENTE-${posting.transactionId}`,
+        date: posting.date,
+        description: posting.description,
+        reference: `BANK-${posting.transactionId}`,
+        sourceType: "bank_interest",
+        sourceId: posting.transactionId,
+        status: "bogført",
+        createdBy: req.auth?.user.email,
+        createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        { companyId: cid, journalEntryId: entry.id, accountId: posting.bankAccountId, description: posting.description, debit: posting.amount, credit: 0 },
+        { companyId: cid, journalEntryId: entry.id, accountId: posting.interestAccountId, description: posting.description, debit: 0, credit: posting.amount },
+      ]).run();
+      const bank = tx.update(bankTransactions).set({
+        matchedType: "journal_entry",
+        matchedId: entry.id,
+        status: "matchet",
+      }).where(and(
+        eq(bankTransactions.id, posting.transactionId),
+        eq(bankTransactions.companyId, cid),
+        eq(bankTransactions.status, "afventer"),
+      )).returning().get();
+      if (!bank) throw new Error("Bankposteringen blev ændret under afstemningen.");
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankrente_bogført",
+        target: `bank_transactions#${posting.transactionId}`,
+        detail: JSON.stringify({ journalEntryId: entry.id, amount: posting.amount, bankAccountId: posting.bankAccountId, interestAccountId: posting.interestAccountId }),
+        createdAt: nowIso(),
+      }).run();
+      return [{ transactionId: posting.transactionId, journalEntryId: entry.id }];
+    }));
+    const remaining = (await storage.all("bank_transactions", cid)).filter((row: any) => row.status === "afventer").length;
+    res.json({ matched: matched.length, entries: matched, remaining });
   }));
 
   app.get("/api/bank-transactions/:id/document-candidates", h(async (req, res) => {
