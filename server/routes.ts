@@ -47,6 +47,7 @@ import { findSafePayableSettlements } from "./bank-payable-reconciliation";
 import { findSafeInterestPostings } from "./bank-interest-reconciliation";
 import { findSafeCustomerPrepayments } from "./bank-customer-prepayment-reconciliation";
 import { findSafePayrollClearingPostings } from "./bank-payroll-clearing-reconciliation";
+import { findMultiCleanReceiptRepairPlan } from "./bank-multiclean-receipt-repair";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -6010,6 +6011,197 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       total: matched.reduce((sum, row) => sum + row.amount, 0),
       remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
       year,
+    });
+  }));
+
+  app.get("/api/bank-transactions/multiclean-receipt-repair-preview", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    res.json(findMultiCleanReceiptRepairPlan(
+      transactions as any[], entries as any[], lines as any[], accountRows as any[],
+    ));
+  }));
+
+  app.post("/api/bank-transactions/repair-multiclean-receipts", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const plan = findMultiCleanReceiptRepairPlan(
+      transactions as any[], entries as any[], lines as any[], accountRows as any[],
+    );
+    if (!plan.safe) {
+      return res.status(409).json({
+        error: "MultiClean-betalingerne kunne ikke dokumenteres entydigt. Ingen ændringer er gemt.",
+        reasons: plan.reasons,
+        preview: plan,
+      });
+    }
+
+    const linesByEntry = new Map<number, any[]>();
+    for (const line of lines as any[]) {
+      const current = linesByEntry.get(Number(line.journalEntryId)) ?? [];
+      current.push(line);
+      linesByEntry.set(Number(line.journalEntryId), current);
+    }
+
+    const result = db.transaction((tx) => {
+      const reverseImportedEntry = (entryId: number, entryNumber: string, sourceType: string) => {
+        const original = tx.select().from(journalEntries).where(and(
+          eq(journalEntries.id, entryId),
+          eq(journalEntries.companyId, cid),
+        )).get();
+        if (!original) throw new Error(`SAF-T-postering ${entryId} findes ikke længere.`);
+        const alreadyMatched = tx.select().from(bankTransactions).where(and(
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.matchedId, entryId),
+          eq(bankTransactions.status, "matchet"),
+        )).get();
+        if (alreadyMatched) throw new Error(`SAF-T-postering ${entryId} er allerede brugt af bankpostering ${alreadyMatched.id}.`);
+        const existingCorrection = tx.select().from(journalEntries).where(and(
+          eq(journalEntries.companyId, cid),
+          eq(journalEntries.entryNumber, entryNumber),
+        )).get();
+        if (existingCorrection) throw new Error(`Rettelsen ${entryNumber} findes allerede.`);
+        const originalLines = linesByEntry.get(entryId) ?? [];
+        if (originalLines.length < 2) throw new Error(`SAF-T-postering ${entryId} mangler bogføringslinjer.`);
+        const reversal = tx.insert(journalEntries).values({
+          companyId: cid,
+          entryNumber,
+          date: original.date,
+          description: `Kontrolleret tilbageførsel: ${original.description}`,
+          reference: original.entryNumber,
+          sourceType,
+          sourceId: original.id,
+          status: "bogført",
+          createdBy: req.auth?.user.email,
+          createdAt: nowIso(),
+        }).returning().get();
+        tx.insert(journalLines).values(originalLines.map((line) => ({
+          companyId: cid,
+          journalEntryId: reversal.id,
+          accountId: line.accountId,
+          description: `Tilbageførsel: ${line.description || original.description}`,
+          debit: Number(line.credit || 0),
+          credit: Number(line.debit || 0),
+          vatCode: line.vatCode,
+        }))).run();
+        return reversal.id;
+      };
+
+      const repairedRows = plan.rows.map((row) => {
+        const bankTransaction = tx.select().from(bankTransactions).where(and(
+          eq(bankTransactions.id, row.transactionId),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.status, "afventer"),
+        )).get();
+        if (!bankTransaction) throw new Error(`Bankpostering ${row.transactionId} er ændret. Ingen rettelser er gemt.`);
+
+        const reversalIds = row.reversalEntryIds.map((entryId) => reverseImportedEntry(
+          entryId,
+          `KORR-MC-REV-${entryId}`,
+          "bank_receipt_repair_reversal",
+        ));
+        const correctedEntry = tx.insert(journalEntries).values({
+          companyId: cid,
+          entryNumber: `BANK-MC-${row.transactionId}`,
+          date: row.transactionDate,
+          description: `Korrigeret kundebetaling: ${row.reference}`,
+          reference: `BANK-${row.transactionId}`,
+          sourceType: "bank_composite_customer_receipt",
+          sourceId: row.transactionId,
+          status: "afstemt",
+          createdBy: req.auth?.user.email,
+          createdAt: nowIso(),
+        }).returning().get();
+        tx.insert(journalLines).values([
+          {
+            companyId: cid,
+            journalEntryId: correctedEntry.id,
+            accountId: row.bankAccountId,
+            description: String(bankTransaction.description || row.reference),
+            debit: row.amount,
+            credit: 0,
+            vatCode: null,
+          },
+          {
+            companyId: cid,
+            journalEntryId: correctedEntry.id,
+            accountId: row.receivableAccountId,
+            description: row.reference,
+            debit: 0,
+            credit: row.amount,
+            vatCode: null,
+          },
+        ]).run();
+        const updated = tx.update(bankTransactions).set({
+          matchedType: "journal_entry",
+          matchedId: correctedEntry.id,
+          status: "matchet",
+        }).where(and(
+          eq(bankTransactions.id, row.transactionId),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.status, "afventer"),
+        )).returning().get();
+        if (!updated) throw new Error(`Bankpostering ${row.transactionId} blev ændret under rettelsen.`);
+        tx.insert(auditLogs).values({
+          companyId: cid,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: "multiclean_kundesamlebetaling_rettet",
+          target: `bank_transactions#${row.transactionId}`,
+          detail: JSON.stringify({
+            transactionId: row.transactionId,
+            correctedJournalEntryId: correctedEntry.id,
+            reversedImportedEntryIds: row.reversalEntryIds,
+            reversalEntryIds: reversalIds,
+            amount: row.amount,
+            reference: row.reference,
+            revenueReposted: false,
+            vatReposted: false,
+          }),
+          createdAt: nowIso(),
+        }).run();
+        return { transactionId: row.transactionId, journalEntryId: correctedEntry.id, reversalIds };
+      });
+
+      const neutralized = plan.neutralizeEntryIds.map((entryId) => ({
+        originalEntryId: entryId,
+        reversalEntryId: reverseImportedEntry(
+          entryId,
+          `KORR-MC-NEUTRAL-${entryId}`,
+          "bank_receipt_repair_neutralizer",
+        ),
+      }));
+      for (const item of neutralized) {
+        tx.insert(auditLogs).values({
+          companyId: cid,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: "multiclean_2026_dobbeltreversal_neutraliseret",
+          target: `journal_entry#${item.originalEntryId}`,
+          detail: JSON.stringify(item),
+          createdAt: nowIso(),
+        }).run();
+      }
+      return { repairedRows, neutralized };
+    });
+
+    const remaining = (await storage.all("bank_transactions", cid)).filter((row: any) => row.status === "afventer").length;
+    res.json({
+      repaired: result.repairedRows.length,
+      rows: result.repairedRows,
+      reversedImportedEntries: result.repairedRows.reduce((sum, row) => sum + row.reversalIds.length, 0),
+      neutralized2026: result.neutralized.length,
+      remaining,
     });
   }));
 

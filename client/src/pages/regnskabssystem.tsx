@@ -1537,6 +1537,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairMultiCleanReceiptsMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-multiclean-receipts", {});
+      return await res.json();
+    },
+    onSuccess: (result: { repaired?: number; reversedImportedEntries?: number; neutralized2026?: number; remaining?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const repaired = result.repaired ?? 0;
+      toast({
+        title: `${repaired} dokumenterede samlebetalinger rettet`,
+        description: repaired
+          ? `${result.reversedImportedEntries ?? 0} fejlagtige SAF-T-betalingsposter er tilbageført med revisionsspor. ${result.neutralized2026 ?? 0} senere dobbelt-tilbageførsel er neutraliseret. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
+          : "Ingen nye, entydigt dokumenterede samlebetalinger blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke rette samlebetalingerne", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3665,6 +3690,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {repairPayrollSaftOverlapsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Ret SAF-T-dubletter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-multiclean-receipts"
+                        onClick={() => repairMultiCleanReceiptsMut.mutate()}
+                        disabled={repairMultiCleanReceiptsMut.isPending}
+                      >
+                        {repairMultiCleanReceiptsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret samlebetalinger
                       </Button>
                       <Button
                         size="sm"
