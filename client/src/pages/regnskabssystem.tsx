@@ -1584,6 +1584,26 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const completeDanskeMarchMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/complete-danske-march-2025", {});
+      return await res.json();
+    },
+    onSuccess: (result: { imported?: number; alreadyComplete?: boolean; endingBalance?: number; finalCount?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      const imported = result.imported ?? 0;
+      toast({
+        title: result.alreadyComplete ? "Danske Bank-perioden er allerede komplet" : `${imported} udførte Danske Bank-poster indlæst`,
+        description: `Saldoen pr. 31. marts er ${money(result.endingBalance ?? 0)}. Tre reservationer med status Venter er ikke indlæst.`,
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke supplere Danske Bank-perioden", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3732,6 +3752,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {repairMultiCleanCrossCompanyExpenseMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Ret Jem & Fix-mellemregning
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-complete-danske-march-2025"
+                        onClick={() => completeDanskeMarchMut.mutate()}
+                        disabled={completeDanskeMarchMut.isPending}
+                      >
+                        {completeDanskeMarchMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Supplér Danske marts 2025
                       </Button>
                       <Button
                         size="sm"

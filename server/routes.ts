@@ -49,6 +49,7 @@ import { findSafeCustomerPrepayments } from "./bank-customer-prepayment-reconcil
 import { findSafePayrollClearingPostings } from "./bank-payroll-clearing-reconciliation";
 import { findMultiCleanReceiptRepairPlan } from "./bank-multiclean-receipt-repair";
 import { findCrossCompanyJemFixRepairPlan } from "./bank-cross-company-expense-repair";
+import { findDanskeMarchCompletionPlan } from "./bank-danske-march-completion";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -6406,6 +6407,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
 
     res.json({ repaired: 1, ...result, expenseReposted: false, vatReposted: false });
+  }));
+
+  app.post("/api/bank-transactions/complete-danske-march-2025", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const company = db.select().from(companies).where(eq(companies.id, cid)).get();
+    if (!company || String(company.cvr ?? "").replace(/\D/g, "") !== "44822539") {
+      return res.status(409).json({ error: "Denne dokumentkontrol gælder kun ADD Multi Service ApS. Ingen ændringer er gemt." });
+    }
+
+    const current = await storage.all("bank_transactions", cid);
+    const preview = findDanskeMarchCompletionPlan(current as any[]);
+    if (!preview.safe) {
+      return res.status(409).json({
+        error: "Danske Bank-perioden kunne ikke suppleres entydigt. Ingen ændringer er gemt.",
+        reasons: preview.reasons,
+        preview,
+      });
+    }
+    if (preview.alreadyComplete) {
+      return res.json({ imported: 0, alreadyComplete: true, endingBalance: preview.endingBalance, finalCount: preview.expectedFinalCount });
+    }
+
+    const result = db.transaction((tx) => {
+      const locked = tx.select().from(bankTransactions).where(eq(bankTransactions.companyId, cid)).all();
+      const plan = findDanskeMarchCompletionPlan(locked as any[]);
+      if (!plan.safe || plan.alreadyComplete || plan.rows.length !== 15) {
+        throw new Error("Danske Bank-grundlaget blev ændret under kontrollen. Ingen poster er importeret.");
+      }
+      const importedAt = nowIso();
+      tx.insert(bankTransactions).values(plan.rows.map((bankRow) => ({
+        companyId: cid,
+        ...bankRow,
+        status: "afventer",
+        matchedType: null,
+        matchedId: null,
+        importedAt,
+      }))).run();
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "danske_bank_marts_2025_suppleret_fra_kontoudtog",
+        target: "bank_transactions:13800707:2025-03-27/2025-03-31",
+        detail: JSON.stringify({
+          source: "13800707_2025.01.01-2025.03.31.pdf",
+          imported: plan.rows.length,
+          pendingStatementRowsExcluded: 3,
+          openingBalanceForCompletion: 11_354.70,
+          endingBalance: plan.endingBalance,
+          expectedFinalCount: plan.expectedFinalCount,
+          rule: "exact-214-row-csv-anchor-and-executed-pdf-rows-only",
+        }),
+        createdAt: importedAt,
+      }).run();
+      return plan;
+    });
+
+    res.json({
+      imported: result.rows.length,
+      alreadyComplete: false,
+      endingBalance: result.endingBalance,
+      finalCount: result.expectedFinalCount,
+      pendingStatementRowsExcluded: 3,
+    });
   }));
 
   app.post("/api/bank-transactions/reconcile-payroll-clearing", requireRole("leder", "platform_admin"), h(async (req, res) => {
