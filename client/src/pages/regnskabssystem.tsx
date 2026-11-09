@@ -975,6 +975,68 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const detail = detailQuery.data;
   const [reverseEntry, setReverseEntry] = useState<JournalEntry | null>(null);
   const [reverseDate, setReverseDate] = useState("");
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  const [manualEntry, setManualEntry] = useState({
+    entryNumber: "",
+    date: "",
+    description: "",
+    reference: "",
+    debitAccountId: "",
+    creditAccountId: "",
+    amount: "",
+  });
+  const resetManualEntry = () => setManualEntry({
+    entryNumber: `MAN-${Date.now()}`,
+    date: new Date().toISOString().slice(0, 10),
+    description: "",
+    reference: "",
+    debitAccountId: "",
+    creditAccountId: "",
+    amount: "",
+  });
+  const manualEntryMut = useMutation({
+    mutationFn: async () => {
+      const amount = Number(String(manualEntry.amount).replace(",", "."));
+      return (await apiRequest("POST", "/api/journal-entries", {
+        entryNumber: manualEntry.entryNumber.trim(),
+        date: manualEntry.date,
+        description: manualEntry.description.trim(),
+        reference: manualEntry.reference.trim() || null,
+        sourceType: "manual",
+        status: "bogført",
+        createdBy: user?.email ?? null,
+        lines: [
+          {
+            accountId: Number(manualEntry.debitAccountId),
+            description: manualEntry.description.trim(),
+            debit: amount,
+            credit: 0,
+          },
+          {
+            accountId: Number(manualEntry.creditAccountId),
+            description: manualEntry.description.trim(),
+            debit: 0,
+            credit: amount,
+          },
+        ],
+      })).json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem/dashboard", effectiveCompanyId] });
+      setManualEntryOpen(false);
+      resetManualEntry();
+      toast({ title: "Postering bogført", description: "Den balancerede manuelle postering er låst og gemt i revisionssporet." });
+    },
+    onError: (err: unknown) => toast({
+      title: "Kunne ikke bogføre posteringen",
+      description: err instanceof Error ? err.message : "Ukendt fejl",
+      variant: "destructive",
+    }),
+  });
   const reverseEntryMut = useMutation({
     mutationFn: async ({ id, date }: { id: number; date: string }) =>
       (await apiRequest("POST", `/api/journal-entries/${id}/reverse`, { date })).json(),
@@ -2948,7 +3010,24 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       </div>
                     </SectionCard>
 
-                    <SectionCard title="Bogføringsposter" icon={<FileText className="size-4" />} noPadding>
+                    <SectionCard
+                      title="Bogføringsposter"
+                      icon={<FileText className="size-4" />}
+                      action={
+                        <Button
+                          size="sm"
+                          data-testid="btn-new-manual-entry"
+                          onClick={() => {
+                            resetManualEntry();
+                            setManualEntryOpen(true);
+                          }}
+                        >
+                          <Plus className="size-4" />
+                          Ny manuel postering
+                        </Button>
+                      }
+                      noPadding
+                    >
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs" data-testid="table-entries">
                           <thead>
@@ -3017,6 +3096,121 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         </table>
                       </div>
                     </SectionCard>
+
+                    <Dialog open={manualEntryOpen} onOpenChange={(open) => {
+                      if (!manualEntryMut.isPending) setManualEntryOpen(open);
+                    }}>
+                      <DialogContent data-testid="dialog-manual-entry" className="sm:max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Ny manuel postering</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 text-sm">
+                          <p className="text-xs text-muted-foreground">
+                            Posteringen bogføres straks og skal derfor balancere. Bogførte poster kan kun rettes med en modpostering.
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label htmlFor="manual-entry-number">Bilagsnummer</Label>
+                              <Input
+                                id="manual-entry-number"
+                                data-testid="input-manual-entry-number"
+                                value={manualEntry.entryNumber}
+                                onChange={(event) => setManualEntry((value) => ({ ...value, entryNumber: event.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor="manual-entry-date">Dato</Label>
+                              <Input
+                                id="manual-entry-date"
+                                data-testid="input-manual-entry-date"
+                                type="date"
+                                value={manualEntry.date}
+                                onChange={(event) => setManualEntry((value) => ({ ...value, date: event.target.value }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="manual-entry-description">Beskrivelse</Label>
+                            <Input
+                              id="manual-entry-description"
+                              data-testid="input-manual-entry-description"
+                              value={manualEntry.description}
+                              onChange={(event) => setManualEntry((value) => ({ ...value, description: event.target.value }))}
+                            />
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label htmlFor="manual-entry-reference">Reference</Label>
+                              <Input
+                                id="manual-entry-reference"
+                                data-testid="input-manual-entry-reference"
+                                value={manualEntry.reference}
+                                onChange={(event) => setManualEntry((value) => ({ ...value, reference: event.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor="manual-entry-amount">Beløb</Label>
+                              <Input
+                                id="manual-entry-amount"
+                                data-testid="input-manual-entry-amount"
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={manualEntry.amount}
+                                onChange={(event) => setManualEntry((value) => ({ ...value, amount: event.target.value }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label>Debetkonto</Label>
+                              <Select
+                                value={manualEntry.debitAccountId}
+                                onValueChange={(debitAccountId) => setManualEntry((value) => ({ ...value, debitAccountId }))}
+                              >
+                                <SelectTrigger data-testid="select-manual-debit-account"><SelectValue placeholder="Vælg debetkonto" /></SelectTrigger>
+                                <SelectContent>
+                                  {accounts.map((account) => <SelectItem key={account.id} value={String(account.id)}>{account.accountNumber} · {account.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label>Kreditkonto</Label>
+                              <Select
+                                value={manualEntry.creditAccountId}
+                                onValueChange={(creditAccountId) => setManualEntry((value) => ({ ...value, creditAccountId }))}
+                              >
+                                <SelectTrigger data-testid="select-manual-credit-account"><SelectValue placeholder="Vælg kreditkonto" /></SelectTrigger>
+                                <SelectContent>
+                                  {accounts.map((account) => <SelectItem key={account.id} value={String(account.id)}>{account.accountNumber} · {account.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setManualEntryOpen(false)} disabled={manualEntryMut.isPending}>
+                            Annuller
+                          </Button>
+                          <Button
+                            data-testid="btn-confirm-manual-entry"
+                            onClick={() => manualEntryMut.mutate()}
+                            disabled={
+                              manualEntryMut.isPending
+                              || !manualEntry.entryNumber.trim()
+                              || !manualEntry.date
+                              || !manualEntry.description.trim()
+                              || !manualEntry.debitAccountId
+                              || !manualEntry.creditAccountId
+                              || manualEntry.debitAccountId === manualEntry.creditAccountId
+                              || !(Number(String(manualEntry.amount).replace(",", ".")) > 0)
+                            }
+                          >
+                            {manualEntryMut.isPending && <Loader2 className="size-4 animate-spin" />}
+                            Bogfør postering
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
 
                     <Dialog open={!!reverseEntry} onOpenChange={(open) => {
                       if (!open && !reverseEntryMut.isPending) {
