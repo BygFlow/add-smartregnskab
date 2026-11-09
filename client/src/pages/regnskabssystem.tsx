@@ -1351,6 +1351,30 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const reconcilePayablesMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/reconcile-payables", { year: "2025" });
+      return await res.json();
+    },
+    onSuccess: (result: { matched?: number; remaining?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const matched = result.matched ?? 0;
+      toast({
+        title: `${matched} kreditorbetaling${matched === 1 ? "" : "er"} afstemt`,
+        description: matched
+          ? `Betalingerne er bogført mod kreditor og den dokumenterede bankkonto. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
+          : "Ingen nye entydige, ubetalte kreditorposter blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke afstemme kreditorbetalinger", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3265,7 +3289,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   title="Bankafstemning"
                   icon={<Landmark className="size-4" />}
                   action={
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -3293,6 +3317,20 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           <Wand2 className="size-4" />
                         )}
                         Auto-match
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-reconcile-payables"
+                        onClick={() => reconcilePayablesMut.mutate()}
+                        disabled={reconcilePayablesMut.isPending}
+                      >
+                        {reconcilePayablesMut.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <FileCheck2 className="size-4" />
+                        )}
+                        Betalte kreditorer
                       </Button>
                       <Button
                         size="sm"

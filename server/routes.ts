@@ -43,6 +43,7 @@ import {
   findSafeInternalTransferPairs,
 } from "./bank-transfer-match";
 import { findBankDocumentCandidates, findSafeBankDocumentMatches, normalizeBankDocumentType } from "./bank-document-match";
+import { findSafePayableSettlements } from "./bank-payable-reconciliation";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -78,7 +79,8 @@ import {
   insertPaymentRunSchema,
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
-  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, auditLogs, bankTransactions, documentInbox,
+  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, accounts, auditLogs, bankTransactions,
+  journalEntries, journalLines, documentInbox,
   companies, companyIdentityVerifications, subscriptions,
 } from "@shared/schema";
 import type { InsertEmployee } from "@shared/schema";
@@ -5709,6 +5711,139 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       matchedRows: pairs.length * 2 + counterparts.length,
       remaining: afterPairs.filter((row: any) => row.status === "afventer").length - counterparts.length,
       scopeCompanyIds: scopeIds,
+    });
+  }));
+
+  app.get("/api/bank-transactions/payable-settlement-candidates", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const year = /^\d{4}$/.test(String(req.query?.year ?? "")) ? String(req.query.year) : "2025";
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const settlements = findSafePayableSettlements(
+      transactions as any[], entries as any[], lines as any[], accountRows as any[], year,
+    );
+    const transactionById = new Map((transactions as any[]).map((row) => [Number(row.id), row]));
+    const entryById = new Map((entries as any[]).map((row) => [Number(row.id), row]));
+    res.json({
+      count: settlements.length,
+      year,
+      rows: settlements.map((settlement) => {
+        const transaction = transactionById.get(settlement.transactionId);
+        const invoiceEntry = entryById.get(settlement.invoiceJournalEntryId);
+        return {
+          ...settlement,
+          bankDate: transaction?.date ?? null,
+          bankDescription: transaction?.description ?? null,
+          accountRef: transaction?.accountRef ?? null,
+          invoiceDate: invoiceEntry?.date ?? null,
+          invoiceEntryNumber: invoiceEntry?.entryNumber ?? null,
+          invoiceDescription: invoiceEntry?.description ?? null,
+        };
+      }),
+    });
+  }));
+
+  app.post("/api/bank-transactions/reconcile-payables", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const year = /^\d{4}$/.test(String(req.body?.year ?? "")) ? String(req.body.year) : "2025";
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const settlements = findSafePayableSettlements(
+      transactions as any[],
+      entries as any[],
+      lines as any[],
+      accountRows as any[],
+      year,
+    );
+    const transactionById = new Map((transactions as any[]).map((row) => [Number(row.id), row]));
+    const entryById = new Map((entries as any[]).map((row) => [Number(row.id), row]));
+
+    const matched = settlements.length ? db.transaction((tx) => settlements.map((settlement) => {
+      const transaction = transactionById.get(settlement.transactionId);
+      const invoiceEntry = entryById.get(settlement.invoiceJournalEntryId);
+      if (!transaction || !invoiceEntry) throw new Error("Afstemningsgrundlaget blev ændret. Opdatér siden og prøv igen.");
+      const entryNumber = `BANK-AP-${settlement.transactionId}`;
+      const description = `Betaling ${String(invoiceEntry.description || invoiceEntry.entryNumber || "kreditorpost")}`;
+      const paymentEntry = tx.insert(journalEntries).values({
+        companyId: cid,
+        entryNumber,
+        date: String(transaction.date).slice(0, 10),
+        description,
+        reference: String(invoiceEntry.entryNumber || invoiceEntry.reference || settlement.invoiceJournalEntryId),
+        sourceType: "bank",
+        sourceId: settlement.transactionId,
+        status: "afstemt",
+        createdBy: req.auth?.user.email,
+        createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        {
+          companyId: cid,
+          journalEntryId: paymentEntry.id,
+          accountId: settlement.payableAccountId,
+          description,
+          debit: settlement.amount,
+          credit: 0,
+          vatCode: null,
+        },
+        {
+          companyId: cid,
+          journalEntryId: paymentEntry.id,
+          accountId: settlement.bankAccountId,
+          description: String(transaction.description || description),
+          debit: 0,
+          credit: settlement.amount,
+          vatCode: null,
+        },
+      ]).run();
+      const updated = tx.update(bankTransactions)
+        .set({ matchedType: "journal_entry", matchedId: paymentEntry.id, status: "matchet" })
+        .where(and(
+          eq(bankTransactions.id, settlement.transactionId),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.status, "afventer"),
+        )).returning().get();
+      if (!updated) throw new Error("En bankpostering blev ændret under afstemningen. Ingen betalinger blev gemt.");
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "kreditorbetaling_afstemt",
+        target: `bank_transactions#${settlement.transactionId}`,
+        detail: JSON.stringify({
+          transactionId: settlement.transactionId,
+          invoiceJournalEntryId: settlement.invoiceJournalEntryId,
+          paymentJournalEntryId: paymentEntry.id,
+          payableAccountId: settlement.payableAccountId,
+          bankAccountId: settlement.bankAccountId,
+          amount: settlement.amount,
+          accountRef: transaction.accountRef ?? null,
+          rule: "unique-supplier-exact-amount-unpaid-within-90-days",
+          vatReposted: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+      return {
+        transactionId: settlement.transactionId,
+        invoiceJournalEntryId: settlement.invoiceJournalEntryId,
+        paymentJournalEntryId: paymentEntry.id,
+        amount: settlement.amount,
+      };
+    })) : [];
+
+    res.json({
+      matched: matched.length,
+      rows: matched,
+      remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
+      year,
     });
   }));
 
