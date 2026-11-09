@@ -175,10 +175,11 @@ export type SaftJournalCandidate = {
 
 /**
  * Returns every safe, unused imported journal entry whose bank line has the
- * same date and signed amount as the imported bank row. Both SAF-T entries and
- * posted e-conomic migration entries are eligible. The caller can present
- * ambiguous candidates for a deliberate manual choice without creating a new
- * accounting entry.
+ * same signed amount as the imported bank row. Exact-date matching is the
+ * default. A caller may explicitly allow a short settlement-date tolerance
+ * when presenting candidates for a deliberate manual choice. Both SAF-T
+ * entries and posted e-conomic migration entries are eligible, and no new
+ * accounting entry is created.
  */
 export function findSaftJournalCandidates(
   transaction: BankTransactionRow,
@@ -186,6 +187,7 @@ export function findSaftJournalCandidates(
   lines: JournalLineRow[],
   accounts: AccountRow[],
   usedJournalEntryIds: ReadonlySet<number> = new Set(),
+  maxDateDifferenceDays = 0,
 ): SaftJournalCandidate[] {
   const bankAccountIds = new Set(accounts.filter(isBankLedgerAccount).map((account) => account.id));
   if (!bankAccountIds.size) return [];
@@ -195,7 +197,7 @@ export function findSaftJournalCandidates(
   const entriesById = new Map(entries
     .filter((entry) => allowedSourceTypes.has(normalizedText(entry.sourceType)))
     .filter((entry) => ["bogfort", "afstemt"].includes(normalizedText(entry.status)))
-    .filter((entry) => String(entry.date).slice(0, 10) === String(transaction.date).slice(0, 10))
+    .filter((entry) => daysApart(entry.date, transaction.date) <= maxDateDifferenceDays)
     .filter((entry) => !reversedEntryIds.has(entry.id))
     .filter((entry) => !usedJournalEntryIds.has(entry.id))
     .map((entry) => [entry.id, entry]));

@@ -3477,14 +3477,14 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                         {saftMatchTransaction ? `${dk(saftMatchTransaction.date)} · ${saftMatchTransaction.description ?? "Bankpostering"} · ${money(saftMatchTransaction.amount)}` : ""}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Afstemningen opretter ingen ny bogføring. Den knytter kun bankposteringen til en allerede bogført SAF-T-postering med samme dato og beløb.
+                        Afstemningen opretter ingen ny bogføring. Den knytter kun bankposteringen til en allerede bogført SAF-T-postering med samme beløb og højst fire dages forskel mellem bilagsdato og bankens bogføringsdato.
                       </p>
                       {saftCandidatesQuery.isLoading ? (
                         <Skeleton className="h-10 w-full" />
                       ) : saftCandidatesQuery.isError ? (
                         <p className="text-sm text-destructive">Kunne ikke hente SAF-T-kandidater.</p>
                       ) : (saftCandidatesQuery.data?.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground">Der findes ingen ledige SAF-T-posteringer med samme dato og beløb.</p>
+                        <p className="text-sm text-muted-foreground">Der findes ingen ledige SAF-T-posteringer med samme beløb inden for fire dage.</p>
                       ) : (
                         <div className="space-y-1">
                           <Label>SAF-T-postering</Label>
@@ -3495,7 +3495,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                             <SelectContent>
                               {saftCandidatesQuery.data!.map((candidate) => (
                                 <SelectItem key={candidate.id} value={String(candidate.id)}>
-                                  {candidate.entryNumber ? `#${candidate.entryNumber} · ` : ""}{candidate.description || candidate.lineDescription || "SAF-T-postering"}
+                                  {candidate.entryNumber ? `#${candidate.entryNumber} · ` : ""}{dk(candidate.date)} · {candidate.description || candidate.lineDescription || "SAF-T-postering"}
                                 </SelectItem>
                               ))}
                             </SelectContent>

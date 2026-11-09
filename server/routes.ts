@@ -5506,7 +5506,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const usedJournalEntryIds = new Set<number>(transactions
       .filter((tx: any) => tx.id !== transaction.id && ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
       .map((tx: any) => Number(tx.matchedId)));
-    res.json(findSaftJournalCandidates(transaction as any, journalEntries as any[], journalLines as any[], accounts as any[], usedJournalEntryIds));
+    res.json(findSaftJournalCandidates(
+      transaction as any,
+      journalEntries as any[],
+      journalLines as any[],
+      accounts as any[],
+      usedJournalEntryIds,
+      4,
+    ));
   }));
 
   app.post("/api/bank-transactions/:id/match-saft", h(async (req, res) => {
@@ -5526,9 +5533,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const usedJournalEntryIds = new Set<number>(transactions
       .filter((tx: any) => tx.id !== transaction.id && ["journal", "journal_entry"].includes(tx.matchedType) && tx.matchedId)
       .map((tx: any) => Number(tx.matchedId)));
-    const candidates = findSaftJournalCandidates(transaction as any, journalEntries as any[], journalLines as any[], accounts as any[], usedJournalEntryIds);
+    const candidates = findSaftJournalCandidates(
+      transaction as any,
+      journalEntries as any[],
+      journalLines as any[],
+      accounts as any[],
+      usedJournalEntryIds,
+      4,
+    );
     if (!candidates.some((candidate) => candidate.id === journalEntryId)) {
-      return res.status(409).json({ error: "SAF-T-posteringen passer ikke til dato og beløb eller er allerede anvendt." });
+      return res.status(409).json({ error: "SAF-T-posteringen passer ikke til beløb og den tilladte datoforskel eller er allerede anvendt." });
     }
     res.json(await storage.update("bank_transactions", transaction.id, {
       matchedType: "journal_entry",
