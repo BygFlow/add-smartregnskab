@@ -1512,6 +1512,28 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairKnownBankDiscrepanciesMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-known-bank-discrepancies", {});
+      return await res.json();
+    },
+    onSuccess: (result: { repaired?: number; invoiceDifference?: number; payrollAmount?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({
+        title: `${result.repaired ?? 0} kendte bankdifferencer rettet`,
+        description: `Faktura 515 er afstemt med ${money(result.invoiceDifference ?? 0)} som kundeforudbetaling, og ${money(result.payrollAmount ?? 0)} i nettoløn er flyttet fra bank 5820 til 5825. Omsætning, moms og lønomkostning er uændret.`,
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke rette de kendte bankdifferencer", description: message, variant: "destructive" });
+    },
+  });
+
   const repairCrossCompanyCustomerReceiptsMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/bank-transactions/repair-cross-company-customer-receipts", {});
@@ -3772,6 +3794,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {repairCustomerReceiptDuplicatesMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Ret kundebetalingsdubletter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-known-bank-discrepancies"
+                        onClick={() => repairKnownBankDiscrepanciesMut.mutate()}
+                        disabled={repairKnownBankDiscrepanciesMut.isPending}
+                      >
+                        {repairKnownBankDiscrepanciesMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret øre/lønkonto
                       </Button>
                       <Button
                         size="sm"

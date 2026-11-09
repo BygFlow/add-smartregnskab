@@ -51,6 +51,7 @@ import { findMultiCleanReceiptRepairPlan } from "./bank-multiclean-receipt-repai
 import { findCustomerReceiptDuplicateRepairPlan } from "./bank-customer-receipt-duplicate-repair";
 import { findCrossCompanyJemFixRepairPlan } from "./bank-cross-company-expense-repair";
 import { findCrossCompanyCustomerReceiptRepairPlan } from "./bank-cross-company-customer-receipt-repair";
+import { findKnownBankDiscrepancyRepairPlan } from "./bank-known-discrepancy-repair";
 import { findDanskeMarchCompletionPlan } from "./bank-danske-march-completion";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
@@ -6171,6 +6172,118 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       revenueReposted: false,
       vatReposted: false,
     });
+  }));
+
+  app.get("/api/bank-transactions/known-discrepancy-repair-preview", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const company = db.select().from(companies).where(eq(companies.id, cid)).get();
+    if (!company || String(company.cvr ?? "").replace(/\D/g, "") !== "44822539") {
+      return res.status(409).json({ error: "Denne kontrol gælder kun ADD Multi Service ApS." });
+    }
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid), storage.all("accounts", cid),
+    ]);
+    res.json(findKnownBankDiscrepancyRepairPlan(transactions as any[], entries as any[], lines as any[], accountRows as any[]));
+  }));
+
+  app.post("/api/bank-transactions/repair-known-bank-discrepancies", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const company = db.select().from(companies).where(eq(companies.id, cid)).get();
+    if (!company || String(company.cvr ?? "").replace(/\D/g, "") !== "44822539") {
+      return res.status(409).json({ error: "Denne rettelse gælder kun ADD Multi Service ApS. Ingen ændringer er gemt." });
+    }
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid), storage.all("journal_entries", cid), storage.all("journal_lines", cid), storage.all("accounts", cid),
+    ]);
+    const plan = findKnownBankDiscrepancyRepairPlan(transactions as any[], entries as any[], lines as any[], accountRows as any[]);
+    if (!plan.safe || !plan.invoice515 || !plan.payrollJune || !plan.operatingBankAccountId || !plan.payrollBankAccountId || !plan.receivableAccountId) {
+      return res.status(409).json({ error: "Øredifferencen og lønbankkontoen kunne ikke dokumenteres entydigt. Ingen ændringer er gemt.", reasons: plan.reasons, preview: plan });
+    }
+    const linesByEntry = new Map<number, any[]>();
+    for (const line of lines as any[]) {
+      const current = linesByEntry.get(Number(line.journalEntryId)) ?? [];
+      current.push(line);
+      linesByEntry.set(Number(line.journalEntryId), current);
+    }
+
+    const result = db.transaction((tx) => {
+      const liabilityRows = tx.select().from(accounts).where(and(eq(accounts.companyId, cid), eq(accounts.accountNumber, "6810"))).all().filter((row) => row.active !== 0);
+      if (liabilityRows.length > 1) throw new Error("Konto 6810 er dubleret. Ingen ændringer er gemt.");
+      const liability = liabilityRows[0] ?? tx.insert(accounts).values({
+        companyId: cid, accountNumber: "6810", standardAccountNumber: null, name: "Forudbetalinger fra kunder", type: "passiv", vatCode: null, balance: 0, active: 1, createdAt: nowIso(),
+      }).returning().get();
+
+      const invoiceBank = tx.select().from(bankTransactions).where(and(eq(bankTransactions.id, plan.invoice515!.transactionId), eq(bankTransactions.companyId, cid), eq(bankTransactions.status, "afventer"))).get();
+      const payrollBank = tx.select().from(bankTransactions).where(and(eq(bankTransactions.id, plan.payrollJune!.transactionId), eq(bankTransactions.companyId, cid), eq(bankTransactions.status, "afventer"))).get();
+      if (!invoiceBank || !payrollBank) throw new Error("En bankpost blev ændret. Ingen rettelser er gemt.");
+      const invoiceSource = tx.select().from(journalEntries).where(and(eq(journalEntries.id, plan.invoice515!.sourceEntryId), eq(journalEntries.companyId, cid))).get();
+      const payrollSource = tx.select().from(journalEntries).where(and(eq(journalEntries.id, plan.payrollJune!.sourceEntryId), eq(journalEntries.companyId, cid))).get();
+      if (!invoiceSource || !payrollSource) throw new Error("Bogføringsgrundlaget blev ændret. Ingen rettelser er gemt.");
+      const invoiceSourceUsed = tx.select().from(bankTransactions).where(and(eq(bankTransactions.companyId, cid), eq(bankTransactions.matchedId, invoiceSource.id), eq(bankTransactions.status, "matchet"))).get();
+      if (invoiceSourceUsed) throw new Error("Faktura 515-importposten er allerede anvendt. Ingen rettelser er gemt.");
+      const payrollSourceUsed = tx.select().from(bankTransactions).where(and(eq(bankTransactions.companyId, cid), eq(bankTransactions.matchedId, payrollSource.id), eq(bankTransactions.status, "matchet"))).get();
+      if (payrollSourceUsed) throw new Error("Lønpost 20004 er allerede anvendt. Ingen rettelser er gemt.");
+
+      const invoiceReversalNumber = `KORR-MS-515-REV-${invoiceSource.id}`;
+      const invoiceCorrectedNumber = `BANK-MS-515-${invoiceBank.id}`;
+      const payrollCorrectionNumber = `KORR-MS-LONBANK-20004-${payrollBank.id}`;
+      for (const entryNumber of [invoiceReversalNumber, invoiceCorrectedNumber, payrollCorrectionNumber]) {
+        if (tx.select().from(journalEntries).where(and(eq(journalEntries.companyId, cid), eq(journalEntries.entryNumber, entryNumber))).get()) {
+          throw new Error(`Rettelsen ${entryNumber} findes allerede. Ingen nye posteringer er oprettet.`);
+        }
+      }
+
+      const originalInvoiceLines = linesByEntry.get(invoiceSource.id) ?? [];
+      if (originalInvoiceLines.length !== 2) throw new Error("Faktura 515-importposten har ikke præcis to linjer.");
+      const invoiceReversal = tx.insert(journalEntries).values({
+        companyId: cid, entryNumber: invoiceReversalNumber, date: plan.invoice515!.date,
+        description: "Tilbageførsel af faktura 515-betaling med 10 øres difference", reference: invoiceSource.reference || "515",
+        sourceType: "bank_known_discrepancy_invoice_reversal", sourceId: invoiceSource.id, status: "bogført",
+        createdBy: req.auth?.user.email, createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values(originalInvoiceLines.map((line) => ({
+        companyId: cid, journalEntryId: invoiceReversal.id, accountId: line.accountId,
+        description: `Tilbageførsel: ${line.description || invoiceSource.description}`,
+        debit: Number(line.credit || 0), credit: Number(line.debit || 0), vatCode: line.vatCode,
+      }))).run();
+
+      const invoiceCorrected = tx.insert(journalEntries).values({
+        companyId: cid, entryNumber: invoiceCorrectedNumber, date: plan.invoice515!.date,
+        description: "Korrigeret betaling faktura 515 inkl. 0,10 kr. forudbetaling", reference: "515",
+        sourceType: "bank_known_discrepancy_invoice_receipt", sourceId: invoiceBank.id, status: "afstemt",
+        createdBy: req.auth?.user.email, createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        { companyId: cid, journalEntryId: invoiceCorrected.id, accountId: plan.operatingBankAccountId!, description: String(invoiceBank.description || "Faktura 515"), debit: plan.invoice515!.bankAmount, credit: 0, vatCode: null },
+        { companyId: cid, journalEntryId: invoiceCorrected.id, accountId: plan.receivableAccountId!, description: "Faktura 515 udlignet", debit: 0, credit: plan.invoice515!.invoiceAmount, vatCode: null },
+        { companyId: cid, journalEntryId: invoiceCorrected.id, accountId: liability.id, description: "Kundeforudbetaling 0,10 kr.", debit: 0, credit: plan.invoice515!.overpayment, vatCode: null },
+      ]).run();
+
+      const payrollCorrection = tx.insert(journalEntries).values({
+        companyId: cid, entryNumber: payrollCorrectionNumber, date: plan.payrollJune!.date,
+        description: "Ompostering af nettoløn fra bank 5820 til løn/skat 5825", reference: payrollSource.entryNumber || "20004",
+        sourceType: "bank_known_discrepancy_payroll_account", sourceId: payrollSource.id, status: "afstemt",
+        createdBy: req.auth?.user.email, createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        { companyId: cid, journalEntryId: payrollCorrection.id, accountId: plan.operatingBankAccountId!, description: "Tilbagefører forkert bankkonto i lønbatch 20004", debit: plan.payrollJune!.amount, credit: 0, vatCode: null },
+        { companyId: cid, journalEntryId: payrollCorrection.id, accountId: plan.payrollBankAccountId!, description: "Nettoløn betalt fra konto 4483", debit: 0, credit: plan.payrollJune!.amount, vatCode: null },
+      ]).run();
+
+      for (const [transactionId, journalEntryId] of [[invoiceBank.id, invoiceCorrected.id], [payrollBank.id, payrollCorrection.id]] as const) {
+        const updated = tx.update(bankTransactions).set({ matchedType: "journal_entry", matchedId: journalEntryId, status: "matchet" })
+          .where(and(eq(bankTransactions.id, transactionId), eq(bankTransactions.companyId, cid), eq(bankTransactions.status, "afventer"))).returning().get();
+        if (!updated) throw new Error(`Bankpost ${transactionId} blev ændret under rettelsen.`);
+      }
+      const detail = JSON.stringify({
+        invoice515: { ...plan.invoice515, reversalEntryId: invoiceReversal.id, correctedEntryId: invoiceCorrected.id, liabilityAccountId: liability.id },
+        payrollJune: { ...plan.payrollJune, correctionEntryId: payrollCorrection.id },
+        revenueReposted: false, vatReposted: false, payrollExpenseChanged: false,
+      });
+      tx.insert(auditLogs).values({ companyId: cid, userId: req.auth?.user.id, userEmail: req.auth?.user.email, action: "kendte_bankdifferencer_rettet", target: `journal_entries#${invoiceCorrected.id},${payrollCorrection.id}`, detail, createdAt: nowIso() }).run();
+      return { invoiceReversalId: invoiceReversal.id, invoiceCorrectedId: invoiceCorrected.id, payrollCorrectionId: payrollCorrection.id, liabilityAccountId: liability.id };
+    });
+    res.json({ repaired: 2, invoiceDifference: plan.invoice515.overpayment, payrollAmount: plan.payrollJune.amount, ...result, revenueReposted: false, vatReposted: false, payrollExpenseChanged: false });
   }));
 
   app.get("/api/bank-transactions/multiclean-receipt-repair-preview", requireRole("leder", "platform_admin"), h(async (req, res) => {
