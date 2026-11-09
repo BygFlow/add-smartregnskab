@@ -1512,6 +1512,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairCrossCompanyCustomerReceiptsMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-cross-company-customer-receipts", {});
+      return await res.json();
+    },
+    onSuccess: (result: { repaired?: number; total?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const repaired = result.repaired ?? 0;
+      toast({
+        title: `${repaired} betaling${repaired === 1 ? "" : "er"} på tværs afstemt`,
+        description: repaired
+          ? `${money(result.total ?? 0)} er ført som bank/mellemregning i Multi Service og mellemregning/debitor i MultiClean. Ingen omsætning eller moms er ændret.`
+          : "Ingen nye, entydigt dokumenterede betalinger på tværs blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke rette betalingerne på tværs", description: message, variant: "destructive" });
+    },
+  });
+
   const reconcilePayrollClearingMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/bank-transactions/reconcile-payroll-clearing", { year: "2025" });
@@ -3747,6 +3772,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {repairCustomerReceiptDuplicatesMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Ret kundebetalingsdubletter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-cross-company-customer-receipts"
+                        onClick={() => repairCrossCompanyCustomerReceiptsMut.mutate()}
+                        disabled={repairCrossCompanyCustomerReceiptsMut.isPending}
+                      >
+                        {repairCrossCompanyCustomerReceiptsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret betalinger på tværs
                       </Button>
                       <Button
                         size="sm"
