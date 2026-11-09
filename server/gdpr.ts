@@ -536,7 +536,7 @@ export function dpaText(): string {
 export function privacyPolicyText(): string {
   return `PRIVATLIVSPOLITIK — UDKAST
 
-ADD SmartDrift ApS, CVR 46761898, Lynæs Søpark 49, 3390 Hundested, behandler gennem ADD SmartRegnskab de oplysninger, der er nødvendige for at oprette og sikre brugerkonti, levere regnskabsfunktioner, yde support, administrere abonnementer og dokumentere sikkerhedshændelser. Kontakt: regnskab@addsmartregnskab.dk.
+ADD SmartDrift ApS, CVR 46761898, behandler gennem ADD SmartRegnskab de oplysninger, der er nødvendige for at oprette og sikre brugerkonti, levere regnskabsfunktioner, yde support, administrere abonnementer og dokumentere sikkerhedshændelser. Kontakt: info@addsmartdrift.dk eller 31 24 24 26.
 
 Oplysninger
 Der kan behandles navn, e-mail, telefonnummer, virksomhedsoplysninger, login- og sikkerhedslog, kunde- og leverandørdata, bilag, posteringer, fakturaer, betalingsstatus og supporthenvendelser. Betalingskortoplysninger bør behandles direkte af den valgte betalingsudbyder og ikke gemmes i applikationen.

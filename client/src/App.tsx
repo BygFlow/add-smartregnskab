@@ -68,6 +68,32 @@ function useRouteLocation(): [string, (to: string, options?: { replace?: boolean
   return [location.split("?")[0] || "/", navigate];
 }
 
+function publicMarketingRoute(location: string) {
+  const pages = {
+    "/produkt": "home",
+    "/funktioner": "features",
+    "/priser": "pricing",
+    "/integrationer": "integrations",
+    "/sikkerhed": "security",
+    "/faq": "faq",
+    "/om": "about",
+    "/kontakt": "contact",
+    "/book-demo": "demo",
+    "/hjaelp": "help",
+    "/guides": "guides",
+    "/privatliv": "privacy",
+    "/vilkaar": "terms",
+    "/betaling-og-refusion": "payment",
+    "/databehandleraftale": "dpa",
+    "/underdatabehandlere": "subprocessors",
+    "/dataopbevaring-og-sletning": "retention",
+    "/abonnementsbetingelser": "subscriptionTerms",
+    "/cookies": "cookies",
+  } as const;
+  const page = pages[location as keyof typeof pages];
+  return page ? <Marketing page={page} /> : null;
+}
+
 function Root() {
   const { user, company, companyId, initializing, access, logout } = useAuth();
   const [location, navigate] = useLocation();
@@ -76,11 +102,10 @@ function Root() {
     return <main className="min-h-screen grid place-items-center bg-background"><p className="text-sm text-muted-foreground">Indlæser sikker session…</p></main>;
   }
 
-  // Checkout terms must stay available when opened by a signed-in customer.
-  if (location === "/abonnementsbetingelser") return <Marketing page="subscriptionTerms" />;
-  if (location === "/vilkaar") return <Marketing page="terms" />;
-  if (location === "/betaling-og-refusion") return <Marketing page="payment" />;
-  if (location === "/privatliv") return <Marketing page="privacy" />;
+  // De offentlige produktsider skal forblive offentlige, også når browseren
+  // allerede har en aktiv regnskabssession. /produkt er den faste salgsforside.
+  const publicPage = publicMarketingRoute(location);
+  if (publicPage) return publicPage;
 
   if (!user) {
     if (isNative()) return <RegnskabLogin />;
