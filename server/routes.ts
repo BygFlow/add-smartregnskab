@@ -6432,7 +6432,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const result = db.transaction((tx) => {
       const locked = tx.select().from(bankTransactions).where(eq(bankTransactions.companyId, cid)).all();
       const plan = findDanskeMarchCompletionPlan(locked as any[]);
-      if (!plan.safe || plan.alreadyComplete || plan.rows.length !== 15) {
+      if (!plan.safe || plan.alreadyComplete || plan.rows.length !== 17) {
         throw new Error("Danske Bank-grundlaget blev ændret under kontrollen. Ingen poster er importeret.");
       }
       const importedAt = nowIso();
@@ -6451,13 +6451,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         action: "danske_bank_marts_2025_suppleret_fra_kontoudtog",
         target: "bank_transactions:13800707:2025-03-27/2025-03-31",
         detail: JSON.stringify({
-          source: "13800707_2025.01.01-2025.03.31.pdf",
+          source: "Kontoudskrift 13800707 (3).pdf · Danske Business One udskrift nr. 4",
           imported: plan.rows.length,
           pendingStatementRowsExcluded: 3,
           openingBalanceForCompletion: 11_354.70,
           endingBalance: plan.endingBalance,
           expectedFinalCount: plan.expectedFinalCount,
-          rule: "exact-214-row-csv-anchor-and-executed-pdf-rows-only",
+          rule: "exact-214-row-csv-anchor-and-official-quarterly-statement-rows-only",
         }),
         createdAt: importedAt,
       }).run();

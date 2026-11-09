@@ -32,8 +32,8 @@ export type DanskeMarchCompletionPlan = {
 
 const ACCOUNT_REF = "13800707";
 const BASE_COUNT = 214;
-const FINAL_COUNT = 229;
-const ENDING_BALANCE = 1_513.98;
+const FINAL_COUNT = 231;
+const ENDING_BALANCE = 1_046.58;
 
 function externalId(row: Omit<DanskeMarchCompletionRow, "externalId">) {
   return [
@@ -52,10 +52,11 @@ function row(date: string, description: string, amount: number, balance: number)
 }
 
 /**
- * Executed rows shown on the customer's Danske Bank statement generated on
- * 31 March 2025. The earlier CSV export ends on 27 March at DKK 11,354.70 and
- * therefore lacks these rows. The three statement rows marked "Venter" are
- * deliberately excluded.
+ * Executed rows shown on the customer's official Danske Bank quarterly
+ * statement no. 4 for 1 January through 31 March 2025. The earlier CSV export
+ * ends on 27 March at DKK 11,354.70 and therefore lacks these rows. Three
+ * reservations shown as "Venter" in a separate activity view are deliberately
+ * excluded because they do not appear as executed rows in the statement.
  */
 export const DANSKE_MARCH_2025_COMPLETION_ROWS: DanskeMarchCompletionRow[] = [
   row("2025-03-27", "Til Dragana dan", -275.33, 11_079.37),
@@ -72,7 +73,9 @@ export const DANSKE_MARCH_2025_COMPLETION_ROWS: DanskeMarchCompletionRow[] = [
   row("2025-03-31", "Til Dragana dan", -100.00, 2_313.98),
   row("2025-03-31", "Til Aurel Dan", -500.00, 1_813.98),
   row("2025-03-31", "Til Aurel Dan", -200.00, 1_613.98),
-  row("2025-03-31", "Til Dragana dan", -100.00, ENDING_BALANCE),
+  row("2025-03-31", "Til Dragana dan", -100.00, 1_513.98),
+  row("2025-03-31", "Gebyrer ifølge nota", -453.00, 1_060.98),
+  row("2025-03-31", "Rente", -14.40, ENDING_BALANCE),
 ];
 
 function sameAmount(left: unknown, right: unknown) {
@@ -113,7 +116,7 @@ export function findDanskeMarchCompletionPlan(transactions: BankTransactionRow[]
       reasons,
     };
   }
-  if (completeCount > 0) reasons.push(`Kun ${completeCount} af 15 supplerende Danske-poster findes; delvis import afvises.`);
+  if (completeCount > 0) reasons.push(`Kun ${completeCount} af 17 supplerende Danske-poster findes; delvis import afvises.`);
   if (accountRows.length !== BASE_COUNT) reasons.push(`Forventede ${BASE_COUNT} eksisterende 2025-poster på konto 13800707, fandt ${accountRows.length}.`);
 
   const anchor = accountRows.filter((transaction) =>

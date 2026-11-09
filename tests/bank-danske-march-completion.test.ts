@@ -31,15 +31,15 @@ function baseRows() {
   return rows;
 }
 
-test("planlægger præcis de 15 udførte poster og slutter på 1.513,98 kr.", () => {
+test("planlægger præcis de 17 udførte poster og slutter på 1.046,58 kr.", () => {
   const plan = findDanskeMarchCompletionPlan(baseRows());
   assert.equal(plan.safe, true);
   assert.equal(plan.alreadyComplete, false);
-  assert.equal(plan.rows.length, 15);
-  assert.equal(plan.expectedFinalCount, 229);
-  assert.equal(plan.endingBalance, 1_513.98);
-  assert.equal(plan.rows.reduce((sum, row) => sum + row.amount, 0), -9_840.72);
-  assert.equal(plan.rows.at(-1)?.balance, 1_513.98);
+  assert.equal(plan.rows.length, 17);
+  assert.equal(plan.expectedFinalCount, 231);
+  assert.equal(plan.endingBalance, 1_046.58);
+  assert.equal(Math.round(plan.rows.reduce((sum, row) => sum + row.amount, 0) * 100) / 100, -10_308.12);
+  assert.equal(plan.rows.at(-1)?.balance, 1_046.58);
 });
 
 test("er idempotent når alle poster allerede findes", () => {
@@ -47,7 +47,7 @@ test("er idempotent når alle poster allerede findes", () => {
   assert.equal(plan.safe, true);
   assert.equal(plan.alreadyComplete, true);
   assert.equal(plan.rows.length, 0);
-  assert.equal(plan.existing2025Count, 229);
+  assert.equal(plan.existing2025Count, 231);
 });
 
 test("afviser en delvis import", () => {
