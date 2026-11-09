@@ -231,6 +231,56 @@ test("en bogført postering der er tilbageført kan ikke bruges som bankmatch", 
   assert.deepEqual(candidates.map((candidate) => candidate.id), [30]);
 });
 
+test("en KORR-postering uden sourceId skjuler den entydigt tilbageførte SAF-T-postering", () => {
+  const candidates = findSaftJournalCandidates(
+    { id: 100, date: "2025-08-12", description: "207", amount: 595, status: "afventer" },
+    [
+      { ...entry, id: 40, date: "2025-08-12", reference: "10100", description: "Indbet. fak. 207" },
+      { ...entry, id: 41, date: "2025-08-12", reference: "10103", description: "Indbet. fak. 207" },
+      {
+        ...entry,
+        id: 42,
+        date: "2025-08-12",
+        entryNumber: "KORR-2025-10103",
+        reference: "10103",
+        description: "Tilbagefør dobbeltpostering",
+      },
+    ],
+    [
+      { journalEntryId: 40, accountId: 1, description: "Indbet. fak. 207", debit: 595, credit: 0 },
+      { journalEntryId: 41, accountId: 1, description: "Indbet. fak. 207", debit: 595, credit: 0 },
+      { journalEntryId: 42, accountId: 1, description: "Tilbageførsel", debit: 0, credit: 595 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [40]);
+});
+
+test("en tvetydig KORR-reference skjuler ingen mulige originaler", () => {
+  const candidates = findSaftJournalCandidates(
+    { id: 100, date: "2025-08-12", description: "207", amount: 595, status: "afventer" },
+    [
+      { ...entry, id: 40, date: "2025-08-12", reference: "10103", description: "Indbet. fak. 207" },
+      { ...entry, id: 41, date: "2025-08-12", reference: "10103", description: "Indbet. fak. 207" },
+      {
+        ...entry,
+        id: 42,
+        date: "2025-08-12",
+        entryNumber: "KORR-2025-10103",
+        reference: "10103",
+        description: "Tilbagefør dobbeltpostering",
+      },
+    ],
+    [
+      { journalEntryId: 40, accountId: 1, description: "Indbet. fak. 207", debit: 595, credit: 0 },
+      { journalEntryId: 41, accountId: 1, description: "Indbet. fak. 207", debit: 595, credit: 0 },
+      { journalEntryId: 42, accountId: 1, description: "Tilbageførsel", debit: 0, credit: 595 },
+    ],
+    accounts,
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [40, 41]);
+});
+
 test("sikker auto-afstemning kræver et gensidigt entydigt match", () => {
   const matches = findSafeImportedJournalMatches(
     [

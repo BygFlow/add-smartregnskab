@@ -63,10 +63,33 @@ function sameAmount(left: number, right: number) {
 }
 
 function reversedJournalEntryIds(entries: JournalEntryRow[]) {
-  return new Set(entries
+  const reversedIds = new Set(entries
     .filter((entry) => normalizedText(entry.sourceType) === "tilbageforsel")
     .map((entry) => Number(entry.sourceId))
     .filter((id) => Number.isInteger(id) && id > 0));
+
+  const isCorrectionEntry = (entry: JournalEntryRow) => (
+    normalizedText(entry.entryNumber).startsWith("korr ")
+    && normalizedText(entry.description).startsWith("tilbagefor")
+  );
+
+  for (const correction of entries.filter(isCorrectionEntry)) {
+    const correctionReference = normalizedText(correction.reference);
+    const entryNumberParts = normalizedText(correction.entryNumber).split(" ");
+    const correctionSuffix = entryNumberParts.at(-1) ?? "";
+    const candidateReferences = new Set([correctionReference, correctionSuffix].filter(Boolean));
+    const targets = entries.filter((entry) => (
+      entry.id !== correction.id
+      && !isCorrectionEntry(entry)
+      && candidateReferences.has(normalizedText(entry.reference))
+    ));
+
+    // En korrektion uden sourceId må kun skjule originalen, når referencen
+    // peger entydigt på én postering. Tvetydige referencer kræver manuel kontrol.
+    if (targets.length === 1) reversedIds.add(targets[0].id);
+  }
+
+  return reversedIds;
 }
 
 function dateOnly(value: unknown) {
