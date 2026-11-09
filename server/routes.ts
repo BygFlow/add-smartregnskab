@@ -48,6 +48,7 @@ import { findSafeInterestPostings } from "./bank-interest-reconciliation";
 import { findSafeCustomerPrepayments } from "./bank-customer-prepayment-reconciliation";
 import { findSafePayrollClearingPostings } from "./bank-payroll-clearing-reconciliation";
 import { findMultiCleanReceiptRepairPlan } from "./bank-multiclean-receipt-repair";
+import { findCrossCompanyJemFixRepairPlan } from "./bank-cross-company-expense-repair";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -83,7 +84,7 @@ import {
   insertPaymentRunSchema,
   insertYearEndCloseSchema,
   insertVatReconciliationSchema,
-  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, accounts, auditLogs, bankTransactions,
+  insertCashflowProjectionSchema, companyAccessMemberships, professionalMemberships, companyUnits, accounts, auditLogs, bankTransactions,
   journalEntries, journalLines, documentInbox,
   companies, companyIdentityVerifications, subscriptions,
 } from "@shared/schema";
@@ -6203,6 +6204,208 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       neutralized2026: result.neutralized.length,
       remaining,
     });
+  }));
+
+  app.post("/api/bank-transactions/repair-multiclean-cross-company-expense", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const multiCleanCompanyId = tenantId(req);
+    const unitCandidates = db.select().from(companyUnits).where(and(
+      eq(companyUnits.accountingCompanyId, multiCleanCompanyId),
+      eq(companyUnits.active, 1),
+    )).all().filter((unit) => String(unit.seNumber ?? "").replace(/\D/g, "") === "45147592");
+    if (unitCandidates.length !== 1) {
+      return res.status(409).json({
+        error: "MultiClean-regnskabsområdet kunne ikke identificeres entydigt. Ingen ændringer er gemt.",
+        reasons: [`Forventede én aktiv SE-enhed 45147592, fandt ${unitCandidates.length}.`],
+      });
+    }
+    const multiServiceCompanyId = Number(unitCandidates[0].companyId);
+    const parentCompany = db.select().from(companies).where(eq(companies.id, multiServiceCompanyId)).get();
+    if (!parentCompany || String(parentCompany.cvr ?? "").replace(/\D/g, "") !== "44822539") {
+      return res.status(409).json({ error: "ADD Multi Service ApS kunne ikke identificeres sikkert. Ingen ændringer er gemt." });
+    }
+    const hasParentAccess = req.auth!.isPlatformAdmin
+      || req.auth!.homeCompanyId === multiServiceCompanyId
+      || Boolean(db.select().from(companyAccessMemberships).where(and(
+        eq(companyAccessMemberships.userId, req.auth!.userId),
+        eq(companyAccessMemberships.companyId, multiServiceCompanyId),
+        eq(companyAccessMemberships.status, "active"),
+      )).get());
+    if (!hasParentAccess) return res.status(403).json({ error: "Ingen adgang til ADD Multi Service ApS." });
+
+    const [
+      multiCleanTransactions,
+      multiCleanAccounts,
+      multiServiceEntries,
+      multiServiceLines,
+      multiServiceAccounts,
+    ] = await Promise.all([
+      storage.all("bank_transactions", multiCleanCompanyId),
+      storage.all("accounts", multiCleanCompanyId),
+      storage.all("journal_entries", multiServiceCompanyId),
+      storage.all("journal_lines", multiServiceCompanyId),
+      storage.all("accounts", multiServiceCompanyId),
+    ]);
+    const plan = findCrossCompanyJemFixRepairPlan({
+      multiCleanTransactions: multiCleanTransactions as any[],
+      multiCleanAccounts: multiCleanAccounts as any[],
+      multiServiceEntries: multiServiceEntries as any[],
+      multiServiceLines: multiServiceLines as any[],
+      multiServiceAccounts: multiServiceAccounts as any[],
+    });
+    if (!plan.safe
+      || !plan.bankTransactionId
+      || !plan.sourceEntryId
+      || !plan.multiServicePrivateAccountId
+      || !plan.multiServiceIntercompanyAccountId
+      || !plan.multiCleanBankAccountId
+      || !plan.multiCleanIntercompanyAccountId) {
+      return res.status(409).json({
+        error: "Jem & Fix-betalingen kunne ikke dokumenteres entydigt. Ingen ændringer er gemt.",
+        reasons: plan.reasons,
+        preview: plan,
+      });
+    }
+
+    const result = db.transaction((tx) => {
+      const bankTransaction = tx.select().from(bankTransactions).where(and(
+        eq(bankTransactions.id, plan.bankTransactionId!),
+        eq(bankTransactions.companyId, multiCleanCompanyId),
+        eq(bankTransactions.status, "afventer"),
+      )).get();
+      if (!bankTransaction) throw new Error("Jem & Fix-bankposten er ændret. Ingen rettelser er gemt.");
+      const sourceEntry = tx.select().from(journalEntries).where(and(
+        eq(journalEntries.id, plan.sourceEntryId!),
+        eq(journalEntries.companyId, multiServiceCompanyId),
+      )).get();
+      if (!sourceEntry) throw new Error("SAF-T-kildepost 50746 findes ikke længere.");
+
+      const multiServiceEntryNumber = "KORR-MS-MC6477-JEMFIX-20250904";
+      const multiCleanEntryNumber = `BANK-MC-EXP-JEMFIX-${plan.bankTransactionId}`;
+      if (tx.select().from(journalEntries).where(and(
+        eq(journalEntries.companyId, multiServiceCompanyId),
+        eq(journalEntries.entryNumber, multiServiceEntryNumber),
+      )).get() || tx.select().from(journalEntries).where(and(
+        eq(journalEntries.companyId, multiCleanCompanyId),
+        eq(journalEntries.entryNumber, multiCleanEntryNumber),
+      )).get()) {
+        throw new Error("Jem & Fix-korrektionen findes allerede. Ingen ny postering er oprettet.");
+      }
+
+      const multiServiceCorrection = tx.insert(journalEntries).values({
+        companyId: multiServiceCompanyId,
+        entryNumber: multiServiceEntryNumber,
+        date: plan.bankDate,
+        description: "Ompostering: Jem & Fix betalt fra MultiClean-konto ·6477",
+        reference: `SAF-T ${sourceEntry.entryNumber || "50746"}`,
+        sourceType: "bank_cross_company_expense_repair",
+        sourceId: sourceEntry.id,
+        status: "afstemt",
+        createdBy: req.auth?.user.email,
+        createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        {
+          companyId: multiServiceCompanyId,
+          journalEntryId: multiServiceCorrection.id,
+          accountId: plan.multiServicePrivateAccountId!,
+          description: "Korrigerer fejlagtig modpost på Aurel Dan",
+          debit: plan.amount,
+          credit: 0,
+          vatCode: null,
+        },
+        {
+          companyId: multiServiceCompanyId,
+          journalEntryId: multiServiceCorrection.id,
+          accountId: plan.multiServiceIntercompanyAccountId!,
+          description: "Skyldig til MultiClean for betaling fra konto ·6477",
+          debit: 0,
+          credit: plan.amount,
+          vatCode: null,
+        },
+      ]).run();
+
+      const multiCleanSettlement = tx.insert(journalEntries).values({
+        companyId: multiCleanCompanyId,
+        entryNumber: multiCleanEntryNumber,
+        date: plan.bankDate,
+        description: "Mellemregning: Jem & Fix betalt for ADD Multi Service ApS",
+        reference: `BANK-${plan.bankTransactionId} / SAF-T 50746`,
+        sourceType: "bank_cross_company_expense_settlement",
+        sourceId: plan.bankTransactionId,
+        status: "afstemt",
+        createdBy: req.auth?.user.email,
+        createdAt: nowIso(),
+      }).returning().get();
+      tx.insert(journalLines).values([
+        {
+          companyId: multiCleanCompanyId,
+          journalEntryId: multiCleanSettlement.id,
+          accountId: plan.multiCleanIntercompanyAccountId!,
+          description: "Tilgodehavende hos ADD Multi Service ApS",
+          debit: plan.amount,
+          credit: 0,
+          vatCode: null,
+        },
+        {
+          companyId: multiCleanCompanyId,
+          journalEntryId: multiCleanSettlement.id,
+          accountId: plan.multiCleanBankAccountId!,
+          description: String(bankTransaction.description || "Jem & Fix"),
+          debit: 0,
+          credit: plan.amount,
+          vatCode: null,
+        },
+      ]).run();
+      const updated = tx.update(bankTransactions).set({
+        matchedType: "journal_entry",
+        matchedId: multiCleanSettlement.id,
+        status: "matchet",
+      }).where(and(
+        eq(bankTransactions.id, plan.bankTransactionId!),
+        eq(bankTransactions.companyId, multiCleanCompanyId),
+        eq(bankTransactions.status, "afventer"),
+      )).returning().get();
+      if (!updated) throw new Error("Bankposten blev ændret under rettelsen. Ingen rettelser er gemt.");
+
+      const detail = JSON.stringify({
+        amount: plan.amount,
+        bankTransactionId: plan.bankTransactionId,
+        sourceEntryId: plan.sourceEntryId,
+        multiServiceCorrectionEntryId: multiServiceCorrection.id,
+        multiCleanSettlementEntryId: multiCleanSettlement.id,
+        expenseReposted: false,
+        vatReposted: false,
+        rule: "exact-bank-row-and-exact-saft-voucher-50746",
+      });
+      tx.insert(auditLogs).values([
+        {
+          companyId: multiServiceCompanyId,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: "multiservice_modpost_omklassificeret_til_multiclean",
+          target: `journal_entry#${multiServiceCorrection.id}`,
+          detail,
+          createdAt: nowIso(),
+        },
+        {
+          companyId: multiCleanCompanyId,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: "multiclean_betaling_for_multiservice_afstemt",
+          target: `bank_transactions#${plan.bankTransactionId}`,
+          detail,
+          createdAt: nowIso(),
+        },
+      ]).run();
+      return {
+        bankTransactionId: plan.bankTransactionId,
+        multiServiceCorrectionEntryId: multiServiceCorrection.id,
+        multiCleanSettlementEntryId: multiCleanSettlement.id,
+        amount: plan.amount,
+      };
+    });
+
+    res.json({ repaired: 1, ...result, expenseReposted: false, vatReposted: false });
   }));
 
   app.post("/api/bank-transactions/reconcile-payroll-clearing", requireRole("leder", "platform_admin"), h(async (req, res) => {

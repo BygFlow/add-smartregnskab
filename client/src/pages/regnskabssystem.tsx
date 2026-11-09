@@ -1562,6 +1562,28 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairMultiCleanCrossCompanyExpenseMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-multiclean-cross-company-expense", {});
+      return await res.json();
+    },
+    onSuccess: (result: { repaired?: number; amount?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({
+        title: "Jem & Fix-mellemregningen er afstemt",
+        description: `${money(result.amount ?? 0)} er matchet mod bank ·6477 og spejlet mellem MultiClean og Multi Service. Udgift og moms er ikke bogført igen.`,
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke rette Jem & Fix-mellemregningen", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3700,6 +3722,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {repairMultiCleanReceiptsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Ret samlebetalinger
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-multiclean-cross-company-expense"
+                        onClick={() => repairMultiCleanCrossCompanyExpenseMut.mutate()}
+                        disabled={repairMultiCleanCrossCompanyExpenseMut.isPending}
+                      >
+                        {repairMultiCleanCrossCompanyExpenseMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret Jem & Fix-mellemregning
                       </Button>
                       <Button
                         size="sm"
