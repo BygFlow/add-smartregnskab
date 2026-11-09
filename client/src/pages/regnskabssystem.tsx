@@ -1477,7 +1477,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       toast({
         title: `${matched} kundedobbeltbetaling${matched === 1 ? "" : "er"} afstemt`,
         description: matched
-          ? `${formatMoney(result.total ?? 0)} er bogført som kundetilgodehavende uden ny omsætning eller moms. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
+          ? `${money(result.total ?? 0)} er bogført som kundetilgodehavende uden ny omsætning eller moms. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
           : "Ingen nye, entydigt dokumenterede dobbeltbetalinger blev fundet.",
       });
     },

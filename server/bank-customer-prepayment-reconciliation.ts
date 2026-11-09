@@ -157,10 +157,12 @@ export function findSafeCustomerPrepayments(
         || String(other.date ?? "").slice(0, 10) !== date) return false;
       const paymentEntry = entryById.get(Number(other.matchedId));
       if (!paymentEntry || !isPosted(paymentEntry.status)) return false;
-      const paymentReference = normalizedReference(paymentEntry.reference)
-        || invoiceReference(paymentEntry.description)
-        || invoiceReference(other.description);
-      if (paymentReference !== reference) return false;
+      const paymentReferences = new Set([
+        normalizedReference(paymentEntry.reference),
+        invoiceReference(paymentEntry.description),
+        invoiceReference(other.description),
+      ].filter((candidate): candidate is string => Boolean(candidate)));
+      if (!paymentReferences.has(reference)) return false;
       const paymentLines = linesByEntry.get(paymentEntry.id) ?? [];
       const bankDebits = paymentLines.filter((line) => line.accountId === bankAccount.id
         && sameAmount(line.debit, amount)

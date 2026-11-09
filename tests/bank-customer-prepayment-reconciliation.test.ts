@@ -22,9 +22,9 @@ const invoice = {
 const payment = {
   id: 588,
   date: "2025-07-16",
-  entryNumber: "ECON-BETALING-202",
-  description: "Betaling faktura 202",
-  reference: "202",
+  entryNumber: "ECON-2025-20250804-10083",
+  description: "Indbet. fak. 202",
+  reference: "10083",
   sourceType: "saft_import",
   status: "bogført",
 };
@@ -73,7 +73,13 @@ test("finder en dokumenteret dobbeltbetaling til en allerede udlignet faktura", 
 
 test("accepterer formatet F: 242 og løn-/momskontoens bankmapping", () => {
   const otherInvoice = { ...invoice, id: 726, reference: "242" };
-  const otherPayment = { ...payment, id: 740, reference: "242" };
+  const otherPayment = {
+    ...payment,
+    id: 740,
+    entryNumber: "ECON-2025-20251014-10151",
+    description: "Indbet. fak. 242",
+    reference: "10151",
+  };
   const otherLines = lines.map((line) => ({
     ...line,
     journalEntryId: line.journalEntryId === 545 ? 726 : 740,
