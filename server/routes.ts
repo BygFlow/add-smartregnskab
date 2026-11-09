@@ -6016,14 +6016,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/bank-transactions/reconcile-payroll-clearing", requireRole("leder", "platform_admin"), h(async (req, res) => {
     const cid = tenantId(req);
     const year = /^\d{4}$/.test(String(req.body?.year ?? "")) ? String(req.body.year) : "2025";
-    const [transactions, accountRows, entryRows] = await Promise.all([
+    const [transactions, accountRows, entryRows, lineRows] = await Promise.all([
       storage.all("bank_transactions", cid),
       storage.all("accounts", cid),
       storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
     ]);
+    const usedJournalEntryIds = new Set<number>((transactions as any[])
+      .filter((transaction) => ["journal", "journal_entry"].includes(String(transaction.matchedType)) && transaction.matchedId)
+      .map((transaction) => Number(transaction.matchedId)));
     const postings = findSafePayrollClearingPostings(
       transactions as any[], accountRows as any[], entryRows as any[], year,
-    );
+    ).filter((posting) => {
+      const transaction = (transactions as any[]).find((row) => Number(row.id) === posting.transactionId);
+      if (!transaction) return false;
+      return findSaftJournalCandidates(
+        transaction,
+        entryRows as any[],
+        lineRows as any[],
+        accountRows as any[],
+        usedJournalEntryIds,
+      ).length === 0;
+    });
     const transactionById = new Map((transactions as any[]).map((row) => [Number(row.id), row]));
 
     const matched = postings.length ? db.transaction((tx) => {
@@ -6139,6 +6153,86 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
       year,
     });
+  }));
+
+  app.post("/api/bank-transactions/repair-payroll-clearing-saft-overlaps", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const [transactions, accountRows, entryRows, lineRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("accounts", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+    ]);
+    const transactionById = new Map((transactions as any[]).map((row) => [Number(row.id), row]));
+    const ownedEntries = (entryRows as any[]).filter((entry) =>
+      ["bank_payroll_clearing", "bank_intercompany_settlement"].includes(String(entry.sourceType ?? ""))
+      && Number.isInteger(Number(entry.sourceId))
+      && Number(entry.sourceId) > 0,
+    );
+    const ownedEntryIds = new Set(ownedEntries.map((entry) => Number(entry.id)));
+    const usedImportedEntryIds = new Set<number>((transactions as any[])
+      .filter((transaction) => ["journal", "journal_entry"].includes(String(transaction.matchedType)) && transaction.matchedId)
+      .map((transaction) => Number(transaction.matchedId))
+      .filter((entryId) => !ownedEntryIds.has(entryId)));
+
+    const overlaps = ownedEntries.flatMap((entry) => {
+      const transaction = transactionById.get(Number(entry.sourceId));
+      if (!transaction
+        || transaction.status !== "matchet"
+        || !["journal", "journal_entry"].includes(String(transaction.matchedType))
+        || Number(transaction.matchedId) !== Number(entry.id)) return [];
+      const candidates = findSaftJournalCandidates(
+        transaction,
+        entryRows as any[],
+        lineRows as any[],
+        accountRows as any[],
+        usedImportedEntryIds,
+      );
+      if (candidates.length !== 1) return [];
+      return [{ transaction, duplicateEntry: entry, importedEntryId: candidates[0].id }];
+    });
+
+    const repaired = overlaps.length ? db.transaction((tx) => overlaps.map((overlap) => {
+      const updated = tx.update(bankTransactions)
+        .set({ matchedType: "journal_entry", matchedId: overlap.importedEntryId, status: "matchet" })
+        .where(and(
+          eq(bankTransactions.id, Number(overlap.transaction.id)),
+          eq(bankTransactions.companyId, cid),
+          eq(bankTransactions.matchedId, Number(overlap.duplicateEntry.id)),
+        )).returning().get();
+      if (!updated) throw new Error("Bankposteringen blev ændret under dubletkontrollen. Ingen rettelser blev gemt.");
+      tx.delete(journalLines).where(and(
+        eq(journalLines.companyId, cid),
+        eq(journalLines.journalEntryId, Number(overlap.duplicateEntry.id)),
+      )).run();
+      const removed = tx.delete(journalEntries).where(and(
+        eq(journalEntries.companyId, cid),
+        eq(journalEntries.id, Number(overlap.duplicateEntry.id)),
+      )).run();
+      if (removed.changes !== 1) throw new Error("Dubletposteringen kunne ikke fjernes. Ingen rettelser blev gemt.");
+      tx.insert(auditLogs).values({
+        companyId: cid,
+        userId: req.auth?.user.id,
+        userEmail: req.auth?.user.email,
+        action: "bankafstemning_saf_t_dublet_rettet",
+        target: `bank_transactions#${overlap.transaction.id}`,
+        detail: JSON.stringify({
+          transactionId: overlap.transaction.id,
+          removedJournalEntryId: overlap.duplicateEntry.id,
+          matchedImportedJournalEntryId: overlap.importedEntryId,
+          rule: "unique-exact-date-signed-bank-amount-existing-saf-t-entry",
+          createsBookkeeping: false,
+        }),
+        createdAt: nowIso(),
+      }).run();
+      return {
+        transactionId: Number(overlap.transaction.id),
+        removedJournalEntryId: Number(overlap.duplicateEntry.id),
+        matchedImportedJournalEntryId: overlap.importedEntryId,
+      };
+    })) : [];
+
+    res.json({ repaired: repaired.length, rows: repaired });
   }));
 
   app.post("/api/bank-transactions/:id/ignore", h(async (req, res) => {
