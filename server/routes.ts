@@ -46,6 +46,7 @@ import { findBankDocumentCandidates, findSafeBankDocumentMatches, normalizeBankD
 import { findSafePayableSettlements } from "./bank-payable-reconciliation";
 import { findSafeInterestPostings } from "./bank-interest-reconciliation";
 import { findSafeCustomerPrepayments } from "./bank-customer-prepayment-reconciliation";
+import { findSafePayrollClearingPostings } from "./bank-payroll-clearing-reconciliation";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -6007,6 +6008,134 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       matched: matched.length,
       rows: matched,
       total: matched.reduce((sum, row) => sum + row.amount, 0),
+      remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
+      year,
+    });
+  }));
+
+  app.post("/api/bank-transactions/reconcile-payroll-clearing", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const year = /^\d{4}$/.test(String(req.body?.year ?? "")) ? String(req.body.year) : "2025";
+    const [transactions, accountRows, entryRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("accounts", cid),
+      storage.all("journal_entries", cid),
+    ]);
+    const postings = findSafePayrollClearingPostings(
+      transactions as any[], accountRows as any[], entryRows as any[], year,
+    );
+    const transactionById = new Map((transactions as any[]).map((row) => [Number(row.id), row]));
+
+    const matched = postings.length ? db.transaction((tx) => {
+      const payrollNeeded = postings.some((posting) => posting.kind === "payroll_clearing");
+      const intercompanyNeeded = postings.some((posting) => posting.kind !== "payroll_clearing");
+      const payrollRows = tx.select().from(accounts).where(and(
+        eq(accounts.companyId, cid),
+        eq(accounts.accountNumber, "6839"),
+      )).all().filter((row) => row.active !== 0);
+      if (payrollRows.length > 1) throw new Error("Konto 6839 er dubleret. Afstem kontoplanen før bogføring.");
+      const payrollClearing = payrollNeeded ? (payrollRows[0] ?? tx.insert(accounts).values({
+        companyId: cid,
+        accountNumber: "6839",
+        standardAccountNumber: null,
+        name: "Lønafregning - afventer løngrundlag",
+        type: "aktiv",
+        vatCode: null,
+        balance: 0,
+        active: 1,
+        createdAt: nowIso(),
+      }).returning().get()) : null;
+
+      const intercompanyRows = tx.select().from(accounts).where(and(
+        eq(accounts.companyId, cid),
+        eq(accounts.accountNumber, "6837"),
+      )).all().filter((row) => row.active !== 0);
+      if (intercompanyNeeded && intercompanyRows.length !== 1) {
+        throw new Error("Mellemregningskonto 6837 mangler eller er dubleret. Afstem kontoplanen før bogføring.");
+      }
+      const intercompany = intercompanyRows[0] ?? null;
+
+      return postings.map((posting) => {
+        const bankTransaction = transactionById.get(posting.transactionId);
+        if (!bankTransaction) throw new Error("Afstemningsgrundlaget blev ændret. Opdatér siden og prøv igen.");
+        const sourceType = posting.kind === "payroll_clearing"
+          ? "bank_payroll_clearing"
+          : "bank_intercompany_settlement";
+        const description = posting.kind === "payroll_clearing"
+          ? `Lønkontantstrøm afventer løngrundlag: ${posting.description}`
+          : posting.kind === "intercompany_funding"
+            ? `Finansiering fra ADD Multi Service: ${posting.description}`
+            : `Mellemregning med ADD Multi Service: ${posting.description}`;
+        const entry = tx.insert(journalEntries).values({
+          companyId: cid,
+          entryNumber: `${posting.kind === "payroll_clearing" ? "BANK-LONAFVENTER" : "BANK-MELLEMREGNING"}-${posting.transactionId}`,
+          date: posting.date,
+          description,
+          reference: `BANK-${posting.transactionId}`,
+          sourceType,
+          sourceId: posting.transactionId,
+          status: "afstemt",
+          createdBy: req.auth?.user.email,
+          createdAt: nowIso(),
+        }).returning().get();
+        const counterAccountId = posting.kind === "payroll_clearing"
+          ? payrollClearing?.id
+          : intercompany?.id;
+        if (!counterAccountId) throw new Error("Afstemningskontoen kunne ikke oprettes.");
+        const bankIsDebit = posting.kind === "intercompany_funding";
+        tx.insert(journalLines).values([
+          {
+            companyId: cid,
+            journalEntryId: entry.id,
+            accountId: posting.bankAccountId,
+            description: posting.description,
+            debit: bankIsDebit ? posting.amount : 0,
+            credit: bankIsDebit ? 0 : posting.amount,
+            vatCode: null,
+          },
+          {
+            companyId: cid,
+            journalEntryId: entry.id,
+            accountId: counterAccountId,
+            description,
+            debit: bankIsDebit ? 0 : posting.amount,
+            credit: bankIsDebit ? posting.amount : 0,
+            vatCode: null,
+          },
+        ]).run();
+        const updated = tx.update(bankTransactions)
+          .set({ matchedType: "journal_entry", matchedId: entry.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, posting.transactionId),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).returning().get();
+        if (!updated) throw new Error("En bankpostering blev ændret under afstemningen. Ingen posteringer blev gemt.");
+        tx.insert(auditLogs).values({
+          companyId: cid,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: posting.kind === "payroll_clearing" ? "lønkontantstrøm_midlertidigt_afstemt" : "mellemregning_afstemt",
+          target: `bank_transactions#${posting.transactionId}`,
+          detail: JSON.stringify({
+            ...posting,
+            journalEntryId: entry.id,
+            counterAccountId,
+            payrollExpenseRecognized: false,
+            payrollReported: false,
+            vatPosted: false,
+          }),
+          createdAt: nowIso(),
+        }).run();
+        return { transactionId: posting.transactionId, journalEntryId: entry.id, amount: posting.amount, kind: posting.kind };
+      });
+    }) : [];
+
+    res.json({
+      matched: matched.length,
+      payrollRows: matched.filter((row) => row.kind === "payroll_clearing").length,
+      intercompanyRows: matched.filter((row) => row.kind !== "payroll_clearing").length,
+      payrollCash: matched.filter((row) => row.kind === "payroll_clearing").reduce((sum, row) => sum + row.amount, 0),
       remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
       year,
     });

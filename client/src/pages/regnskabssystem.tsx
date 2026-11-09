@@ -1487,6 +1487,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const reconcilePayrollClearingMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/reconcile-payroll-clearing", { year: "2025" });
+      return await res.json();
+    },
+    onSuccess: (result: { matched?: number; payrollRows?: number; intercompanyRows?: number; payrollCash?: number; remaining?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const matched = result.matched ?? 0;
+      toast({
+        title: `${matched} løn- og mellemregningsposter afstemt`,
+        description: matched
+          ? `${result.payrollRows ?? 0} lønposter (${money(result.payrollCash ?? 0)}) står midlertidigt på lønafregning, og ${result.intercompanyRows ?? 0} poster er ført på mellemregningen. Ingen lønomkostning eller indberetning er foretaget. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
+          : "Ingen nye, entydigt mærkede løn- eller mellemregningsposter blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke afstemme lønkontantstrømme", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3595,6 +3620,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {reconcileCustomerPrepaymentsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Kundedobbeltbetalinger
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-reconcile-payroll-clearing"
+                        onClick={() => reconcilePayrollClearingMut.mutate()}
+                        disabled={reconcilePayrollClearingMut.isPending}
+                      >
+                        {reconcilePayrollClearingMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Løn til afstemning
                       </Button>
                       <Button
                         size="sm"
