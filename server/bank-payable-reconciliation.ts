@@ -121,7 +121,7 @@ export function findSafePayableSettlements(
       if (!bankAccount) return { transaction, candidates: [] as SafePayableSettlement[] };
       const paymentDay = dayNumber(transaction.date);
       const amount = Math.abs(Number(transaction.amount));
-      const candidates: SafePayableSettlement[] = [];
+      const candidates: Array<{ settlement: SafePayableSettlement; distance: number }> = [];
 
       for (const entry of postedEntries) {
         const sourceType = normalized(entry.sourceType);
@@ -153,14 +153,24 @@ export function findSafePayableSettlements(
         });
         if (alreadyCleared) continue;
         candidates.push({
-          transactionId: transaction.id,
-          invoiceJournalEntryId: entry.id,
-          payableAccountId: payableLine.accountId,
-          bankAccountId: bankAccount.id,
-          amount,
+          settlement: {
+            transactionId: transaction.id,
+            invoiceJournalEntryId: entry.id,
+            payableAccountId: payableLine.accountId,
+            bankAccountId: bankAccount.id,
+            amount,
+          },
+          distance: Math.abs(daysFromInvoice),
         });
       }
-      return { transaction, candidates };
+      const sorted = candidates.sort((left, right) => left.distance - right.distance
+        || left.settlement.invoiceJournalEntryId - right.settlement.invoiceJournalEntryId);
+      const nearest = !sorted.length
+        ? []
+        : sorted.length === 1 || sorted[0].distance < sorted[1].distance
+          ? [sorted[0].settlement]
+          : [];
+      return { transaction, candidates: nearest };
     })
     .filter(({ candidates }) => candidates.length > 0);
 

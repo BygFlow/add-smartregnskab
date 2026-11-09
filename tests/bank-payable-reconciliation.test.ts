@@ -81,6 +81,38 @@ test("afviser tvetydige fakturaer og gensidigt delt faktura", () => {
   assert.deepEqual(matches, []);
 });
 
+test("vælger den entydigt nærmeste gentagne månedsfaktura", () => {
+  const olderInvoice = { ...invoice, id: 101, date: "2025-07-24", description: "Håndværker.dk" };
+  const recentInvoice = { ...invoice, id: 102, date: "2025-08-08", description: "Håndværker.dk" };
+  const repeatedLines = [olderInvoice, recentInvoice].flatMap((entry) => [
+    { journalEntryId: entry.id, accountId: 200, description: "Håndværker.dk", debit: 1_360, credit: 0 },
+    { journalEntryId: entry.id, accountId: 57, description: "Håndværker.dk", debit: 0, credit: 1_360 },
+  ]);
+  const matches = findSafePayableSettlements(
+    [{ id: 12, date: "2025-08-09", description: "Haandvaerker.dk", amount: -1_360, status: "afventer", accountRef: "0112" }],
+    [olderInvoice, recentInvoice],
+    repeatedLines,
+    accounts,
+  );
+  assert.deepEqual(matches.map((match) => match.invoiceJournalEntryId), [102]);
+});
+
+test("afviser gentagne fakturaer når nærmeste dato er uafgjort", () => {
+  const before = { ...invoice, id: 101, date: "2025-08-08", description: "Håndværker.dk" };
+  const after = { ...invoice, id: 102, date: "2025-08-10", description: "Håndværker.dk" };
+  const repeatedLines = [before, after].flatMap((entry) => [
+    { journalEntryId: entry.id, accountId: 200, description: "Håndværker.dk", debit: 1_360, credit: 0 },
+    { journalEntryId: entry.id, accountId: 57, description: "Håndværker.dk", debit: 0, credit: 1_360 },
+  ]);
+  const matches = findSafePayableSettlements(
+    [{ id: 12, date: "2025-08-09", description: "Haandvaerker.dk", amount: -1_360, status: "afventer", accountRef: "0112" }],
+    [before, after],
+    repeatedLines,
+    accounts,
+  );
+  assert.deepEqual(matches, []);
+});
+
 test("afviser ukendt konto, forkert år og mere end 90 dages forskel", () => {
   const matches = findSafePayableSettlements(
     [

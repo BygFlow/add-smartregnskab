@@ -62,6 +62,15 @@ test("aktiv bankkonto til løn og skat genkendes som bankkonto", () => {
   }), true);
 });
 
+test("kendte banklabels genkendes som deres faktiske leverandør", () => {
+  assert.equal(isStrongMerchantMatch("LS Q8 DANMARK A/S", "Q8 DANMARK -"), true);
+  assert.equal(isStrongMerchantMatch("Lev. serv. betal 14648", "Q8 DANMARK -"), true);
+  assert.equal(isStrongMerchantMatch("Lev. serv. betal 56391", "ADWISE MEDIA A/S"), true);
+  assert.equal(isStrongMerchantMatch("3 Danmark", "Hi3G"), true);
+  assert.equal(isStrongMerchantMatch("A&O", "BRØDRENE A. & O. JOHANSEN A/S"), true);
+  assert.equal(isStrongMerchantMatch("Lev. serv. betal 51853", "Q8 DANMARK -"), false);
+});
+
 test("kun bogførte importerede posteringer kan auto-matches", () => {
   const lines = [{ journalEntryId: 10, accountId: 1, debit: 0, credit: 713.55 }];
   assert.equal(findUniqueSaftJournalMatch(

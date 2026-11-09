@@ -98,6 +98,16 @@ function merchantKey(value: unknown) {
   return merchantTokens(value).join("");
 }
 
+function knownMerchantAlias(value: unknown) {
+  const text = normalizedText(value);
+  if (!text) return null;
+  if (/(^| )(q8|f24)( |$)/.test(text) || text === "lev serv betal 14648") return "q8";
+  if (/(^| )adwise media( |$)/.test(text) || text === "lev serv betal 56391") return "adwise-media";
+  if (/(^| )(3 mobil|3 danmark|hi3g)( |$)/.test(text)) return "3-mobil";
+  if (/(^| )a o( |$)/.test(text) || /(^| )brodrene( a)? o johansen( |$)/.test(text)) return "ao-johansen";
+  return null;
+}
+
 function differsByAtMostOneCharacter(left: string, right: string) {
   if (Math.abs(left.length - right.length) > 1) return false;
   let leftIndex = 0;
@@ -123,6 +133,9 @@ function differsByAtMostOneCharacter(left: string, right: string) {
 }
 
 export function isStrongMerchantMatch(left: unknown, right: unknown) {
+  const leftAlias = knownMerchantAlias(left);
+  const rightAlias = knownMerchantAlias(right);
+  if (leftAlias && leftAlias === rightAlias) return true;
   const leftKey = merchantKey(left);
   const rightKey = merchantKey(right);
   const genericKeys = new Set([

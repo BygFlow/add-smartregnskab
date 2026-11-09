@@ -8,7 +8,8 @@ test("checkout terms stay available to signed-in reviewers", () => {
   const app = read("client/src/App.tsx");
   const checkout = read("client/src/pages/regnskab-tabs/abonnement.tsx");
   const publicPages = read("client/src/pages/marketing.tsx");
-  assert.match(app, /if \(location === "\/abonnementsbetingelser"\) return <Marketing page="subscriptionTerms" \/>;/);
+  assert.match(app, /"\/abonnementsbetingelser": "subscriptionTerms"/);
+  assert.match(app, /const publicPage = publicMarketingRoute\(location\);\s*if \(publicPage\) return publicPage;\s*\n\s*if \(!user\)/);
   assert.match(checkout, /data-testid="subscription-terms-checkbox"/);
   assert.match(checkout, /setShowSubscriptionTerms\(true\)/);
   assert.match(checkout, /<LegalPreviewDialog kind=\{showSubscriptionTerms \? "subscriptionTerms" : null\}/);
