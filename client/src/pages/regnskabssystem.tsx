@@ -1462,6 +1462,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const reconcileCustomerPrepaymentsMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/reconcile-customer-prepayments", { year: "2025" });
+      return await res.json();
+    },
+    onSuccess: (result: { matched?: number; remaining?: number; total?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const matched = result.matched ?? 0;
+      toast({
+        title: `${matched} kundedobbeltbetaling${matched === 1 ? "" : "er"} afstemt`,
+        description: matched
+          ? `${formatMoney(result.total ?? 0)} er bogført som kundetilgodehavende uden ny omsætning eller moms. ${result.remaining ?? 0} bankposter kræver fortsat kontrol.`
+          : "Ingen nye, entydigt dokumenterede dobbeltbetalinger blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke afstemme kundedobbeltbetalinger", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3560,6 +3585,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {reconcileInterestMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <TrendingUp className="size-4" />}
                         Bogfør renter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-reconcile-customer-prepayments"
+                        onClick={() => reconcileCustomerPrepaymentsMut.mutate()}
+                        disabled={reconcileCustomerPrepaymentsMut.isPending}
+                      >
+                        {reconcileCustomerPrepaymentsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Kundedobbeltbetalinger
                       </Button>
                       <Button
                         size="sm"

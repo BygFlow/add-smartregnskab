@@ -45,6 +45,7 @@ import {
 import { findBankDocumentCandidates, findSafeBankDocumentMatches, normalizeBankDocumentType } from "./bank-document-match";
 import { findSafePayableSettlements } from "./bank-payable-reconciliation";
 import { findSafeInterestPostings } from "./bank-interest-reconciliation";
+import { findSafeCustomerPrepayments } from "./bank-customer-prepayment-reconciliation";
 import { aiUsageOverview } from "./ai-usage";
 import { generateAiAssistantReply } from "./ai-provider";
 import {
@@ -5901,6 +5902,111 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({
       matched: matched.length,
       rows: matched,
+      remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
+      year,
+    });
+  }));
+
+  app.post("/api/bank-transactions/reconcile-customer-prepayments", requireRole("leder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const year = /^\d{4}$/.test(String(req.body?.year ?? "")) ? String(req.body.year) : "2025";
+    const [transactions, entries, lines, accountRows] = await Promise.all([
+      storage.all("bank_transactions", cid),
+      storage.all("journal_entries", cid),
+      storage.all("journal_lines", cid),
+      storage.all("accounts", cid),
+    ]);
+    const prepayments = findSafeCustomerPrepayments(
+      transactions as any[], entries as any[], lines as any[], accountRows as any[], year,
+    );
+    const transactionById = new Map((transactions as any[]).map((row) => [Number(row.id), row]));
+
+    const matched = prepayments.length ? db.transaction((tx) => {
+      const liabilityRows = tx.select().from(accounts).where(and(
+        eq(accounts.companyId, cid),
+        eq(accounts.accountNumber, "6810"),
+      )).all().filter((row) => row.active !== 0);
+      if (liabilityRows.length > 1) throw new Error("Konto 6810 er dubleret. Afstem kontoplanen før bogføring.");
+      const liability = liabilityRows[0] ?? tx.insert(accounts).values({
+        companyId: cid,
+        accountNumber: "6810",
+        standardAccountNumber: null,
+        name: "Forudbetalinger fra kunder",
+        type: "passiv",
+        vatCode: null,
+        balance: 0,
+        active: 1,
+        createdAt: nowIso(),
+      }).returning().get();
+
+      return prepayments.map((posting) => {
+        const bankTransaction = transactionById.get(posting.transactionId);
+        if (!bankTransaction) throw new Error("Afstemningsgrundlaget blev ændret. Opdatér siden og prøv igen.");
+        const description = `Dobbeltbetaling faktura ${posting.invoiceReference} – kundetilgodehavende`;
+        const entry = tx.insert(journalEntries).values({
+          companyId: cid,
+          entryNumber: `BANK-FORUDBETALING-${posting.transactionId}`,
+          date: posting.date,
+          description,
+          reference: posting.invoiceReference,
+          sourceType: "bank_customer_prepayment",
+          sourceId: posting.transactionId,
+          status: "afstemt",
+          createdBy: req.auth?.user.email,
+          createdAt: nowIso(),
+        }).returning().get();
+        tx.insert(journalLines).values([
+          {
+            companyId: cid,
+            journalEntryId: entry.id,
+            accountId: posting.bankAccountId,
+            description: String(bankTransaction.description || description),
+            debit: posting.amount,
+            credit: 0,
+            vatCode: null,
+          },
+          {
+            companyId: cid,
+            journalEntryId: entry.id,
+            accountId: liability.id,
+            description,
+            debit: 0,
+            credit: posting.amount,
+            vatCode: null,
+          },
+        ]).run();
+        const updated = tx.update(bankTransactions)
+          .set({ matchedType: "journal_entry", matchedId: entry.id, status: "matchet" })
+          .where(and(
+            eq(bankTransactions.id, posting.transactionId),
+            eq(bankTransactions.companyId, cid),
+            eq(bankTransactions.status, "afventer"),
+          )).returning().get();
+        if (!updated) throw new Error("En bankpostering blev ændret under afstemningen. Ingen posteringer blev gemt.");
+        tx.insert(auditLogs).values({
+          companyId: cid,
+          userId: req.auth?.user.id,
+          userEmail: req.auth?.user.email,
+          action: "kundedobbeltbetaling_afstemt",
+          target: `bank_transactions#${posting.transactionId}`,
+          detail: JSON.stringify({
+            ...posting,
+            journalEntryId: entry.id,
+            liabilityAccountId: liability.id,
+            rule: "same-account-date-amount-reference-with-existing-bank-settlement",
+            revenueReposted: false,
+            vatReposted: false,
+          }),
+          createdAt: nowIso(),
+        }).run();
+        return { transactionId: posting.transactionId, journalEntryId: entry.id, amount: posting.amount };
+      });
+    }) : [];
+
+    res.json({
+      matched: matched.length,
+      rows: matched,
+      total: matched.reduce((sum, row) => sum + row.amount, 0),
       remaining: (transactions as any[]).filter((row) => row.status === "afventer").length - matched.length,
       year,
     });
