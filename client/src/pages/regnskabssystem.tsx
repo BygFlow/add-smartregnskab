@@ -1512,6 +1512,31 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     },
   });
 
+  const repairPayrollSaftOverlapsMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/repair-payroll-clearing-saft-overlaps", {});
+      return await res.json();
+    },
+    onSuccess: (result: { repaired?: number }) => {
+      qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/regnskabssystem", effectiveCompanyId] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/journal-lines"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounts"] });
+      const repaired = result.repaired ?? 0;
+      toast({
+        title: `${repaired} SAF-T-dublet${repaired === 1 ? "" : "ter"} rettet`,
+        description: repaired
+          ? "Bankposten er flyttet til den oprindelige SAF-T-postering, og kun den kontrollerede dobbeltpostering er fjernet."
+          : "Ingen entydige SAF-T-dubletter blev fundet.",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Ukendt fejl";
+      toast({ title: "Kunne ikke rette SAF-T-dubletter", description: message, variant: "destructive" });
+    },
+  });
+
   const matchBankMut = useMutation({
     mutationFn: async () => {
       if (!documentMatchTransaction || !selectedDocumentId) throw new Error("Vælg et konkret dokument.");
@@ -3630,6 +3655,16 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                       >
                         {reconcilePayrollClearingMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
                         Løn til afstemning
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="btn-repair-payroll-saft-overlaps"
+                        onClick={() => repairPayrollSaftOverlapsMut.mutate()}
+                        disabled={repairPayrollSaftOverlapsMut.isPending}
+                      >
+                        {repairPayrollSaftOverlapsMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                        Ret SAF-T-dubletter
                       </Button>
                       <Button
                         size="sm"
