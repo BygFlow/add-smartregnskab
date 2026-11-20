@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { providerStatus } from "./einvoice";
 import { addSproomProduct, safeSproomConnection, sproomConnectionForCompany } from "./sproom-registry";
+import { importLaunchBankTransaction, importLaunchDocument } from "./launch-import";
 
 type AddConnectRequest = Request & {
   addConnect?: { companyId: number; keyId: number; scopes: string[] };
@@ -445,6 +446,7 @@ export function syncLaunchBatch(companyId: number, idempotencyKey: string, event
       if (event.type === "customer.upsert") upsertCustomer(companyId, "add_launch", event.data || {});
       else if (event.type === "invoice.upsert") upsertAddConnectInvoice(companyId, "add_launch", event.data || {});
       else if (event.type === "payment.updated") updatePayment(companyId, "add_launch", event.data || {});
+      else if (event.type === "bank.import") importLaunchBankTransaction(companyId, event.data);
       else throw new Error("Hændelsestypen understøttes ikke i ADD Launch-forbindelsen.");
     }
     const now = nowIso();
@@ -473,7 +475,12 @@ export function registerPublicAddConnectRoutes(app: Express) {
   app.get("/api/add-connect/status", requireAddConnect("read"), async (req: AddConnectRequest, res) => {
     const auth = req.addConnect!;
     const company = db.select().from(companies).where(eq(companies.id, auth.companyId)).get();
-    res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name, cvr: company.cvr } : null, scopes: auth.scopes, capabilities: ["add_launch.atomic_sync.v1"] });
+    res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name, cvr: company.cvr } : null, scopes: auth.scopes, capabilities: ["add_launch.atomic_sync.v1", "add_launch.bank_import.v1", "add_launch.documents.v1"] });
+  });
+
+  app.post("/api/add-connect/documents", requireAddConnect("write"), async (req: AddConnectRequest, res) => {
+    try { res.json(await importLaunchDocument(req.addConnect!.companyId, req.body)); }
+    catch { res.status(400).json({ ok: false, error: "Bilaget kunne ikke modtages. Kontrollér filtype, størrelse, kontrolsum og kilde-id." }); }
   });
 
   app.get("/api/add-connect/einvoice", requireAddConnect("read"), (req: AddConnectRequest, res) => {

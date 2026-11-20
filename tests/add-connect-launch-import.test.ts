@@ -1,0 +1,43 @@
+import assert from "node:assert/strict";
+import { createHash, randomInt } from "node:crypto";
+import test from "node:test";
+import { eq, and } from "drizzle-orm";
+import { db } from "../server/storage";
+import { companies, bankTransactions, documentInbox, journalEntries } from "@shared/schema";
+import { importLaunchBankTransaction, importLaunchDocument } from "../server/launch-import";
+import { syncLaunchBatch } from "../server/add-connect";
+import { readFile } from "../server/files";
+const firstCompany = 72_000_000 + randomInt(100_000), secondCompany = firstCompany + 100_000;
+db.insert(companies).values([{ id: firstCompany, name: "Isolated Launch import A" }, { id: secondCompany, name: "Isolated Launch import B" }]).run();
+const bank = { sourceId: "launch:owner:bank-one", date: "2026-11-20", description: "Isoleret bankpostering", amount: -125.63, balance: null, reference: "TEST-42" };
+test("bank imports are exact, idempotent, tenant-scoped and never journal posted", () => {
+  const before = db.select().from(journalEntries).where(eq(journalEntries.companyId, firstCompany)).all().length;
+  const first = importLaunchBankTransaction(firstCompany, bank);
+  assert.equal(importLaunchBankTransaction(firstCompany, bank).id, first.id);
+  const row = db.select().from(bankTransactions).where(eq(bankTransactions.id, first.id)).get()!;
+  assert.equal(row.amount, -125.63); assert.equal(row.balance, null); assert.equal(row.status, "afventer"); assert.equal(row.matchedId, null);
+  assert.throws(() => importLaunchBankTransaction(firstCompany, { ...bank, amount: -100 }), /andre data/);
+  assert.notEqual(importLaunchBankTransaction(secondCompany, bank).id, first.id);
+  for (const invalid of [{ date: "2026-02-29" }, { amount: Infinity }, { amount: 1.234 }, { companyId: secondCompany }]) assert.throws(() => importLaunchBankTransaction(firstCompany, { ...bank, sourceId: "launch:invalid:bank", ...invalid }));
+  assert.equal(db.select().from(journalEntries).where(eq(journalEntries.companyId, firstCompany)).all().length, before);
+});
+test("invalid event rolls back a complete bank batch", () => {
+  assert.throws(() => syncLaunchBatch(firstCompany, "bank-rollback", [{ type: "bank.import", data: { ...bank, sourceId: "launch:rollback:bank" } }, { type: "not-supported", data: {} }]));
+  assert.equal(db.select().from(bankTransactions).where(and(eq(bankTransactions.companyId, firstCompany), eq(bankTransactions.externalId, "launch:rollback:bank"))).all().length, 0);
+});
+test("original receipts are checked, stored once, tenant-scoped and remain in review", async () => {
+  const bytes = Buffer.from("%PDF-1.4\n% Isolated document fixture\n%%EOF");
+  const checksum = createHash("sha256").update(bytes).digest("hex");
+  const value = { sourceId: "launch:owner:document-one", fileName: "TEST.pdf", contentType: "application/pdf", checksum, base64: bytes.toString("base64") };
+  const results = await Promise.all([importLaunchDocument(firstCompany, value), importLaunchDocument(firstCompany, value)]);
+  assert.equal(results[0].id, results[1].id);
+  assert.equal(results.filter(row => !row.duplicate).length, 1);
+  const row = db.select().from(documentInbox).where(eq(documentInbox.id, results[0].id)).get()!;
+  assert.equal(row.status, "ny"); assert.equal(row.postedJournalEntryId, null); assert.equal(row.source, "add_launch");
+  assert.deepEqual(await readFile(row.storage!, row.storageKey!), bytes);
+  assert.equal((await importLaunchDocument(firstCompany, { ...value, sourceId: "launch:owner:same-file" })).id, row.id);
+  assert.notEqual((await importLaunchDocument(secondCompany, value)).id, row.id);
+  await assert.rejects(importLaunchDocument(firstCompany, { ...value, checksum: "0".repeat(64) }));
+  await assert.rejects(importLaunchDocument(firstCompany, { ...value, companyId: secondCompany }));
+  await assert.rejects(importLaunchDocument(firstCompany, { ...value, sourceId: "launch:owner:invalid-file", contentType: "image/png" }));
+});
