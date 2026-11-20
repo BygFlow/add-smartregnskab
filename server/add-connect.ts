@@ -22,7 +22,7 @@ type AddConnectRequest = Request & {
   addConnect?: { companyId: number; keyId: number; scopes: string[] };
 };
 
-const PRODUCTS = ["smartdrift_pro", "smartdrift_clean"] as const;
+const PRODUCTS = ["smartdrift_pro", "smartdrift_clean", "add_launch"] as const;
 type AddConnectProduct = typeof PRODUCTS[number];
 const EVENT_TYPES = ["customer.upsert", "invoice.upsert", "payment.updated"] as const;
 const nowIso = () => new Date().toISOString();
@@ -53,7 +53,7 @@ function requireAddConnect(scope: "read" | "write") {
   return async (req: AddConnectRequest, res: Response, next: NextFunction) => {
     try {
       const token = bearer(req);
-      if (!token.startsWith("sk_") || token.length < 24) {
+      if ((!token.startsWith("sk_") && !token.startsWith("sr_live_")) || token.length < 24) {
         return res.status(401).json({ error: "Gyldig ADD Connect API-nøgle mangler." });
       }
       const hash = createHash("sha256").update(token).digest("hex");
@@ -63,6 +63,10 @@ function requireAddConnect(scope: "read" | "write") {
       }
       if (row.expiresAt && new Date(row.expiresAt).getTime() <= Date.now()) {
         return res.status(401).json({ error: "API-nøglen er udløbet." });
+      }
+      if (token.startsWith("sr_live_")) {
+        const plan = await storage.getCompanyPlan(row.companyId);
+        if (!jsonScopes(plan?.features).includes("api_integration")) return res.status(402).json({ error: "API-integration er ikke inkluderet i virksomhedens abonnement." });
       }
       const scopes = jsonScopes(row.scopes);
       const allowed = scopes.includes("admin")
@@ -410,17 +414,45 @@ function updatePayment(companyId: number, sourceProduct: string, payload: any) {
   const invoiceSourceId = text(payload.invoiceSourceId || payload.sourceId, 120);
   const mapped = findMapping(companyId, sourceProduct, "invoice", invoiceSourceId);
   if (!mapped) throw new Error("payment.updated henviser til en faktura, der ikke er synkroniseret.");
-  const paidAmount = number(payload.paidAmount ?? payload.amount);
+  const paidAmount = Number(payload.paidAmount ?? payload.amount);
   const target = db.select().from(invoices).where(and(
     eq(invoices.id, Number(mapped.targetId)),
     eq(invoices.companyId, companyId),
   )).get();
   if (!target) throw new Error("Den synkroniserede faktura findes ikke længere.");
+  if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > target.totalAmount + 0.001) throw new Error("Betalingsbeløbet er ugyldigt.");
+  if (sourceProduct === "add_launch" && !BOOKABLE_INVOICE_STATUSES.has(target.status)) throw new Error("Betalingsstatus kræver en udstedt faktura.");
   return db.update(invoices).set({
     paidAmount,
     paidAt: text(payload.paidAt, 40) || nowIso(),
-    status: paidAmount >= target.totalAmount ? "betalt" : target.status,
+    status: paidAmount >= target.totalAmount ? "betalt" : paidAmount > 0 ? "delvist_betalt" : target.status === "betalt" ? "sendt" : target.status,
   }).where(eq(invoices.id, target.id)).returning().get();
+}
+
+// A Launch batch either commits in full or changes nothing. The payload hash
+// binds retries to exactly the same data; a partial success is never replayed as success.
+export function syncLaunchBatch(companyId: number, idempotencyKey: string, events: Array<{ type: string; data: any }>) {
+  if (!idempotencyKey || idempotencyKey.length > 160 || !Array.isArray(events) || !events.length || events.length > 20) throw new Error("Ugyldigt ADD Launch-synkroniseringskald.");
+  const hash = createHash("sha256").update(JSON.stringify(events)).digest("hex");
+  return db.transaction((tx) => {
+    const existing = findMapping(companyId, "add_launch", "request", `request:${idempotencyKey}`);
+    if (existing) {
+      const [jobId, previousHash] = existing.targetId.split(":");
+      if (previousHash !== hash) throw new Error("Idempotensnøglen tilhører andre data.");
+      return { ok: true, duplicate: true, jobId: Number(jobId), processed: events.length, success: events.length, failed: 0 };
+    }
+    for (const event of events) {
+      if (event.type === "customer.upsert") upsertCustomer(companyId, "add_launch", event.data || {});
+      else if (event.type === "invoice.upsert") upsertAddConnectInvoice(companyId, "add_launch", event.data || {});
+      else if (event.type === "payment.updated") updatePayment(companyId, "add_launch", event.data || {});
+      else throw new Error("Hændelsestypen understøttes ikke i ADD Launch-forbindelsen.");
+    }
+    const now = nowIso();
+    const job = tx.insert(platformSyncJobs).values({ companyId, sourcePlatform: "add_launch", targetPlatform: "add_smartregnskab", syncType: "add_connect", status: "gennemført", totalRecords: events.length, syncedRecords: events.length, errorRecords: 0, startedAt: now, completedAt: now, createdAt: now }).returning().get();
+    saveMapping(companyId, "add_launch", "request", `request:${idempotencyKey}`, `${job.id}:${hash}`);
+    tx.insert(auditLogs).values({ companyId, userId: null, userEmail: "ADD Connect:add_launch", action: "add_launch_sync", target: `sync:${job.id}`, detail: JSON.stringify({ idempotencyKey, hash, events: events.length }), createdAt: now }).run();
+    return { ok: true, duplicate: false, jobId: job.id, processed: events.length, success: events.length, failed: 0 };
+  });
 }
 
 export function registerPublicAddConnectRoutes(app: Express) {
@@ -428,6 +460,7 @@ export function registerPublicAddConnectRoutes(app: Express) {
     res.json({
       version: "2026-09-22",
       products: [
+        { id: "add_launch", name: "ADD Launch", role: "Kunder, fakturaer og betalingsstatus" },
         { id: "add_smartregnskab", name: "ADD SmartRegnskab", role: "Regnskab og økonomisk system of record" },
         { id: "smartdrift_pro", name: "ADD SmartDrift Pro", role: "Drift, projekter, timer og fakturagrundlag" },
         { id: "smartdrift_clean", name: "ADD SmartDrift Clean", role: "Rengøringsdrift, timer og fakturagrundlag" },
@@ -440,7 +473,7 @@ export function registerPublicAddConnectRoutes(app: Express) {
   app.get("/api/add-connect/status", requireAddConnect("read"), async (req: AddConnectRequest, res) => {
     const auth = req.addConnect!;
     const company = db.select().from(companies).where(eq(companies.id, auth.companyId)).get();
-    res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name } : null, scopes: auth.scopes });
+    res.json({ ok: true, product: "add_smartregnskab", company: company ? { id: company.id, name: company.name, cvr: company.cvr } : null, scopes: auth.scopes, capabilities: ["add_launch.atomic_sync.v1"] });
   });
 
   app.get("/api/add-connect/einvoice", requireAddConnect("read"), (req: AddConnectRequest, res) => {
@@ -508,6 +541,11 @@ export function registerPublicAddConnectRoutes(app: Express) {
     if (!PRODUCTS.includes(sourceProduct as any)) return res.status(400).json({ error: "Ukendt ADD-produkt." });
     if (!idempotencyKey) return res.status(400).json({ error: "idempotencyKey er påkrævet." });
     if (!events.length || events.length > 100) return res.status(400).json({ error: "events skal indeholde 1-100 hændelser." });
+
+    if (sourceProduct === "add_launch") {
+      try { return res.json(syncLaunchBatch(companyId, idempotencyKey, events)); }
+      catch (error) { return res.status(409).json({ error: error instanceof Error ? error.message : "Synkroniseringen kunne ikke gennemføres." }); }
+    }
 
     const requestSourceId = `request:${idempotencyKey}`;
     const duplicate = findMapping(companyId, sourceProduct, "request", requestSourceId);

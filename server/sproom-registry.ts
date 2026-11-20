@@ -2,7 +2,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { sproomChildCompanies } from "@shared/schema";
 import { db } from "./storage";
 
-export const SPROOM_PRODUCTS = ["add_smartregnskab", "smartdrift_pro", "smartdrift_clean", "external"] as const;
+export const SPROOM_PRODUCTS = ["add_smartregnskab", "smartdrift_pro", "smartdrift_clean", "add_launch", "external"] as const;
 export type SproomProduct = typeof SPROOM_PRODUCTS[number];
 
 export function normalizeDanishCvr(value: unknown): string {
