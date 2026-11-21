@@ -355,7 +355,10 @@ const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Pro
         return { job: "ekstern_backup", affected: 0, detail };
       }
       try {
-        const result = await createExternalBackup();
+        // Et fastlåst S3-endpoint må ikke efterlade jobbet uden en afsluttende
+        // driftskvittering. Den fælles abortgrænse omfatter upload, read-back og
+        // retention; de enkelte S3-kald har desuden en kortere timeout.
+        const result = await createExternalBackup(AbortSignal.timeout(15 * 60_000));
         await storage.insert("backupJobs", { companyId: null, scope: "platform", status: "fuldfort", size: String(result.size), destination: "s3", autoSync: 1, summary: JSON.stringify({ key: result.key, checksum: result.checksum, verified: result.verified }), createdBy: "scheduler", createdAt: nowIso() });
         await recordBackupHealth("ok", "Seneste eksterne backup er uploadet og integritetskontrolleret.", { key: result.key, size: result.size, checksum: result.checksum, verified: result.verified });
         console.info(JSON.stringify({

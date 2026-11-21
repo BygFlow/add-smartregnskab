@@ -151,14 +151,16 @@ function authorization(
   };
 }
 
-async function s3Fetch(method: "PUT" | "GET" | "DELETE", storageKey: string, body?: Buffer): Promise<Response> {
+async function s3Fetch(method: "PUT" | "GET" | "DELETE", storageKey: string, body?: Buffer, signal?: AbortSignal): Promise<Response> {
   const config = s3Config();
   if (!config) throw new Error("S3 er ikke konfigureret.");
   const payloadHash = sha256(body ?? Buffer.alloc(0));
   const signed = authorization(config, method, storageKey, payloadHash);
   const protocol = s3RequestParts(config, storageKey).protocol;
+  const requestTimeout = AbortSignal.timeout(120_000);
   const response = await fetch(`${protocol}//${signed.host}${signed.canonicalUri}`, {
     method,
+    signal: signal ? AbortSignal.any([signal, requestTimeout]) : requestTimeout,
     headers: {
       host: signed.host,
       "x-amz-content-sha256": payloadHash,
@@ -201,9 +203,9 @@ export async function saveFile({
 }
 
 /** Henter en fil fra det lager, som rækken selv angiver. */
-export async function readFile(storage: string, storageKey: string): Promise<Buffer> {
+export async function readFile(storage: string, storageKey: string, signal?: AbortSignal): Promise<Buffer> {
   if (storage === "disk") return readDiskFile(diskPath(storageKey));
-  if (storage === "s3") return Buffer.from(await (await s3Fetch("GET", storageKey)).arrayBuffer());
+  if (storage === "s3") return Buffer.from(await (await s3Fetch("GET", storageKey, undefined, signal)).arrayBuffer());
   throw new Error("Ukendt fillager.");
 }
 

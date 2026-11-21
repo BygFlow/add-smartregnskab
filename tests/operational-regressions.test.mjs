@@ -93,6 +93,8 @@ test("external backup retention only prunes expired controlled snapshots", () =>
 
 test("scheduled external backup emits an operational completion receipt", () => {
   const scheduler = read("server/scheduler.ts");
+  const service = read("server/backup-service.ts");
+  const files = read("server/files.ts");
   assert.match(scheduler, /event: "external_backup_completed"/);
   assert.match(scheduler, /destination: "s3"/);
   assert.match(scheduler, /checksum: result\.checksum/);
@@ -100,6 +102,12 @@ test("scheduled external backup emits an operational completion receipt", () => 
   assert.match(scheduler, /finishedAt: nowIso\(\)/);
   assert.match(scheduler, /event: "external_backup_failed"/);
   assert.match(scheduler, /event: "external_backup_skipped"/);
+  assert.match(scheduler, /createExternalBackup\(AbortSignal\.timeout\(15 \* 60_000\)\)/);
+  assert.match(service, /S3_REQUEST_TIMEOUT_MS = 120_000/);
+  assert.match(service, /s3\.send\(command, \{ abortSignal \}\)/);
+  assert.match(service, /signal\?\.throwIfAborted\(\)/);
+  assert.match(files, /AbortSignal\.timeout\(120_000\)/);
+  assert.match(files, /AbortSignal\.any\(\[signal, requestTimeout\]\)/);
   assert.doesNotMatch(scheduler, /S3_SECRET_ACCESS_KEY.*console/);
 });
 
