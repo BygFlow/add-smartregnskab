@@ -54,6 +54,23 @@ test("annual periods can be filled safely from year presets", () => {
   assert.match(router, /endDate: `\${year}-12-31`/);
 });
 
+test("budget data is cached per active company", () => {
+  const router = read("client/src/pages/regnskabssystem.tsx");
+  const routes = read("server/routes.ts");
+
+  assert.match(router, /const budgetQueryKey = \["\/api\/budgets", effectiveCompanyId\] as const/);
+  assert.match(router, /queryKey: budgetQueryKey/);
+  assert.match(router, /invalidateQueries\(\{ queryKey: budgetQueryKey \}\)/);
+  assert.doesNotMatch(router, /queryKey: \["\/api\/budgets"\]/);
+  assert.match(router, /month: budgetForm\.month \? Number\(budgetForm\.month\) : null/);
+  assert.match(router, /Faktisk \(manuel\)/);
+  assert.match(router, /await apiRequest\("DELETE", `\/api\/budgets\/\$\{id\}`\)/);
+  assert.match(routes, /app\.get\("\/api\/budgets", requireFeature\("budget"\)/);
+  assert.match(routes, /app\.post\("\/api\/budgets", requireFeature\("budget"\), requireRole\("leder", "bogholder", "platform_admin"\)/);
+  assert.match(routes, /updates\.variance = round2\(actualAmount - budgetedAmount\)/);
+  assert.doesNotMatch(routes, /\["budgetedAmount", "actualAmount", "variance"\]/);
+});
+
 test("optional products are collected in Appmarked instead of normal accounting navigation", () => {
   const shell = read("client/src/pages/regnskabs-shell.tsx");
   const marketplace = read("client/src/pages/regnskab-tabs/appmarked.tsx");

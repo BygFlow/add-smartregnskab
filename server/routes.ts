@@ -8082,19 +8082,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ── Budgetter ──
-  app.get("/api/budgets", h(async (req, res) => {
+  app.get("/api/budgets", requireFeature("budget"), h(async (req, res) => {
     res.json(await storage.all("budgets", tenantId(req)));
   }));
-  app.post("/api/budgets", h(async (req, res) => {
-    const data = validate(insertBudgetSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
+  app.post("/api/budgets", requireFeature("budget"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const year = Number(req.body.year);
+    const month = req.body.month === null || req.body.month === undefined || req.body.month === ""
+      ? null
+      : Number(req.body.month);
+    const category = typeof req.body.category === "string" ? req.body.category.trim() : "";
+    const budgetedAmount = Number(req.body.budgetedAmount);
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) return res.status(400).json({ error: "Budgetåret skal være mellem 1900 og 2100." });
+    if (month !== null && (!Number.isInteger(month) || month < 1 || month > 12)) return res.status(400).json({ error: "Budgetmåneden skal være tom eller mellem 1 og 12." });
+    if (!category || category.length > 120) return res.status(400).json({ error: "Budgetkategorien skal udfyldes og må højst være 120 tegn." });
+    if (!Number.isFinite(budgetedAmount) || Math.abs(budgetedAmount * 100 - Math.round(budgetedAmount * 100)) > 0.00001) return res.status(400).json({ error: "Budgetbeløbet skal være et gyldigt beløb med højst to decimaler." });
+    const data = validate(insertBudgetSchema, {
+      companyId: tenantId(req),
+      year,
+      month,
+      accountNumber: typeof req.body.accountNumber === "string" && req.body.accountNumber.trim() ? req.body.accountNumber.trim() : null,
+      category,
+      budgetedAmount,
+      actualAmount: 0,
+      variance: round2(-budgetedAmount),
+      createdAt: nowIso(),
+    });
     res.status(201).json(await storage.insert("budgets", data));
   }));
-  app.patch("/api/budgets/:id", h(async (req, res) => {
+  app.patch("/api/budgets/:id", requireFeature("budget"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
+    const cid = tenantId(req);
+    const existing = await storage.get("budgets", Number(req.params.id), cid);
+    if (!existing) return res.status(404).json({ error: "Budgetlinjen findes ikke." });
     const updates: Record<string, any> = {};
-    for (const k of ["budgetedAmount", "actualAmount", "variance"]) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
-    res.json(await storage.update("budgets", Number(req.params.id), updates, tenantId(req)));
+    for (const key of ["budgetedAmount", "actualAmount"] as const) {
+      if (req.body[key] === undefined) continue;
+      const value = Number(req.body[key]);
+      if (!Number.isFinite(value) || Math.abs(value * 100 - Math.round(value * 100)) > 0.00001) return res.status(400).json({ error: "Budgetbeløb skal være gyldige beløb med højst to decimaler." });
+      updates[key] = value;
+    }
+    const budgetedAmount = updates.budgetedAmount ?? existing.budgetedAmount;
+    const actualAmount = updates.actualAmount ?? existing.actualAmount;
+    updates.variance = round2(actualAmount - budgetedAmount);
+    res.json(await storage.update("budgets", Number(req.params.id), updates, cid));
   }));
-  app.delete("/api/budgets/:id", h(async (req, res) => {
+  app.delete("/api/budgets/:id", requireFeature("budget"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
     await storage.delete("budgets", Number(req.params.id), tenantId(req));
     res.status(204).send();
   }));
