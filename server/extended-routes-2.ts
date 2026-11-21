@@ -204,7 +204,97 @@ export function registerExtendedRoutes2(app: Express) {
     await storage.delete("audit_package", Number(req.params.id), tid(req));
     res.json({ success: true });
   }));
-  crud(app, "/api/budget-versions", "budget_versions", insertBudgetVersionSchema, ["name", "year", "scenario", "version", "data", "totalRevenue", "totalCosts", "totalResult", "approvedBy", "approvedAt", "status"]);
+  const budgetVersionRoles = requireRole("leder", "bogholder", "platform_admin");
+  const budgetScenarios = new Set(["basis", "optimistisk", "pessimistisk", "stress_test"]);
+  const budgetStatuses = new Set(["kladde", "godkendt", "arkiveret"]);
+  const validBudgetMoney = (value: number) =>
+    Number.isFinite(value) && Math.abs(value * 100 - Math.round(value * 100)) <= 0.00001;
+  const budgetMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+  app.get("/api/budget-versions", requireFeature("budget"), h(async (req, res) => {
+    res.json(await storage.all("budget_versions", tid(req)));
+  }));
+  app.post("/api/budget-versions", requireFeature("budget"), budgetVersionRoles, h(async (req, res) => {
+    const cid = tid(req);
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    const year = Number(req.body.year);
+    const scenario = typeof req.body.scenario === "string" ? req.body.scenario.trim() : "";
+    const totalRevenue = Number(req.body.totalRevenue);
+    const totalCosts = Number(req.body.totalCosts);
+    if (!name || name.length > 120) return res.status(400).json({ error: "Budgetnavnet skal udfyldes og må højst være 120 tegn." });
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) return res.status(400).json({ error: "Budgetåret skal være mellem 1900 og 2100." });
+    if (!budgetScenarios.has(scenario)) return res.status(400).json({ error: "Vælg et gyldigt budgetscenarie." });
+    if (!validBudgetMoney(totalRevenue) || !validBudgetMoney(totalCosts)) return res.status(400).json({ error: "Indtægter og omkostninger skal være gyldige beløb med højst to decimaler." });
+    const versions = await storage.all("budget_versions", cid);
+    const nextVersion = versions.reduce((max: number, item: any) => Math.max(max, Number(item.version) || 0), 0) + 1;
+    const data = {
+      ...validate(insertBudgetVersionSchema, {
+        companyId: cid,
+        name,
+        year: String(year),
+        scenario,
+        version: nextVersion,
+        data: null,
+        totalRevenue,
+        totalCosts,
+        totalResult: budgetMoney(totalRevenue - totalCosts),
+        approvedBy: null,
+        approvedAt: null,
+        status: "kladde",
+      }),
+      createdAt: nowIso(),
+    };
+    res.status(201).json(await storage.insert("budget_versions", data));
+  }));
+  app.patch("/api/budget-versions/:id", requireFeature("budget"), budgetVersionRoles, h(async (req, res) => {
+    const cid = tid(req);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Ugyldigt id." });
+    const existing = await storage.get("budget_versions", id, cid);
+    if (!existing) return res.status(404).json({ error: "Budgetversionen findes ikke." });
+    const change: Record<string, unknown> = {};
+    if (req.body.name !== undefined) {
+      const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+      if (!name || name.length > 120) return res.status(400).json({ error: "Budgetnavnet skal udfyldes og må højst være 120 tegn." });
+      change.name = name;
+    }
+    if (req.body.year !== undefined) {
+      const year = Number(req.body.year);
+      if (!Number.isInteger(year) || year < 1900 || year > 2100) return res.status(400).json({ error: "Budgetåret skal være mellem 1900 og 2100." });
+      change.year = String(year);
+    }
+    if (req.body.scenario !== undefined) {
+      const scenario = typeof req.body.scenario === "string" ? req.body.scenario.trim() : "";
+      if (!budgetScenarios.has(scenario)) return res.status(400).json({ error: "Vælg et gyldigt budgetscenarie." });
+      change.scenario = scenario;
+    }
+    for (const key of ["totalRevenue", "totalCosts"] as const) {
+      if (req.body[key] === undefined) continue;
+      const amount = Number(req.body[key]);
+      if (!validBudgetMoney(amount)) return res.status(400).json({ error: "Indtægter og omkostninger skal være gyldige beløb med højst to decimaler." });
+      change[key] = amount;
+    }
+    if (req.body.status !== undefined) {
+      const status = typeof req.body.status === "string" ? req.body.status.trim() : "";
+      if (!budgetStatuses.has(status)) return res.status(400).json({ error: "Vælg en gyldig budgetstatus." });
+      change.status = status;
+      change.approvedBy = status === "godkendt" ? req.auth!.email : null;
+      change.approvedAt = status === "godkendt" ? nowIso() : null;
+    }
+    const totalRevenue = Number(change.totalRevenue ?? existing.totalRevenue ?? 0);
+    const totalCosts = Number(change.totalCosts ?? existing.totalCosts ?? 0);
+    change.totalResult = budgetMoney(totalRevenue - totalCosts);
+    res.json(await storage.update("budget_versions", id, change, cid));
+  }));
+  app.delete("/api/budget-versions/:id", requireFeature("budget"), budgetVersionRoles, h(async (req, res) => {
+    const cid = tid(req);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Ugyldigt id." });
+    const existing = await storage.get("budget_versions", id, cid);
+    if (!existing) return res.status(404).json({ error: "Budgetversionen findes ikke." });
+    await storage.delete("budget_versions", id, cid);
+    res.status(204).send();
+  }));
   crud(app, "/api/reconciliation-center", "reconciliation_center", insertReconciliationCenterSchema, ["period", "type", "accountNumber", "bookAmount", "externalAmount", "difference", "matchedTransactions", "unmatchedTransactions", "autoMatched", "status", "notes"]);
   app.get("/api/api-keys", requireFeature("api_integration"), requireRole("leder", "platform_admin"), h(async (req, res) => {
     res.json((await storage.all("api_keys", tid(req))).map(safeApiKey));

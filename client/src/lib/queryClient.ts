@@ -60,7 +60,7 @@ async function handle(res: Response): Promise<Response> {
   if (res.ok) return res;
   const err = await toError(res);
   // Udløbet eller ugyldig session → log brugeren ud i stedet for at vise fejl overalt.
-  if (res.status === 401 && authToken) {
+  if (res.status === 401) {
     authToken = null;
     onUnauthorized?.();
   }
@@ -87,7 +87,7 @@ export async function apiRequest(
 /** Hent en fil (PDF/CSV) med authorization uden at åbne en ny fane. */
 export async function openAuthedFile(url: string, filename?: string) {
   const res = await fetch(`${API_BASE}${url}`, { headers: authHeaders(), credentials: "include" });
-  if (!res.ok) throw await toError(res);
+  await handle(res);
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
   // Uden en download-attribut får filen et tilfældigt UUID-navn i browseren.

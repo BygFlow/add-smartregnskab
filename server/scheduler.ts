@@ -346,16 +346,42 @@ const JOBS: Record<string, { label: string; everyMinutes: number; run: () => Pro
       if (!externalBackupConfigured()) {
         const detail = "S3-backup er ikke konfigureret; ekstern disaster recovery er derfor ikke aktiv.";
         await recordBackupHealth("warning", detail, { configured: false });
+        console.warn(JSON.stringify({
+          event: "external_backup_skipped",
+          status: "warning",
+          configured: false,
+          finishedAt: nowIso(),
+        }));
         return { job: "ekstern_backup", affected: 0, detail };
       }
       try {
-        const result = await createExternalBackup();
+        // Et fastlåst S3-endpoint må ikke efterlade jobbet uden en afsluttende
+        // driftskvittering. Den fælles abortgrænse omfatter upload, read-back og
+        // retention; de enkelte S3-kald har desuden en kortere timeout.
+        const result = await createExternalBackup(AbortSignal.timeout(15 * 60_000));
         await storage.insert("backupJobs", { companyId: null, scope: "platform", status: "fuldfort", size: String(result.size), destination: "s3", autoSync: 1, summary: JSON.stringify({ key: result.key, checksum: result.checksum, verified: result.verified }), createdBy: "scheduler", createdAt: nowIso() });
         await recordBackupHealth("ok", "Seneste eksterne backup er uploadet og integritetskontrolleret.", { key: result.key, size: result.size, checksum: result.checksum, verified: result.verified });
+        console.info(JSON.stringify({
+          event: "external_backup_completed",
+          status: "ok",
+          destination: "s3",
+          key: result.key,
+          size: result.size,
+          checksum: result.checksum,
+          verified: result.verified,
+          finishedAt: nowIso(),
+        }));
         return { job: "ekstern_backup", affected: 1, detail: `Backup ${result.key} er uploadet og verificeret (${result.size} byte).` };
       } catch (error: any) {
         const detail = `Ekstern backup fejlede: ${String(error?.message || error).slice(0, 300)}`;
         await recordBackupHealth("error", detail, { configured: true });
+        console.error(JSON.stringify({
+          event: "external_backup_failed",
+          status: "error",
+          configured: true,
+          message: detail,
+          finishedAt: nowIso(),
+        }));
         throw new Error(detail);
       }
     },

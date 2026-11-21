@@ -2497,8 +2497,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
 
   /* ---------- Budget & Prognoser ---------- */
+  const budgetQueryKey = ["/api/budgets", effectiveCompanyId] as const;
   const budgetsQuery = useQuery<Budget[]>({
-    queryKey: ["/api/budgets"],
+    queryKey: budgetQueryKey,
     enabled: !!effectiveCompanyId,
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/budgets");
@@ -2520,7 +2521,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/budgets", {
         year: Number(budgetForm.year) || 0,
-        month: Number(budgetForm.month) || 0,
+        month: budgetForm.month ? Number(budgetForm.month) : null,
         category: budgetForm.category,
         budgetedAmount: Number(budgetForm.budgetedAmount) || 0,
         companyId: effectiveCompanyId,
@@ -2528,7 +2529,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/budgets"] });
+      qc.invalidateQueries({ queryKey: budgetQueryKey });
       toast({ title: "Budgetlinje tilføjet" });
       setBudgetDialogOpen(false);
       setBudgetForm({ year: String(new Date().getFullYear()), month: "", category: "", budgetedAmount: "" });
@@ -2545,7 +2546,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/budgets"] });
+      qc.invalidateQueries({ queryKey: budgetQueryKey });
       toast({ title: "Faktisk beløb opdateret" });
     },
     onError: (err: unknown) => {
@@ -2556,11 +2557,10 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   const deleteBudgetMut = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/budgets/${id}`);
-      return await res.json();
+      await apiRequest("DELETE", `/api/budgets/${id}`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/budgets"] });
+      qc.invalidateQueries({ queryKey: budgetQueryKey });
       toast({ title: "Budgetlinje slettet" });
     },
     onError: (err: unknown) => {
@@ -2817,8 +2817,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
 
   /* ---------- Likviditet & Cashflow ---------- */
+  const cashflowQueryKey = ["/api/cashflow-projections", effectiveCompanyId] as const;
   const cashflowQuery = useQuery<CashflowProjection[]>({
-    queryKey: ["/api/cashflow-projections"],
+    queryKey: cashflowQueryKey,
     enabled: !!effectiveCompanyId,
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/cashflow-projections");
@@ -2831,18 +2832,18 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const [cashflowDialogOpen, setCashflowDialogOpen] = useState(false);
   const [cashflowForm, setCashflowForm] = useState({
     date: "",
-    type: "indbetalning",
+    type: "indbetaling",
     description: "",
     expectedAmount: "",
   });
 
   const autoCashflowMut = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/cashflow-projections/auto-generate", { companyId: effectiveCompanyId });
+      const res = await apiRequest("POST", "/api/cashflow-projections/auto-generate");
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Projektioner auto-genereret", description: "Baseret på fakturaer, løn og skat." });
     },
     onError: (err: unknown) => {
@@ -2858,15 +2859,14 @@ function CompanyRegnskabssystemPage(props: any = {}) {
         type: cashflowForm.type,
         description: cashflowForm.description,
         expectedAmount: Number(cashflowForm.expectedAmount) || 0,
-        companyId: effectiveCompanyId,
       });
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Cashflow-post tilføjet" });
       setCashflowDialogOpen(false);
-      setCashflowForm({ date: "", type: "indbetalning", description: "", expectedAmount: "" });
+      setCashflowForm({ date: "", type: "indbetaling", description: "", expectedAmount: "" });
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
@@ -2880,7 +2880,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Cashflow-post opdateret" });
     },
     onError: (err: unknown) => {
@@ -2891,11 +2891,10 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   const deleteCashflowMut = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/cashflow-projections/${id}`);
-      return await res.json();
+      await apiRequest("DELETE", `/api/cashflow-projections/${id}`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Cashflow-post slettet" });
     },
     onError: (err: unknown) => {
@@ -6407,6 +6406,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                   }
                   noPadding
                 >
+                  <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                    Faktisk beløb registreres manuelt og bogfører ikke noget. Helårsbudget vælges ved at lade måned stå tom.
+                  </p>
                   {budgetsQuery.isLoading ? (
                     <div className="p-2 space-y-2">
                       <Skeleton className="h-10 w-full" />
@@ -6425,7 +6427,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                             <th className="font-medium px-3 py-1.5">Måned</th>
                             <th className="font-medium px-3 py-1.5">Kategori</th>
                             <th className="font-medium px-3 py-1.5 text-right">Budget</th>
-                            <th className="font-medium px-3 py-1.5 text-right">Faktisk</th>
+                            <th className="font-medium px-3 py-1.5 text-right">Faktisk (manuel)</th>
                             <th className="font-medium px-3 py-1.5 text-right">Afvigelse</th>
                             <th className="font-medium px-3 py-1.5 text-right">Handlinger</th>
                           </tr>
@@ -6436,10 +6438,25 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                             return (
                               <tr key={b.id} className="border-b border-border/50 last:border-0">
                                 <td className="px-3 py-1.5 tabular-nums">{b.year ?? "—"}</td>
-                                <td className="px-3 py-1.5 tabular-nums">{b.month ?? "—"}</td>
+                                <td className="px-3 py-1.5 tabular-nums">{b.month ?? "Hele året"}</td>
                                 <td className="px-3 py-1.5">{b.category ?? "—"}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{money(b.budgetedAmount)}</td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">{money(b.actualAmount)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    defaultValue={b.actualAmount ?? 0}
+                                    aria-label={`Faktisk beløb for ${b.category ?? "budgetlinje"}`}
+                                    className="ml-auto h-8 w-28 text-right"
+                                    disabled={updateBudgetActualMut.isPending}
+                                    onBlur={(event) => {
+                                      const actualAmount = Number(event.currentTarget.value);
+                                      if (Number.isFinite(actualAmount) && actualAmount !== Number(b.actualAmount ?? 0)) {
+                                        updateBudgetActualMut.mutate({ id: b.id, actualAmount });
+                                      }
+                                    }}
+                                  />
+                                </td>
                                 <td className={`px-3 py-1.5 text-right tabular-nums font-medium ${variance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                                   {money(variance)}
                                 </td>
@@ -6477,8 +6494,8 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                           <Input id="budget-year" type="number" data-testid="input-budget-year" value={budgetForm.year} onChange={(e) => setBudgetForm((f) => ({ ...f, year: e.target.value }))} />
                         </div>
                         <div className="space-y-1">
-                          <Label htmlFor="budget-month">Måned (1-12)</Label>
-                          <Input id="budget-month" type="number" data-testid="input-budget-month" value={budgetForm.month} onChange={(e) => setBudgetForm((f) => ({ ...f, month: e.target.value }))} placeholder="8" />
+                          <Label htmlFor="budget-month">Måned (1-12, tom = hele året)</Label>
+                          <Input id="budget-month" type="number" min="1" max="12" data-testid="input-budget-month" value={budgetForm.month} onChange={(e) => setBudgetForm((f) => ({ ...f, month: e.target.value }))} placeholder="Hele året" />
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -7152,7 +7169,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                               <SelectValue placeholder="Vælg type" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="indbetalning" data-testid="opt-cf-indbetalning">Indbetaling</SelectItem>
+                              <SelectItem value="indbetaling" data-testid="opt-cf-indbetaling">Indbetaling</SelectItem>
                               <SelectItem value="udbetaling" data-testid="opt-cf-udbetaling">Udbetaling</SelectItem>
                             </SelectContent>
                           </Select>

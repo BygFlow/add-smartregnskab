@@ -8,6 +8,7 @@ test("sessions expire after inactivity on both server and client", () => {
   const auth = readFileSync(join(root, "server", "auth.ts"), "utf8");
   const storage = readFileSync(join(root, "server", "storage.ts"), "utf8");
   const idle = readFileSync(join(root, "client", "src", "lib", "use-idle-session.ts"), "utf8");
+  const queryClient = readFileSync(join(root, "client", "src", "lib", "queryClient.ts"), "utf8");
   const app = readFileSync(join(root, "client", "src", "App.tsx"), "utf8");
 
   assert.match(auth, /SESSION_IDLE_MINUTES/);
@@ -19,4 +20,7 @@ test("sessions expire after inactivity on both server and client", () => {
   assert.match(idle, /2 \* 60_000/);
   assert.match(app, /Du bliver snart logget ud/);
   assert.match(app, /Fortsæt sessionen/);
+  assert.match(queryClient, /if \(res\.status === 401\) \{/);
+  assert.doesNotMatch(queryClient, /res\.status === 401 && authToken/);
+  assert.match(queryClient, /export async function openAuthedFile[\s\S]*await handle\(res\)/);
 });

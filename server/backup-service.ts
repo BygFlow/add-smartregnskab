@@ -7,6 +7,13 @@ import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV
 
 type BackupResult = { key: string; size: number; checksum: string; verified: boolean; localPath: string; retentionDays: number; prunedSnapshots: number; prunedObjects: number };
 type ManifestFile = { key: string; relativePath: string; size: number; checksum: string };
+const S3_REQUEST_TIMEOUT_MS = 120_000;
+
+async function sendS3(s3: S3Client, command: any, signal?: AbortSignal): Promise<any> {
+  const requestTimeout = AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS);
+  const abortSignal = signal ? AbortSignal.any([signal, requestTimeout]) : requestTimeout;
+  return s3.send(command, { abortSignal });
+}
 
 /** S3-originaler, som den konsistente databasekopi henviser til. */
 export function referencedS3Files(snapshot: Database.Database): string[] {
@@ -82,12 +89,12 @@ export function backupRetentionDays() {
   return parsed;
 }
 
-async function pruneExpiredSnapshots(s3: S3Client, bucket: string, snapshotsPrefix: string, currentSnapshotPrefix: string) {
+async function pruneExpiredSnapshots(s3: S3Client, bucket: string, snapshotsPrefix: string, currentSnapshotPrefix: string, signal?: AbortSignal) {
   const cutoff = Date.now() - backupRetentionDays() * 86_400_000;
   const snapshots = new Map<string, { newest: number; keys: string[] }>();
   let continuationToken: string | undefined;
   do {
-    const page = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: `${snapshotsPrefix}/`, ContinuationToken: continuationToken }));
+    const page = await sendS3(s3, new ListObjectsV2Command({ Bucket: bucket, Prefix: `${snapshotsPrefix}/`, ContinuationToken: continuationToken }), signal);
     for (const object of page.Contents || []) {
       if (!object.Key) continue;
       const relative = object.Key.slice(snapshotsPrefix.length + 1);
@@ -105,7 +112,7 @@ async function pruneExpiredSnapshots(s3: S3Client, bucket: string, snapshotsPref
   const expired = Array.from(snapshots.entries()).filter(([snapshotPrefix, value]) => snapshotPrefix !== currentSnapshotPrefix && value.newest > 0 && value.newest < cutoff);
   const keys = expired.flatMap(([, value]) => value.keys);
   for (let index = 0; index < keys.length; index += 1000) {
-    const result = await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.slice(index, index + 1000).map((Key) => ({ Key })), Quiet: true } }));
+    const result = await sendS3(s3, new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.slice(index, index + 1000).map((Key) => ({ Key })), Quiet: true } }), signal);
     if (result.Errors?.length) throw new Error(`Backupretention kunne ikke slette ${result.Errors.length} objekt(er).`);
   }
   return { prunedSnapshots: expired.length, prunedObjects: keys.length };
@@ -121,8 +128,9 @@ function pruneExpiredLocalBackups(backupDir: string, currentLocalPath: string) {
   }
 }
 
-export async function createExternalBackup(): Promise<BackupResult> {
+export async function createExternalBackup(signal?: AbortSignal): Promise<BackupResult> {
   if (!externalBackupConfigured()) throw new Error("Ekstern S3-backup er ikke konfigureret.");
+  signal?.throwIfAborted();
   const databasePath = resolve(process.env.DATABASE_PATH || "data.db");
   const backupDir = resolve(process.env.BACKUP_DIR || "./backups");
   mkdirSync(backupDir, { recursive: true });
@@ -144,35 +152,37 @@ export async function createExternalBackup(): Promise<BackupResult> {
   const s3 = client();
   const databaseBytes = readFileSync(localPath);
   const encryptedDatabase = encryptForBackup(databaseBytes);
-  await s3.send(new PutObjectCommand({
+  await sendS3(s3, new PutObjectCommand({
     Bucket: bucket, Key: databaseKey, Body: encryptedDatabase.body, ContentLength: encryptedDatabase.body.length, ContentType: "application/octet-stream",
     Metadata: { sha256: checksum, product: "add-smartregnskab", created: new Date().toISOString(), ...encryptedDatabase.metadata },
-  }));
+  }), signal);
   const fileRoot = resolve(process.env.FILE_STORAGE_DIR || "./uploads");
   const uploadedFiles: ManifestFile[] = [];
   for (const path of filesBelow(fileRoot)) {
+    signal?.throwIfAborted();
     const relativePath = path.slice(fileRoot.length).replace(/^[/\\]+/, "").replaceAll("\\", "/");
     const fileChecksum = createHash("sha256").update(readFileSync(path)).digest("hex");
     const fileSize = statSync(path).size;
     const fileKey = `${snapshotPrefix}/files/${relativePath}`;
     const fileBytes = readFileSync(path);
     const encryptedFile = encryptForBackup(fileBytes);
-    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body, ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }));
+    await sendS3(s3, new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body, ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }), signal);
     uploadedFiles.push({ key: fileKey, relativePath, size: fileSize, checksum: fileChecksum });
   }
   const snapshot = new Database(localPath, { readonly: true, fileMustExist: true });
   let s3FileKeys: string[];
   try { s3FileKeys = referencedS3Files(snapshot); } finally { snapshot.close(); }
   for (const storageKey of s3FileKeys) {
+    signal?.throwIfAborted();
     // En utilgængelig original afbryder backuppen før manifest og retention.
     const { readFile: readStoredFile } = await import("./files");
-    const fileBytes = await readStoredFile("s3", storageKey);
+    const fileBytes = await readStoredFile("s3", storageKey, signal);
     const relativePath = `s3/${storageKey}`;
     const fileKey = `${snapshotPrefix}/files/${relativePath}`;
     const fileChecksum = createHash("sha256").update(fileBytes).digest("hex");
     const encryptedFile = encryptForBackup(fileBytes);
-    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body,
-      ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }));
+    await sendS3(s3, new PutObjectCommand({ Bucket: bucket, Key: fileKey, Body: encryptedFile.body,
+      ContentLength: encryptedFile.body.length, Metadata: { sha256: fileChecksum, product: "add-smartregnskab", ...encryptedFile.metadata } }), signal);
     uploadedFiles.push({ key: fileKey, relativePath, size: fileBytes.length, checksum: fileChecksum });
   }
   const manifest = { format: 1, product: "ADD SmartRegnskab", createdAt: new Date().toISOString(), database: { key: databaseKey, size, checksum }, files: uploadedFiles };
@@ -180,34 +190,34 @@ export async function createExternalBackup(): Promise<BackupResult> {
   const manifestChecksum = createHash("sha256").update(manifestBytes).digest("hex");
   const key = `${snapshotPrefix}/manifest.json`;
   const encryptedManifest = encryptForBackup(manifestBytes);
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: encryptedManifest.body, ContentType: "application/octet-stream", Metadata: { sha256: manifestChecksum, product: "add-smartregnskab", ...encryptedManifest.metadata } }));
-  const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: databaseKey }));
-  const manifestHead = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+  await sendS3(s3, new PutObjectCommand({ Bucket: bucket, Key: key, Body: encryptedManifest.body, ContentType: "application/octet-stream", Metadata: { sha256: manifestChecksum, product: "add-smartregnskab", ...encryptedManifest.metadata } }), signal);
+  const head = await sendS3(s3, new HeadObjectCommand({ Bucket: bucket, Key: databaseKey }), signal);
+  const manifestHead = await sendS3(s3, new HeadObjectCommand({ Bucket: bucket, Key: key }), signal);
   const verified = Number(head.ContentLength) === size && head.Metadata?.sha256 === checksum && Number(manifestHead.ContentLength) === manifestBytes.length && manifestHead.Metadata?.sha256 === manifestChecksum;
   if (!verified) throw new Error("Backup blev uploadet, men fjernverifikationen fejlede.");
   // Først når hele kopien kan hentes, dekrypteres og kontrolleres, må ældre kopier ryddes.
-  const readBack = await verifyExternalBackup(key);
+  const readBack = await verifyExternalBackup(key, signal);
   if (!readBack.verified || readBack.checksum !== checksum || readBack.size !== size
       || readBack.fileCount !== uploadedFiles.length) {
     throw new Error("Backuppen bestod ikke den isolerede gendannelseskontrol.");
   }
-  const retention = await pruneExpiredSnapshots(s3, bucket, `${prefix}/snapshots`, snapshotPrefix);
+  const retention = await pruneExpiredSnapshots(s3, bucket, `${prefix}/snapshots`, snapshotPrefix, signal);
   pruneExpiredLocalBackups(backupDir, localPath);
   return { key, size, checksum, verified, localPath, retentionDays: backupRetentionDays(), ...retention };
 }
 
-export async function verifyExternalBackup(key: string) {
+export async function verifyExternalBackup(key: string, signal?: AbortSignal) {
   if (!externalBackupConfigured()) throw new Error("Ekstern S3-backup er ikke konfigureret.");
   if (!key.startsWith((process.env.S3_BACKUP_PREFIX || "smartregnskab/backups").replace(/^\/+|\/+$/g, "") + "/") || !key.endsWith("/manifest.json")) throw new Error("Ugyldig backupnøgle.");
   const bucket = required("S3_BUCKET");
   const s3 = client();
-  const manifestObject = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const manifestObject = await sendS3(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), signal);
   if (!manifestObject.Body) throw new Error("Backupmanifestet er tomt.");
   const manifestBytes = decryptFromBackup(Buffer.from(await manifestObject.Body.transformToByteArray()), manifestObject.Metadata);
   const manifestChecksum = createHash("sha256").update(manifestBytes).digest("hex");
   if (manifestObject.Metadata?.sha256 && manifestObject.Metadata.sha256 !== manifestChecksum) throw new Error("Backupmanifestets kontrolsum stemmer ikke.");
   const manifest = JSON.parse(manifestBytes.toString("utf8")) as { database: ManifestFile; files: ManifestFile[] };
-  const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: manifest.database.key }));
+  const object = await sendS3(s3, new GetObjectCommand({ Bucket: bucket, Key: manifest.database.key }), signal);
   if (!object.Body) throw new Error("Databasen i backuppen er tom.");
   const tempPath = join(tmpdir(), `smartregnskab-restore-check-${Date.now()}.db`);
   try {
@@ -215,7 +225,8 @@ export async function verifyExternalBackup(key: string) {
     const checksum = createHash("sha256").update(bytes).digest("hex");
     if (checksum !== manifest.database.checksum || (object.Metadata?.sha256 && object.Metadata.sha256 !== checksum)) throw new Error("Backupens SHA-256 kontrolsum stemmer ikke.");
     for (const file of manifest.files || []) {
-      const remote = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: file.key }));
+      signal?.throwIfAborted();
+      const remote = await sendS3(s3, new GetObjectCommand({ Bucket: bucket, Key: file.key }), signal);
       if (!remote.Body) throw new Error(`Bilaget ${file.relativePath} mangler i backuppen.`);
       const fileBytes = decryptFromBackup(Buffer.from(await remote.Body.transformToByteArray()), remote.Metadata);
       const fileChecksum = createHash("sha256").update(fileBytes).digest("hex");
@@ -243,7 +254,7 @@ export async function latestExternalBackupManifestKey(): Promise<string> {
   let continuationToken: string | undefined;
   let newest: { key: string; modified: number } | undefined;
   do {
-    const page = await s3.send(new ListObjectsV2Command({
+    const page = await sendS3(s3, new ListObjectsV2Command({
       Bucket: bucket,
       Prefix: `${prefix}/snapshots/`,
       ContinuationToken: continuationToken,
@@ -269,7 +280,7 @@ export async function restoreExternalBackupDatabase(key: string, targetPath: str
   }
   const bucket = required("S3_BUCKET");
   const s3 = client();
-  const manifestObject = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const manifestObject = await sendS3(s3, new GetObjectCommand({ Bucket: bucket, Key: key }));
   if (!manifestObject.Body) throw new Error("Backupmanifestet er tomt.");
   const manifestBytes = decryptFromBackup(
     Buffer.from(await manifestObject.Body.transformToByteArray()),
@@ -277,7 +288,7 @@ export async function restoreExternalBackupDatabase(key: string, targetPath: str
   );
   const manifest = JSON.parse(manifestBytes.toString("utf8")) as { database?: ManifestFile };
   if (!manifest.database?.key || !manifest.database.checksum) throw new Error("Backupmanifestet mangler databasen.");
-  const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: manifest.database.key }));
+  const object = await sendS3(s3, new GetObjectCommand({ Bucket: bucket, Key: manifest.database.key }));
   if (!object.Body) throw new Error("Databasen i backuppen er tom.");
   const bytes = decryptFromBackup(Buffer.from(await object.Body.transformToByteArray()), object.Metadata);
   const checksum = createHash("sha256").update(bytes).digest("hex");
