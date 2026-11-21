@@ -130,7 +130,12 @@ export default function BudgetScenarier({ companyId }: { companyId: number }) {
   const currentVersion = items.length > 0
     ? Math.max(...items.map((i) => Number(i.version ?? 0)))
     : 0;
-  const totalResult = items.reduce((sum, i) => sum + (Number(i.totalResult) || 0), 0);
+  const latestBudget = items.reduce<BudgetVersion | null>((latest, item) => {
+    if (!latest) return item;
+    const versionDifference = Number(item.version ?? 0) - Number(latest.version ?? 0);
+    return versionDifference > 0 || (versionDifference === 0 && item.id > latest.id) ? item : latest;
+  }, null);
+  const latestResult = Number(latestBudget?.totalResult ?? 0);
 
   const createMutation = useMutation({
     mutationFn: async (body: unknown) =>
@@ -228,9 +233,9 @@ export default function BudgetScenarier({ companyId }: { companyId: number }) {
             <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">Samlet resultat</div>
+            <div className="text-xs text-muted-foreground">Seneste resultat</div>
             <div className="text-lg font-semibold tabular-nums" data-testid="summary-total-result">
-              {fmtDKK.format(totalResult)}
+              {fmtDKK.format(latestResult)}
             </div>
           </div>
         </div>

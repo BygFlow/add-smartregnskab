@@ -2817,8 +2817,9 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   });
 
   /* ---------- Likviditet & Cashflow ---------- */
+  const cashflowQueryKey = ["/api/cashflow-projections", effectiveCompanyId] as const;
   const cashflowQuery = useQuery<CashflowProjection[]>({
-    queryKey: ["/api/cashflow-projections"],
+    queryKey: cashflowQueryKey,
     enabled: !!effectiveCompanyId,
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/cashflow-projections");
@@ -2831,18 +2832,18 @@ function CompanyRegnskabssystemPage(props: any = {}) {
   const [cashflowDialogOpen, setCashflowDialogOpen] = useState(false);
   const [cashflowForm, setCashflowForm] = useState({
     date: "",
-    type: "indbetalning",
+    type: "indbetaling",
     description: "",
     expectedAmount: "",
   });
 
   const autoCashflowMut = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/cashflow-projections/auto-generate", { companyId: effectiveCompanyId });
+      const res = await apiRequest("POST", "/api/cashflow-projections/auto-generate");
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Projektioner auto-genereret", description: "Baseret på fakturaer, løn og skat." });
     },
     onError: (err: unknown) => {
@@ -2858,15 +2859,14 @@ function CompanyRegnskabssystemPage(props: any = {}) {
         type: cashflowForm.type,
         description: cashflowForm.description,
         expectedAmount: Number(cashflowForm.expectedAmount) || 0,
-        companyId: effectiveCompanyId,
       });
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Cashflow-post tilføjet" });
       setCashflowDialogOpen(false);
-      setCashflowForm({ date: "", type: "indbetalning", description: "", expectedAmount: "" });
+      setCashflowForm({ date: "", type: "indbetaling", description: "", expectedAmount: "" });
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Ukendt fejl";
@@ -2880,7 +2880,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
       return await res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Cashflow-post opdateret" });
     },
     onError: (err: unknown) => {
@@ -2891,11 +2891,10 @@ function CompanyRegnskabssystemPage(props: any = {}) {
 
   const deleteCashflowMut = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/cashflow-projections/${id}`);
-      return await res.json();
+      await apiRequest("DELETE", `/api/cashflow-projections/${id}`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cashflow-projections"] });
+      qc.invalidateQueries({ queryKey: cashflowQueryKey });
       toast({ title: "Cashflow-post slettet" });
     },
     onError: (err: unknown) => {
@@ -7170,7 +7169,7 @@ function CompanyRegnskabssystemPage(props: any = {}) {
                               <SelectValue placeholder="Vælg type" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="indbetalning" data-testid="opt-cf-indbetalning">Indbetaling</SelectItem>
+                              <SelectItem value="indbetaling" data-testid="opt-cf-indbetaling">Indbetaling</SelectItem>
                               <SelectItem value="udbetaling" data-testid="opt-cf-udbetaling">Udbetaling</SelectItem>
                             </SelectContent>
                           </Select>

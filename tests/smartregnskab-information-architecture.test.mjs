@@ -68,7 +68,48 @@ test("budget data is cached per active company", () => {
   assert.match(routes, /app\.get\("\/api\/budgets", requireFeature\("budget"\)/);
   assert.match(routes, /app\.post\("\/api\/budgets", requireFeature\("budget"\), requireRole\("leder", "bogholder", "platform_admin"\)/);
   assert.match(routes, /updates\.variance = round2\(actualAmount - budgetedAmount\)/);
+  assert.match(routes, /\.\.\.validate\(insertBudgetSchema/);
+  assert.match(routes, /createdAt: nowIso\(\)/);
   assert.doesNotMatch(routes, /\["budgetedAmount", "actualAmount", "variance"\]/);
+});
+
+test("cashflow is tenant-safe, feature-gated, validated, and duplicate-safe", () => {
+  const router = read("client/src/pages/regnskabssystem.tsx");
+  const routes = read("server/routes.ts");
+
+  assert.match(router, /const cashflowQueryKey = \["\/api\/cashflow-projections", effectiveCompanyId\] as const/);
+  assert.match(router, /queryKey: cashflowQueryKey/);
+  assert.match(router, /invalidateQueries\(\{ queryKey: cashflowQueryKey \}\)/);
+  assert.doesNotMatch(router, /queryKey: \["\/api\/cashflow-projections"\]/);
+  assert.match(router, /type: "indbetaling"/);
+  assert.doesNotMatch(router, /indbetalning/);
+  assert.match(router, /await apiRequest\("DELETE", `\/api\/cashflow-projections\/\$\{id\}`\)/);
+
+  assert.match(routes, /app\.get\("\/api\/cashflow-projections", requireFeature\("budget"\)/);
+  assert.match(routes, /app\.post\("\/api\/cashflow-projections", requireFeature\("budget"\), cashflowMutationRoles/);
+  assert.match(routes, /app\.post\("\/api\/cashflow-projections\/auto-generate", requireFeature\("budget"\), cashflowMutationRoles/);
+  assert.match(routes, /const signatures = new Set/);
+  assert.match(routes, /if \(signatures\.has\(signature\)\) return/);
+  assert.match(routes, /validCashflowDate/);
+  assert.match(routes, /validCashflowAmount/);
+});
+
+test("budget scenarios are server-calculated, approved on the server, and feature-gated", () => {
+  const page = read("client/src/pages/regnskab-tabs/budget-scenarier.tsx");
+  const routes = read("server/extended-routes-2.ts");
+
+  assert.match(page, /const queryKey = \["\/api\/budget-versions", companyId\] as const/);
+  assert.match(page, /const latestBudget = items\.reduce/);
+  assert.match(page, /Seneste resultat/);
+  assert.doesNotMatch(page, /items\.reduce\(\(sum, i\) => sum \+ \(Number\(i\.totalResult\)/);
+
+  assert.match(routes, /app\.get\("\/api\/budget-versions", requireFeature\("budget"\)/);
+  assert.match(routes, /app\.post\("\/api\/budget-versions", requireFeature\("budget"\), budgetVersionRoles/);
+  assert.match(routes, /const nextVersion = versions\.reduce/);
+  assert.match(routes, /totalResult: budgetMoney\(totalRevenue - totalCosts\)/);
+  assert.match(routes, /change\.approvedBy = status === "godkendt" \? req\.auth!\.email : null/);
+  assert.match(routes, /change\.totalResult = budgetMoney\(totalRevenue - totalCosts\)/);
+  assert.doesNotMatch(routes, /crud\(app, "\/api\/budget-versions"/);
 });
 
 test("optional products are collected in Appmarked instead of normal accounting navigation", () => {

@@ -8096,17 +8096,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (month !== null && (!Number.isInteger(month) || month < 1 || month > 12)) return res.status(400).json({ error: "Budgetmåneden skal være tom eller mellem 1 og 12." });
     if (!category || category.length > 120) return res.status(400).json({ error: "Budgetkategorien skal udfyldes og må højst være 120 tegn." });
     if (!Number.isFinite(budgetedAmount) || Math.abs(budgetedAmount * 100 - Math.round(budgetedAmount * 100)) > 0.00001) return res.status(400).json({ error: "Budgetbeløbet skal være et gyldigt beløb med højst to decimaler." });
-    const data = validate(insertBudgetSchema, {
-      companyId: tenantId(req),
-      year,
-      month,
-      accountNumber: typeof req.body.accountNumber === "string" && req.body.accountNumber.trim() ? req.body.accountNumber.trim() : null,
-      category,
-      budgetedAmount,
-      actualAmount: 0,
-      variance: round2(-budgetedAmount),
+    const data = {
+      ...validate(insertBudgetSchema, {
+        companyId: tenantId(req),
+        year,
+        month,
+        accountNumber: typeof req.body.accountNumber === "string" && req.body.accountNumber.trim() ? req.body.accountNumber.trim() : null,
+        category,
+        budgetedAmount,
+        actualAmount: 0,
+        variance: round2(-budgetedAmount),
+      }),
       createdAt: nowIso(),
-    });
+    };
     res.status(201).json(await storage.insert("budgets", data));
   }));
   app.patch("/api/budgets/:id", requireFeature("budget"), requireRole("leder", "bogholder", "platform_admin"), h(async (req, res) => {
@@ -8312,24 +8314,75 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ── Likviditetsprojektioner (cashflow) ──
-  app.get("/api/cashflow-projections", h(async (req, res) => {
+  const cashflowMutationRoles = requireRole("leder", "bogholder", "platform_admin");
+  const cashflowTypes = new Set(["indbetaling", "udbetaling", "loen", "moms", "skat", "leverandoer"]);
+  const cashflowStatuses = new Set(["forventet", "bekræftet", "forfaldet", "forfalt"]);
+  const validCashflowDate = (value: unknown): value is string => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  };
+  const validCashflowAmount = (value: number) =>
+    Number.isFinite(value) && Math.abs(value * 100 - Math.round(value * 100)) <= 0.00001;
+  const cashflowSignature = (item: { type: unknown; date: unknown; description: unknown; expectedAmount: unknown }) =>
+    `${String(item.type)}|${String(item.date)}|${String(item.description ?? "").trim()}|${round2(Number(item.expectedAmount) || 0)}`;
+
+  app.get("/api/cashflow-projections", requireFeature("budget"), h(async (req, res) => {
     res.json(await storage.all("cashflow_projections", tenantId(req)));
   }));
-  app.post("/api/cashflow-projections", h(async (req, res) => {
-    const data = validate(insertCashflowProjectionSchema, { ...req.body, companyId: tenantId(req), createdAt: nowIso() });
+  app.post("/api/cashflow-projections", requireFeature("budget"), cashflowMutationRoles, h(async (req, res) => {
+    const date = req.body.date;
+    const type = typeof req.body.type === "string" ? req.body.type.trim() : "";
+    const description = typeof req.body.description === "string" ? req.body.description.trim() : "";
+    const expectedAmount = Number(req.body.expectedAmount);
+    if (!validCashflowDate(date)) return res.status(400).json({ error: "Datoen skal være en gyldig dato i formatet ÅÅÅÅ-MM-DD." });
+    if (!cashflowTypes.has(type)) return res.status(400).json({ error: "Vælg en gyldig type for likviditetsposten." });
+    if (description.length > 240) return res.status(400).json({ error: "Beskrivelsen må højst være 240 tegn." });
+    if (!validCashflowAmount(expectedAmount)) return res.status(400).json({ error: "Beløbet skal være et gyldigt beløb med højst to decimaler." });
+    const data = {
+      ...validate(insertCashflowProjectionSchema, {
+        companyId: tenantId(req),
+        date,
+        type,
+        description: description || null,
+        expectedAmount,
+        actualAmount: null,
+        status: "forventet",
+      }),
+      createdAt: nowIso(),
+    };
     res.status(201).json(await storage.insert("cashflow_projections", data));
   }));
-  app.patch("/api/cashflow-projections/:id", h(async (req, res) => {
+  app.patch("/api/cashflow-projections/:id", requireFeature("budget"), cashflowMutationRoles, h(async (req, res) => {
+    const cid = tenantId(req);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Ugyldigt id." });
+    const existing = await storage.get("cashflow_projections", id, cid);
+    if (!existing) return res.status(404).json({ error: "Likviditetsposten findes ikke." });
     const updates: Record<string, any> = {};
-    for (const k of ["actualAmount", "status"]) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
-    res.json(await storage.update("cashflow_projections", Number(req.params.id), updates, tenantId(req)));
+    if (req.body.actualAmount !== undefined) {
+      const actualAmount = req.body.actualAmount === null ? null : Number(req.body.actualAmount);
+      if (actualAmount !== null && !validCashflowAmount(actualAmount)) return res.status(400).json({ error: "Det faktiske beløb skal have højst to decimaler." });
+      updates.actualAmount = actualAmount;
+    }
+    if (req.body.status !== undefined) {
+      const status = typeof req.body.status === "string" ? req.body.status.trim() : "";
+      if (!cashflowStatuses.has(status)) return res.status(400).json({ error: "Vælg en gyldig status." });
+      updates.status = status;
+    }
+    res.json(await storage.update("cashflow_projections", id, updates, cid));
   }));
-  app.delete("/api/cashflow-projections/:id", h(async (req, res) => {
-    await storage.delete("cashflow_projections", Number(req.params.id), tenantId(req));
+  app.delete("/api/cashflow-projections/:id", requireFeature("budget"), cashflowMutationRoles, h(async (req, res) => {
+    const cid = tenantId(req);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Ugyldigt id." });
+    const existing = await storage.get("cashflow_projections", id, cid);
+    if (!existing) return res.status(404).json({ error: "Likviditetsposten findes ikke." });
+    await storage.delete("cashflow_projections", id, cid);
     res.status(204).send();
   }));
   // Auto-generer cashflow projektioner
-  app.post("/api/cashflow-projections/auto-generate", h(async (req, res) => {
+  app.post("/api/cashflow-projections/auto-generate", requireFeature("budget"), cashflowMutationRoles, h(async (req, res) => {
     const cid = tenantId(req);
     const invoices = await storage.all("invoices", cid);
     const vouchers = await storage.all("vouchers", cid);
@@ -8337,44 +8390,66 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const payroll = await storage.all("payroll_entries", cid);
     const created: any[] = [];
     const now = new Date();
+    const signatures = new Set(
+      (await storage.all("cashflow_projections", cid)).map((item: any) => cashflowSignature(item)),
+    );
+    const createProjection = async (projection: {
+      date: unknown;
+      type: string;
+      description: string;
+      expectedAmount: unknown;
+    }) => {
+      const expectedAmount = Number(projection.expectedAmount);
+      if (!validCashflowDate(projection.date) || !cashflowTypes.has(projection.type) || !validCashflowAmount(expectedAmount)) return;
+      const normalized = { ...projection, date: projection.date, expectedAmount: round2(expectedAmount) } as {
+        date: string;
+        type: string;
+        description: string;
+        expectedAmount: number;
+      };
+      const signature = cashflowSignature(normalized);
+      if (signatures.has(signature)) return;
+      const item = await storage.insert("cashflow_projections", {
+        companyId: cid,
+        ...normalized,
+        status: "forventet",
+        createdAt: nowIso(),
+      } as any);
+      signatures.add(signature);
+      created.push(item);
+    };
     // Forventede indbetalinger fra åbne fakturaer
     for (const inv of invoices.filter((i: any) => i.status === "sendt")) {
       if (!inv.dueDate) continue;
-      const existing = await storage.all("cashflow_projections", cid);
-      if (existing.some((c: any) => c.description?.includes(inv.invoiceNumber))) continue;
-      const proj = await storage.insert("cashflow_projections", {
-        companyId: cid, date: inv.dueDate, type: "indbetaling",
+      await createProjection({
+        date: inv.dueDate, type: "indbetaling",
         description: `Faktura ${inv.invoiceNumber} - ${inv.customerName || ""}`,
-        expectedAmount: inv.totalAmount || 0, status: "forventet", createdAt: nowIso(),
-      } as any);
-      created.push(proj);
+        expectedAmount: inv.totalAmount || 0,
+      });
     }
     // Forventede lønudbetalinger
     for (const pe of payroll.filter((p: any) => p.status === "kladde")) {
-      const proj = await storage.insert("cashflow_projections", {
-        companyId: cid, date: new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().substring(0, 10),
+      await createProjection({
+        date: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().substring(0, 10),
         type: "loen", description: `Løn ${pe.period} - ${pe.employeeName}`,
-        expectedAmount: -(pe.netSalary || 0), status: "forventet", createdAt: nowIso(),
-      } as any);
-      created.push(proj);
+        expectedAmount: -(pe.netSalary || 0),
+      });
     }
     // Momsfrister
     for (const td of taxDeadlines.filter((t: any) => t.status === "afventer")) {
-      const proj = await storage.insert("cashflow_projections", {
-        companyId: cid, date: td.deadline, type: "moms",
+      await createProjection({
+        date: td.deadline, type: "moms",
         description: `Moms ${td.period || ""} - ${td.type}`,
-        expectedAmount: -(td.amount || 0), status: "forventet", createdAt: nowIso(),
-      } as any);
-      created.push(proj);
+        expectedAmount: -(td.amount || 0),
+      });
     }
     // Åbne kreditorbilag
     for (const v of vouchers.filter((v: any) => v.status === "kladde" || !v.status)) {
-      const proj = await storage.insert("cashflow_projections", {
-        companyId: cid, date: v.date || now.toISOString().substring(0, 10), type: "leverandoer",
+      await createProjection({
+        date: v.date || now.toISOString().substring(0, 10), type: "leverandoer",
         description: `${v.supplier || "Leverandør"} - ${v.description || ""}`,
-        expectedAmount: -(v.amount || 0), status: "forventet", createdAt: nowIso(),
-      } as any);
-      created.push(proj);
+        expectedAmount: -(v.amount || 0),
+      });
     }
     res.json({ created: created.length, projections: created });
   }));
