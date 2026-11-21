@@ -91,6 +91,18 @@ test("external backup retention only prunes expired controlled snapshots", () =>
   assert.match(env, /S3_BACKUP_RETENTION_DAYS=35/);
 });
 
+test("scheduled external backup emits an operational completion receipt", () => {
+  const scheduler = read("server/scheduler.ts");
+  assert.match(scheduler, /event: "external_backup_completed"/);
+  assert.match(scheduler, /destination: "s3"/);
+  assert.match(scheduler, /checksum: result\.checksum/);
+  assert.match(scheduler, /verified: result\.verified/);
+  assert.match(scheduler, /finishedAt: nowIso\(\)/);
+  assert.match(scheduler, /event: "external_backup_failed"/);
+  assert.match(scheduler, /event: "external_backup_skipped"/);
+  assert.doesNotMatch(scheduler, /S3_SECRET_ACCESS_KEY.*console/);
+});
+
 test("client avoids known privacy and accessibility regressions", () => {
   const nativeBridge = read("client/src/lib/native-bridge.ts");
   const html = read("client/index.html");
